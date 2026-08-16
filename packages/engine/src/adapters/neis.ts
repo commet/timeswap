@@ -236,5 +236,61 @@ export function neisToTimetable(
     });
   }
   assignments.sort((a, b) => a.slot - b.slot || a.klass.localeCompare(b.klass, 'ko'));
+
+  // 한 사람이 같은 교시에 두 학급에 들어갈 수는 없다.
+  // 그런 배정이 나왔다면 그 수업들은 실제로 한 몸이다. 합반이거나 이동수업이다.
+  // 짐작이 아니라 물리적으로 그럴 수밖에 없는 경우라 여기서 묶어 준다.
+  // 묶지 않으면 한 학급만 떼어 옮기는, 현실에서 불가능한 안이 추천에 오른다.
+  const bySlotTeacher = new Map<string, Assignment[]>();
+  for (const a of assignments) {
+    const k = `${a.teacher}|${a.slot}`;
+    const list = bySlotTeacher.get(k);
+    if (list) list.push(a);
+    else bySlotTeacher.set(k, [a]);
+  }
+  for (const [k, list] of bySlotTeacher) {
+    if (list.length < 2) continue;
+    for (const a of list) a.group = `동시:${k}`;
+  }
+
   return { config: report.config, assignments };
+}
+
+/**
+ * 이동수업으로 의심되는 자리를 찾는다. 아니면 빈 배열이다.
+ *
+ * 나이스 공개 자료에는 이동수업 표시가 없다. 그렇다고 "같은 교시에 같은 과목"만 보고
+ * 알리면 하루에도 수십 번 뜬다. 1학년 여섯 반이 1교시에 다 같이 국어를 듣는 일은
+ * 이동수업이 아니라 그냥 흔한 편성이다. 그렇게 자주 뜨는 알림은 곧 무시당한다.
+ *
+ * 그래서 한 가지를 더 본다. **짝이 늘 같은가**이다.
+ * 이동수업이면 같은 학급 무리가 그 과목 시간마다 통째로 함께 움직인다.
+ * 우연히 겹친 것이면 다른 교시에서는 짝이 달라진다.
+ * 그 과목이 걸린 모든 교시에서 학급 구성이 똑같을 때만 알린다.
+ *
+ * 이래도 단정은 아니다. 그래서 묶지 않고 여쭙기만 한다. 아는 사람은 선생님이다.
+ */
+export function groupCandidate(
+  input: TimetableInput,
+  slot: number,
+  subject: string,
+  klass: string,
+): Assignment[] {
+  const here = input.assignments.filter((a) => a.slot === slot && a.subject === subject);
+  if (here.length < 2 || here.some((a) => a.group !== undefined)) return [];
+  const mine = new Set(here.map((a) => a.klass));
+  if (!mine.has(klass)) return [];
+
+  // 이 학급들이 이 과목을 듣는 모든 교시를 모은다.
+  const slots = new Set(
+    input.assignments.filter((a) => a.subject === subject && mine.has(a.klass)).map((a) => a.slot),
+  );
+  for (const s of slots) {
+    const there = input.assignments.filter((a) => a.slot === s && a.subject === subject);
+    const set = new Set(there.map((a) => a.klass));
+    // 한 교시라도 학급 구성이 다르면 늘 붙어 다니는 무리가 아니다.
+    if (set.size !== mine.size) return [];
+    for (const k of mine) if (!set.has(k)) return [];
+  }
+  return here.filter((a) => a.klass !== klass);
 }

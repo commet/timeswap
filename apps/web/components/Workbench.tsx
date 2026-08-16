@@ -5,6 +5,7 @@ import {
   coverCandidates,
   dayOf,
   recommend,
+  groupCandidate,
   slotName,
   validate,
   type Candidate,
@@ -231,6 +232,82 @@ export function Workbench() {
     },
     [show],
   );
+
+  /**
+   * 같은 교시에 같은 과목을 듣는 다른 학급.
+   * 나이스 자료에는 이동수업 표시가 없어 도구가 가릴 수 없다. 알리고 선생님이 정하신다.
+   */
+  const peers = useMemo(() => {
+    if (!input || !result) return [];
+    const target = input.assignments.find(
+      (a) => a.slot === result.target.slot && a.klass === result.target.klass,
+    );
+    if (!target || target.group) return [];
+    return groupCandidate(
+      input,
+      result.target.slot,
+      result.target.subject,
+      result.target.klass,
+    );
+  }, [input, result]);
+
+  /**
+   * 대상 수업과 같은 교시 같은 과목을 한 묶음으로 표시한다.
+   * 표시는 저장 파일에도 남아 다음에 열 때까지 이어진다.
+   */
+  const onGroup = useCallback(() => {
+    if (!loaded || !result) return;
+    const { slot, subject } = result.target;
+    const id = `이동:${subject}:${slot}`;
+    const next: Loaded = {
+      ...loaded,
+      input: {
+        ...loaded.input,
+        assignments: loaded.input.assignments.map((a) =>
+          a.slot === slot && a.subject === subject && a.group === undefined ? { ...a, group: id } : a,
+        ),
+      },
+    };
+    setLoaded(next);
+    if (!saveRaw(toFile(next))) setNoSave(true);
+    setHovered(null);
+    const n = next.input.assignments.filter((a) => a.group === id).length;
+    show(`${subject} 수업 ${n}개를 한 묶음으로 표시했습니다. 이제 함께 움직입니다`);
+  }, [loaded, result, show]);
+
+  /** 손으로 묶어 둔 자리인지. "동시:" 로 시작하는 자동 묶음은 물리적으로 필요해 풀 수 없다. */
+  const grouped = useMemo(() => {
+    if (!input || !result) return false;
+    const target = input.assignments.find(
+      (a) => a.slot === result.target.slot && a.klass === result.target.klass,
+    );
+    return target?.group?.startsWith('이동:') === true;
+  }, [input, result]);
+
+  const onUngroup = useCallback(() => {
+    if (!loaded || !result) return;
+    const target = loaded.input.assignments.find(
+      (a) => a.slot === result.target.slot && a.klass === result.target.klass,
+    );
+    const id = target?.group;
+    if (id === undefined || !id.startsWith('이동:')) return;
+    const next: Loaded = {
+      ...loaded,
+      input: {
+        ...loaded.input,
+        assignments: loaded.input.assignments.map((a) => {
+          if (a.group !== id) return a;
+          const { group, ...rest } = a;
+          void group;
+          return rest;
+        }),
+      },
+    };
+    setLoaded(next);
+    if (!saveRaw(toFile(next))) setNoSave(true);
+    setHovered(null);
+    show('묶음을 해제했습니다. 이제 따로 움직입니다');
+  }, [loaded, result, show]);
 
   const cycleTheme = useCallback(() => {
     setTheme((cur) => {
@@ -680,6 +757,10 @@ export function Workbench() {
               queueLen={queue.length}
               cover={cover}
               hovered={hovered}
+              peers={peers}
+              grouped={grouped}
+              onGroup={onGroup}
+              onUngroup={onUngroup}
               onHover={setHovered}
               onCopy={onCopy}
               onCopyCover={onCopyCover}

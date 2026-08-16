@@ -11,7 +11,7 @@ import {
   type NeisEvent,
   type NeisSchool,
 } from '../lib/neis';
-import { mapKey, type TeacherMap } from '../lib/app';
+import { mapKey, normalizeName, type TeacherMap } from '../lib/app';
 
 type Stage = '검색' | '배정';
 
@@ -260,10 +260,10 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
                     placeholder="교사 이름"
                     value={map[k] ?? ''}
                     onChange={(e) => {
-                      const v = e.target.value;
+                      const v = normalizeName(e.target.value);
                       setMap((m) => {
                         const next = { ...m };
-                        if (v.trim()) next[k] = v.trim();
+                        if (v) next[k] = v;
                         else delete next[k];
                         return next;
                       });

@@ -139,6 +139,33 @@ export function weekMondayOf(today = new Date()): Date {
   return d;
 }
 
+/**
+ * 학급 이름에서 학년을 뽑는다.
+ *
+ * 나이스에서 오면 "1-1" 꼴이지만 학교가 내보낸 파일은 제각각이다.
+ * "1학년 1반", "1-01", "3학년11반" 이 다 나온다. 맨 앞 숫자를 학년으로 본다.
+ * 못 읽으면 null 이다. 짐작해서 엉뚱한 학년에 휴업일을 거는 것보다 안 거는 편이 낫다.
+ */
+export function gradeOf(klass: string): number | null {
+  const m = /\d+/.exec(klass);
+  if (!m) return null;
+  const n = Number(m[0]);
+  return Number.isFinite(n) && n >= 1 && n <= 12 ? n : null;
+}
+
+/**
+ * 사람이 친 이름을 다듬는다.
+ *
+ * "김영희", "김영희 ", "김 영희" 가 각각 다른 교사로 잡히면 시간표가 조각난다.
+ * 앞뒤 공백을 떼고 가운데 공백을 하나로 줄인다. 이름 안의 띄어쓰기는 없앤다.
+ * 한글 이름에서 "김 영희"와 "김영희"는 같은 사람이다.
+ */
+export function normalizeName(raw: string): string {
+  const t = raw.trim().replace(/\s+/g, ' ');
+  // 한글로만 이루어진 이름이면 띄어쓰기를 없앤다. 영문 이름은 띄어쓰기가 뜻을 가지므로 둔다.
+  return /^[가-힣\s]+$/.test(t) ? t.replace(/\s/g, '') : t;
+}
+
 const ymd = (d: Date): string =>
   `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 
@@ -180,7 +207,10 @@ export function buildClosures(
   for (const [day, { reason, grades }] of found) {
     if (grades === null) out.push({ day, reason });
     else {
-      const hit = klasses.filter((k) => grades.has(Number(k.split('-')[0])));
+      const hit = klasses.filter((k) => {
+        const g = gradeOf(k);
+        return g !== null && grades.has(g);
+      });
       if (hit.length > 0) out.push({ day, reason, klasses: hit });
     }
   }
@@ -325,14 +355,52 @@ export function toFile(loaded: Loaded): string {
 }
 
 export function fromFile(raw: string): Loaded {
-  const doc = JSON.parse(raw) as PumasiFile;
+  let doc: PumasiFile;
+  try {
+    doc = JSON.parse(raw) as PumasiFile;
+  } catch {
+    throw new Error('파일이 깨졌거나 시간표 파일이 아닙니다. 저장한 파일을 그대로 열어 주십시오.');
+  }
   if (!doc || doc.format !== 'pumasi.timetable' || !Array.isArray(doc.lessons)) {
     throw new Error(`${BRAND}에서 저장한 파일이 아닙니다. 저장한 파일을 그대로 열어 주십시오.`);
+  }
+  const cfg = doc.config;
+  if (
+    !cfg ||
+    !Number.isInteger(cfg.days) ||
+    !Number.isInteger(cfg.periods) ||
+    cfg.days < 1 ||
+    cfg.periods < 1 ||
+    !Array.isArray(cfg.dayNames) ||
+    cfg.dayNames.length < cfg.days
+  ) {
+    throw new Error('파일의 시간표 틀이 올바르지 않습니다. 다시 내보내 주십시오.');
+  }
+  // 칸 밖으로 나간 수업이 있으면 격자를 그릴 때 조용히 사라진다. 여기서 막는다.
+  const size = cfg.days * cfg.periods;
+  const bad = doc.lessons.filter(
+    (l) =>
+      !l ||
+      typeof l.teacher !== 'string' ||
+      typeof l.klass !== 'string' ||
+      typeof l.subject !== 'string' ||
+      !Number.isInteger(l.slot) ||
+      l.slot < 0 ||
+      l.slot >= size,
+  );
+  if (bad.length > 0) {
+    throw new Error(
+      `수업 ${bad.length}개가 시간표 칸을 벗어났거나 항목이 비어 있습니다. 파일을 다시 내보내 주십시오.`,
+    );
   }
   return {
     schoolName: doc.school || '이름 없는 학교',
     source: '파일',
-    input: { config: doc.config, assignments: doc.lessons },
+    input: {
+      config: cfg,
+      // 파일마다 이름 표기가 흔들린다. 여기서 한 번 다듬어야 같은 사람이 한 사람으로 잡힌다.
+      assignments: doc.lessons.map((l) => ({ ...l, teacher: normalizeName(l.teacher) })),
+    },
     ...(doc.calendar ? { calendar: doc.calendar } : {}),
   };
 }

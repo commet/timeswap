@@ -3,6 +3,8 @@ import {
   buildClosures,
   calendarCoversThisWeek,
   fromFile,
+  gradeOf,
+  normalizeName,
   toFile,
   weekMondayOf,
   type Calendar,
@@ -158,5 +160,91 @@ describe('저장 형식', () => {
     const doc = JSON.parse(toFile(noCal)) as Record<string, unknown>;
     expect('calendar' in doc).toBe(false);
     expect(doc.version).toBe(2);
+  });
+});
+
+describe('학급 이름에서 학년 뽑기', () => {
+  it('학교마다 다른 표기를 모두 읽는다', () => {
+    expect(gradeOf('1-1')).toBe(1);
+    expect(gradeOf('3-11')).toBe(3);
+    expect(gradeOf('1학년 1반')).toBe(1);
+    expect(gradeOf('2학년3반')).toBe(2);
+    expect(gradeOf('1-01')).toBe(1);
+  });
+
+  it('못 읽으면 null 이다', () => {
+    // 짐작해서 엉뚱한 학년에 휴업일을 거는 것보다 안 거는 편이 낫다
+    expect(gradeOf('과학중점')).toBeNull();
+    expect(gradeOf('')).toBeNull();
+    expect(gradeOf('99반')).toBeNull();
+  });
+
+  it('학년 표기가 달라도 휴업일이 제대로 걸린다', () => {
+    const events = [
+      {
+        date: '20260819',
+        name: '수학여행',
+        kind: '휴업일',
+        grades: [false, true, false],
+        isHoliday: true,
+      },
+    ];
+    const out = buildClosures(events, ['1학년 1반', '2학년 1반', '2학년 2반'], MON);
+    expect(out).toEqual([{ day: 2, reason: '수학여행', klasses: ['2학년 1반', '2학년 2반'] }]);
+  });
+});
+
+describe('이름 다듬기', () => {
+  it('앞뒤 공백과 가운데 띄어쓰기를 정리한다', () => {
+    // "김영희"와 "김 영희"가 다른 사람으로 잡히면 시간표가 조각난다
+    expect(normalizeName(' 김영희 ')).toBe('김영희');
+    expect(normalizeName('김 영희')).toBe('김영희');
+    expect(normalizeName('김  영희')).toBe('김영희');
+  });
+
+  it('영문 이름의 띄어쓰기는 남긴다', () => {
+    expect(normalizeName('  Jane  Doe ')).toBe('Jane Doe');
+  });
+});
+
+describe('이상한 파일 막기', () => {
+  const ok = {
+    format: 'pumasi.timetable',
+    version: 2,
+    school: '보기 학교',
+    config: cfg,
+    lessons: [{ teacher: '김국어', klass: '1-1', subject: '국어', slot: 0 }],
+  };
+
+  it('JSON 이 아니면 사람이 읽을 말로 막는다', () => {
+    expect(() => fromFile('이건 파일이 아닙니다')).toThrow(/파일이 깨졌거나/);
+  });
+
+  it('시간표 틀이 이상하면 막는다', () => {
+    const noDays = { ...ok, config: { ...cfg, days: 0 } };
+    expect(() => fromFile(JSON.stringify(noDays))).toThrow(/시간표 틀이 올바르지 않습니다/);
+    const short = { ...ok, config: { ...cfg, dayNames: ['월', '화'] } };
+    expect(() => fromFile(JSON.stringify(short))).toThrow(/시간표 틀이 올바르지 않습니다/);
+  });
+
+  it('칸을 벗어난 수업이 있으면 막는다', () => {
+    // 조용히 사라지게 두면 선생님은 시간표가 왜 비었는지 알 수 없다
+    const out = { ...ok, lessons: [{ teacher: 'A', klass: '1-1', subject: '국어', slot: 999 }] };
+    expect(() => fromFile(JSON.stringify(out))).toThrow(/칸을 벗어났거나/);
+    const neg = { ...ok, lessons: [{ teacher: 'A', klass: '1-1', subject: '국어', slot: -1 }] };
+    expect(() => fromFile(JSON.stringify(neg))).toThrow(/칸을 벗어났거나/);
+  });
+
+  it('항목이 비면 막는다', () => {
+    const empty = { ...ok, lessons: [{ klass: '1-1', subject: '국어', slot: 0 }] };
+    expect(() => fromFile(JSON.stringify(empty))).toThrow(/칸을 벗어났거나/);
+  });
+
+  it('불러온 교사 이름도 다듬는다', () => {
+    const messy = {
+      ...ok,
+      lessons: [{ teacher: ' 김 국어 ', klass: '1-1', subject: '국어', slot: 0 }],
+    };
+    expect(fromFile(JSON.stringify(messy)).input.assignments[0]?.teacher).toBe('김국어');
   });
 });

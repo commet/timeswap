@@ -285,6 +285,18 @@ button.cell.empty:hover { border-color: var(--muted); }
 .cand-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .cand-score { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; margin-left: auto; }
 
+/* 이동수업일 수 있는 자리 알림. 자료로는 가릴 수 없어 선생님께 여쭙는다. */
+.peers {
+  margin: 10px 12px 0; padding: 10px 12px; border-radius: 9px;
+  border: 1px solid var(--warn); background: var(--warn-soft);
+}
+.peers p { margin: 0 0 8px; font-size: 12.5px; line-height: 1.55; color: var(--ink); }
+.peers b { color: var(--warn); }
+.peers .btn { padding: 4px 12px; font-size: 12.5px; }
+/* 이미 묶여 있다는 안내는 경고가 아니다. 알아 두면 되는 사실이라 조용히 둔다. */
+.peers.undo { border-color: var(--line); background: var(--surface-2); }
+.peers.undo p { color: var(--muted); }
+
 /* 토스트 */
 .toast {
   position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
