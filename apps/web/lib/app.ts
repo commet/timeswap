@@ -7,6 +7,7 @@ import {
   type Candidate,
   type Change,
   type NeisReport,
+  type DayClosure,
   type NeisRow,
   type ScheduleConfig,
   type TimetableInput,
@@ -19,6 +20,7 @@ export const TEACHER_KEY = 'timeswap:v0:teacher';
 export const CHANGES_KEY = 'timeswap:v0:changes';
 export const UNAVAIL_KEY = 'timeswap:v0:unavail';
 export const THEME_KEY = 'timeswap:v0:theme';
+export const REASON_KEY = 'timeswap:v0:reason';
 export const NEIS_KEY_STORE = 'timeswap:v0:neiskey';
 
 export type ThemeMode = 'auto' | 'light' | 'dark';
@@ -120,6 +122,67 @@ export function saveNeisKey(key: string): void {
   } catch {
     /* 무시 */
   }
+}
+
+/**
+ * 지금 다루는 주의 월요일을 찾는다.
+ * 주말에 열면 다음 주를 본다. 토요일 오후에 여는 사람은 다음 주 결강을 준비하는 것이다.
+ */
+export function weekMondayOf(today = new Date()): Date {
+  const d = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const wd = d.getDay(); // 일 0, 월 1
+  if (wd === 0) d.setDate(d.getDate() + 1);
+  else if (wd === 6) d.setDate(d.getDate() + 2);
+  else d.setDate(d.getDate() - (wd - 1));
+  return d;
+}
+
+const ymd = (d: Date): string =>
+  `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+
+/**
+ * 학사일정을 지금 다루는 주의 요일 단위로 바꾼다.
+ *
+ * 시간표는 한 주가 되풀이되는 표인데 학사일정은 날짜로 온다.
+ * 그래서 이번 주에 걸리는 것만 골라 요일로 옮긴다.
+ *
+ * 쉬는 날로 보는 것은 휴업일과 공휴일뿐이다. 학년 행사는 수업을 하는 날이 대부분이라
+ * 여기서 막으면 멀쩡한 교체안까지 사라진다. 행사는 화면에 알리기만 한다.
+ */
+export function buildClosures(
+  events: NeisEvent[],
+  klasses: string[],
+  monday: Date = weekMondayOf(),
+  days = 5,
+): DayClosure[] {
+  const dateOfDay = new Map<string, number>();
+  for (let i = 0; i < days; i++) {
+    const d = new Date(monday);
+    d.setDate(d.getDate() + i);
+    dateOfDay.set(ymd(d), i);
+  }
+  const found = new Map<number, { reason: string; grades: Set<number> | null }>();
+  for (const e of events) {
+    if (!e.isHoliday) continue;
+    const day = dateOfDay.get(e.date);
+    if (day === undefined) continue;
+    // 학년별 표시가 전부 켜져 있거나 전부 꺼져 있으면 학교 전체로 본다.
+    const on = e.grades.filter(Boolean).length;
+    const partial = on > 0 && on < e.grades.length;
+    const prev = found.get(day);
+    const grades = partial ? new Set(e.grades.flatMap((v, i) => (v ? [i + 1] : []))) : null;
+    if (!prev) found.set(day, { reason: e.name || e.kind, grades });
+    else if (prev.grades !== null && grades === null) found.set(day, { reason: e.name || e.kind, grades: null });
+  }
+  const out: DayClosure[] = [];
+  for (const [day, { reason, grades }] of found) {
+    if (grades === null) out.push({ day, reason });
+    else {
+      const hit = klasses.filter((k) => grades.has(Number(k.split('-')[0])));
+      if (hit.length > 0) out.push({ day, reason, klasses: hit });
+    }
+  }
+  return out.sort((a, b) => a.day - b.day);
 }
 
 /**

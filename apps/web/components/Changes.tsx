@@ -17,6 +17,8 @@ export function Changes({
   onCopyNotice,
   onCopyNeisList,
   onPrint,
+  reason,
+  onReason,
 }: {
   cfg: ScheduleConfig;
   entries: AppliedEntry[];
@@ -27,6 +29,9 @@ export function Changes({
   onCopyNotice: () => void;
   onCopyNeisList: () => void;
   onPrint: () => void;
+  /** 결재 문서에 들어갈 결강 사유 */
+  reason: string;
+  onReason: (v: string) => void;
 }) {
   return (
     <section className="card changes" aria-label="반영한 변경">
@@ -62,6 +67,16 @@ export function Changes({
               <span className="chg-helpers-hint">같은 분께 부담이 몰리지 않도록 순서에 반영합니다</span>
             </p>
           )}
+          <label className="chg-reason">
+            <span>사유</span>
+            <input
+              className="input"
+              value={reason}
+              placeholder="출장, 연수, 병가 등"
+              onChange={(e) => onReason(e.target.value)}
+            />
+            <span className="chg-reason-hint">교체 계획서에 그대로 인쇄됩니다</span>
+          </label>
           <div className="chg-foot">
             <button className="btn" onClick={onCopyNotice}>
               변경 공지 복사

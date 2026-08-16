@@ -323,6 +323,44 @@ button.cell.empty:hover { border-color: var(--muted); }
 }
 .chg-helpers-hint { font-size: 11.5px; opacity: 0.85; }
 
+.chg-reason {
+  display: grid; grid-template-columns: 34px 1fr; gap: 4px 8px; align-items: center;
+  padding: 4px 14px 8px; font-size: 12.5px; color: var(--muted);
+}
+.chg-reason > span:first-child { font-weight: 700; color: var(--ink); }
+.chg-reason .input { padding: 5px 10px; font-size: 13px; }
+.chg-reason-hint { grid-column: 2; font-size: 11.5px; opacity: 0.85; }
+
+/* 본인 성함 고르기. 시간표를 처음 불러온 뒤 한 번만 나온다. */
+.pick { max-width: 620px; margin: 0 auto; }
+.pick-lede { margin: 0; padding: 12px 16px 0; color: var(--muted); font-size: 14px; }
+.pick-search { margin: 12px 16px 0; width: calc(100% - 32px); }
+.pick-empty { padding: 24px 16px; color: var(--muted); text-align: center; }
+.pick-list {
+  list-style: none; margin: 12px 0 0; padding: 0 16px 16px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px;
+  max-height: min(56vh, 460px); overflow-y: auto;
+}
+.pick-list button {
+  display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+  border: 1px solid var(--line); background: var(--surface); border-radius: 8px;
+  padding: 9px 12px; transition: border-color 0.15s ease, background 0.15s ease;
+}
+.pick-list button:hover { border-color: var(--accent); background: var(--accent-soft); }
+.pick-name { font-weight: 700; font-size: 14px; }
+.pick-load { margin-left: auto; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* 화면이 죽었을 때 */
+.crash { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.crash-card {
+  max-width: 520px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 28px 30px 26px; box-shadow: var(--shadow);
+}
+.crash-card h1 { margin: 0 0 12px; font-size: 22px; letter-spacing: -0.01em; }
+.crash-card p { margin: 0 0 18px; color: var(--muted); font-size: 14.5px; }
+.crash-actions { display: flex; gap: 10px; }
+.crash-hint { margin: 18px 0 0 !important; font-size: 13px; }
+
 /* 교사 검색 입력과 테마 버튼 */
 .select.combo { background-image: none; padding: 6px 12px; min-width: 150px; }
 .select.combo::placeholder { color: var(--muted); opacity: 0.7; }
@@ -334,6 +372,17 @@ button.cell.empty:hover { border-color: var(--muted); }
 .tt-head.today, .tt-head.day-btn.today { color: var(--accent); }
 .tt-head.today::after, .tt-head.day-btn.today::after { content: ''; display: block; width: 18px; height: 3px; border-radius: 2px; background: var(--accent); margin: 2px auto 0; }
 .cell.today-col { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 30%, transparent); }
+
+/* 휴업일. 그 요일로는 옮길 수 없으니 눈에 먼저 들어와야 한다. */
+.tt-head.closed { color: var(--warn); }
+.tt-head.day-btn.closed:hover { background: var(--warn-soft); color: var(--warn); }
+.day-closed {
+  display: block; font-size: 10.5px; font-weight: 700; line-height: 1.3;
+  color: var(--warn); margin-top: 1px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cell.closed-col { opacity: 0.45; }
+.cell.closed-col.absent { opacity: 1; }
 .cell.absent.queued { background: transparent; color: var(--warn); opacity: 0.85; }
 .badge-absent.queued { background: var(--surface); color: var(--warn); border: 1px solid var(--warn); }
 .head-skip { margin-left: auto; padding: 2px 10px; font-size: 12px; }
@@ -437,8 +486,19 @@ button.cell.empty:hover { border-color: var(--muted); }
   .sheet-approve-label { border: 1px solid #000; width: 22mm; text-align: center; font-size: 9pt; padding: 1mm; }
   .sheet-approve-box { border: 1px solid #000; height: 14mm; }
   .sheet-table { width: 100%; border-collapse: collapse; margin-bottom: 6mm; }
-  .sheet-table th, .sheet-table td { border: 1px solid #000; padding: 2.5mm 3mm; font-size: 10.5pt; text-align: left; }
+  .sheet-table th, .sheet-table td { border: 1px solid #000; padding: 2.2mm 2.5mm; font-size: 10pt; text-align: left; }
   .sheet-table th { text-align: center; background: #f0f0f0; }
   .sheet-table td.c { text-align: center; }
-  .sheet-note { font-size: 10.5pt; }
+  /* 한 건에 수업이 여러 개면 줄이 이어진다. 건이 바뀌는 자리만 굵게 그어 눈으로 끊어 읽는다. */
+  .sheet-table tr.sheet-first td { border-top: 1.6px solid #000; }
+  .sheet-head { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+  .sheet-head th, .sheet-head td { border: 1px solid #000; padding: 2.2mm 3mm; font-size: 10pt; text-align: left; }
+  .sheet-head th { width: 16%; background: #f0f0f0; text-align: center; }
+  .sheet-sign { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+  .sheet-sign th { border: 1px solid #000; background: #f0f0f0; padding: 2mm; font-size: 10pt; }
+  .sheet-sign-name { border: 1px solid #000; text-align: center; font-size: 10pt; padding: 2mm; }
+  .sheet-sign-box { border: 1px solid #000; height: 13mm; }
+  .sheet-note { font-size: 10.5pt; margin-bottom: 3mm; }
+  .sheet-foot { font-size: 9pt; color: #333; margin: 0; }
+  .crash { display: none !important; }
 }

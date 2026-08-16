@@ -12,12 +12,22 @@ export interface Indexes {
   klassDayCount: Map<string, number[]>;
   /** `${klass}|${subject}|${day}` 별 수업 수 */
   klassSubjectDay: Map<string, number>;
+  /** 학교 전체가 쉬는 요일과 그 이유 */
+  closedAll: Map<number, string>;
+  /** `${klass}|${day}` 로 그 학급만 쉬는 경우와 그 이유 */
+  closedKlass: Map<string, string>;
 }
 
 export const tsKey = (teacher: string, slot: number): string => `${teacher}|${slot}`;
 export const ksKey = (klass: string, slot: number): string => `${klass}|${slot}`;
 export const ksdKey = (klass: string, subject: string, day: number): string =>
   `${klass}|${subject}|${day}`;
+export const kdKey = (klass: string, day: number): string => `${klass}|${day}`;
+
+/** 그 학급이 그 요일에 쉬는지. 쉬면 이유를 돌려준다. */
+export function closedReason(idx: Indexes, klass: string, day: number): string | undefined {
+  return idx.closedAll.get(day) ?? idx.closedKlass.get(kdKey(klass, day));
+}
 
 export function buildIndexes(input: TimetableInput): Indexes {
   const cfg = input.config;
@@ -30,7 +40,13 @@ export function buildIndexes(input: TimetableInput): Indexes {
     klassAssignments: new Map(),
     klassDayCount: new Map(),
     klassSubjectDay: new Map(),
+    closedAll: new Map(),
+    closedKlass: new Map(),
   };
+  for (const c of input.closures ?? []) {
+    if (c.klasses === undefined || c.klasses.length === 0) idx.closedAll.set(c.day, c.reason);
+    else for (const k of c.klasses) idx.closedKlass.set(kdKey(k, c.day), c.reason);
+  }
   for (const [teacher, slots] of Object.entries(input.unavailable ?? {})) {
     let m = 0n;
     for (const s of slots) m |= bit(s);

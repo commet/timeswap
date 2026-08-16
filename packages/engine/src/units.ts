@@ -1,6 +1,6 @@
 import type { Assignment, ScheduleConfig, TimetableInput } from './types';
 import { bit, dayOf, hasBit } from './slots';
-import { dayHoles, type Indexes } from './timetable';
+import { closedReason, dayHoles, type Indexes } from './timetable';
 
 /**
  * 교환 탐색의 단위.
@@ -92,10 +92,10 @@ export interface Verdict {
 /**
  * 옮김 계획이 하드 제약을 모두 통과하는지 본다.
  *
- * 살피는 것은 다섯 가지다.
+ * 살피는 것은 여섯 가지다.
  * 교사가 같은 교시에 두 곳에 있게 되는지, 학급이 같은 교시에 두 수업을 받게 되는지,
  * 근무할 수 없는 시간에 배정되는지, 학급 하루 수업 중간에 빈 교시가 새로 생기는지,
- * 그리고 옮길 자리가 제자리는 아닌지다.
+ * 학사일정에 쉬는 날로 잡힌 요일로 가는지, 그리고 옮길 자리가 제자리는 아닌지다.
  *
  * 묶음은 통째로 움직이므로 묶음이 깨질 걱정은 애초에 없다.
  */
@@ -161,6 +161,18 @@ export function checkMoves(
     const stay = (idx.klassMask.get(k) ?? 0n) & ~(kVacate.get(k) ?? 0n);
     if ((stay & arr) !== 0n) {
       return { ok: false, reason: `${k} 학급이 그 시간에 이미 수업이 있습니다` };
+    }
+  }
+
+  // 학사일정에 쉬는 날로 잡힌 요일에는 수업을 넣지 않는다.
+  // 휴업일 목요일로 옮기라는 추천이 한 번 나오면 나머지 추천까지 못 믿게 된다.
+  for (const m of moves) {
+    const toDay = dayOf(m.toSlot, cfg);
+    for (const k of m.unit.klasses) {
+      const why = closedReason(idx, k, toDay);
+      if (why !== undefined) {
+        return { ok: false, reason: `${cfg.dayNames[toDay]}요일은 ${why}이라 수업이 없습니다` };
+      }
     }
   }
 

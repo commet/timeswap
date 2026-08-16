@@ -1,6 +1,13 @@
 'use client';
 
-import { slotName, slotOf, type Assignment, type Candidate, type ScheduleConfig } from '@timeswap/engine';
+import {
+  slotName,
+  slotOf,
+  type Assignment,
+  type Candidate,
+  type DayClosure,
+  type ScheduleConfig,
+} from '@timeswap/engine';
 import { subjectHue } from '../lib/app';
 import type { CSSProperties } from 'react';
 
@@ -16,6 +23,8 @@ interface Props {
   lockedSlots: number[];
   /** 오늘 요일 열 강조 (0 = 월). 주말이면 null */
   todayIdx: number | null;
+  /** 이번 주 휴업일. 그 요일은 교체 대상에서 빠진다 */
+  closures: DayClosure[];
   preview: Candidate | null;
   onToggleSlot: (slot: number) => void;
   onToggleDay: (day: number) => void;
@@ -30,11 +39,17 @@ export function Grid({
   absentSlots,
   lockedSlots,
   todayIdx,
+  closures,
   preview,
   onToggleSlot,
   onToggleDay,
   onToggleLock,
 }: Props) {
+  // 학급별로 갈리는 휴업일도 있지만 머리글은 한 줄이라 학교 전체 휴업일만 표시한다.
+  const closedDay = new Map<number, string>();
+  for (const c of closures) {
+    if (c.klasses === undefined || c.klasses.length === 0) closedDay.set(c.day, c.reason);
+  }
   const bySlot = new Map<number, Assignment>();
   for (const a of lessons) bySlot.set(a.slot, a);
 
@@ -64,22 +79,29 @@ export function Grid({
       <div className="grid-scroll">
         <div className="tt-grid" style={{ gridTemplateColumns: cols }}>
           <div className="tt-head corner" aria-hidden />
-          {cfg.dayNames.map((d, di) =>
-            teacherMode ? (
+          {cfg.dayNames.map((d, di) => {
+            const why = closedDay.get(di);
+            const mark = why !== undefined ? <span className="day-closed">{why}</span> : null;
+            return teacherMode ? (
               <button
                 key={d}
-                className={`tt-head day-btn${todayIdx === di ? ' today' : ''}`}
-                title="그날 수업 전체 선택"
+                className={`tt-head day-btn${todayIdx === di ? ' today' : ''}${why !== undefined ? ' closed' : ''}`}
+                title={why !== undefined ? `${why}이라 수업이 없습니다` : '그날 수업 전체 선택'}
                 onClick={() => onToggleDay(di)}
               >
                 {d}
+                {mark}
               </button>
             ) : (
-              <div key={d} className={`tt-head${todayIdx === di ? ' today' : ''}`}>
+              <div
+                key={d}
+                className={`tt-head${todayIdx === di ? ' today' : ''}${why !== undefined ? ' closed' : ''}`}
+              >
                 {d}
+                {mark}
               </div>
-            ),
-          )}
+            );
+          })}
           {Array.from({ length: cfg.periods }, (_, p) => (
             <Row
               key={p}
@@ -91,6 +113,7 @@ export function Grid({
               queued={queued}
               locked={locked}
               todayIdx={todayIdx}
+              closedDay={closedDay}
               own={own}
               incoming={incoming}
               onToggleSlot={onToggleSlot}
@@ -128,6 +151,7 @@ function Row({
   queued,
   locked,
   todayIdx,
+  closedDay,
   own,
   incoming,
   onToggleSlot,
@@ -141,6 +165,7 @@ function Row({
   queued: Set<number>;
   locked: Set<number>;
   todayIdx: number | null;
+  closedDay: Map<number, string>;
   own?: { from: Assignment; toSlot: number };
   incoming?: { from: Assignment; toSlot: number };
   onToggleSlot: (slot: number) => void;
@@ -154,7 +179,7 @@ function Row({
         const a = bySlot.get(s);
         const isActive = active === s;
         const isQueued = queued.has(s) && !isActive;
-        const today = todayIdx === d ? ' today-col' : '';
+        const today = `${todayIdx === d ? ' today-col' : ''}${closedDay.has(d) ? ' closed-col' : ''}`;
         const leaving = own !== undefined && own.from.slot === s && own.toSlot !== s;
         const arriving = own !== undefined && own.toSlot === s;
         const showIncoming = isActive && incoming !== undefined;

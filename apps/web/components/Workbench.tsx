@@ -18,12 +18,14 @@ import { Grid } from './Grid';
 import { Panel } from './Panel';
 import { Changes } from './Changes';
 import { Sheet } from './Sheet';
+import { TeacherPick } from './TeacherPick';
 import { NeisLoader } from './NeisLoader';
 import type { NeisEvent, NeisSchool } from '../lib/neis';
 import { BRAND } from '../lib/brand';
 import {
   applyAll,
   applyTheme,
+  buildClosures,
   buildFromNeis,
   buildNeisList,
   buildNotice,
@@ -41,6 +43,7 @@ import {
   saveNeisKey,
   saveRaw,
   saveUnavail,
+  REASON_KEY,
   TEACHER_KEY,
   THEME_LABEL,
   THEME_ORDER,
@@ -77,6 +80,10 @@ export function Workbench() {
   const [busy, setBusy] = useState(false);
   const [teacher, setTeacher] = useState<string | null>(null);
   const [teacherInput, setTeacherInput] = useState('');
+  /** 아직 본인 성함을 고르지 않았다. 처음 불러온 직후에만 참이다. */
+  const [needsPick, setNeedsPick] = useState(false);
+  /** 결재 문서에 들어갈 결강 사유 */
+  const [reason, setReason] = useState('출장');
   const [entries, setEntries] = useState<AppliedEntry[]>([]);
   const [view, setView] = useState<'teacher' | 'klass'>('teacher');
   const [klass, setKlass] = useState<string | null>(null);
@@ -98,6 +105,8 @@ export function Workbench() {
         setUnavail(loadUnavail());
         const saved = localStorage.getItem(TEACHER_KEY);
         setTeacher(saved ?? defaultTeacher(l.input));
+        if (saved === null) setNeedsPick(true);
+        setReason(localStorage.getItem(REASON_KEY) ?? '출장');
       } catch {
         clearRaw();
       }
@@ -109,12 +118,29 @@ export function Workbench() {
   }, []);
 
   const base = loaded?.input ?? null;
+
+  /**
+   * 이번 주 휴업일. 나이스 학사일정에서 온다.
+   * 시간표는 되풀이되는 한 주지만 학사일정은 날짜라 이번 주에 걸리는 것만 요일로 옮긴다.
+   */
+  const closures = useMemo(() => {
+    const events = loaded?.neis?.events;
+    if (!events || events.length === 0 || !base) return [];
+    const ks = [...new Set(base.assignments.map((a) => a.klass))];
+    return buildClosures(events, ks);
+  }, [loaded, base]);
+
   const input = useMemo(() => {
     if (!base) return null;
     const applied = applyAll(base, entries);
     // 근무 불가와 협조 부담은 저장된 상태에서 매번 다시 만든다.
-    return { ...applied, unavailable: unavail, recentBurden: deriveBurden(entries) };
-  }, [base, entries, unavail]);
+    return {
+      ...applied,
+      unavailable: unavail,
+      recentBurden: deriveBurden(entries),
+      ...(closures.length > 0 ? { closures } : {}),
+    };
+  }, [base, entries, unavail, closures]);
 
   const teachers = useMemo(() => {
     if (!input) return [] as Array<{ name: string; n: number }>;
@@ -203,6 +229,7 @@ export function Workbench() {
 
   const commitTeacher = useCallback((name: string) => {
     setTeacher(name);
+    setNeedsPick(false);
     setQueue([]);
     setHovered(null);
     try {
@@ -225,14 +252,13 @@ export function Workbench() {
       setHovered(null);
       setView('teacher');
       setAtHome(false);
-      const t = defaultTeacher(l.input);
-      setTeacher(t);
-      if (t !== null) {
-        try {
-          localStorage.setItem(TEACHER_KEY, t);
-        } catch {
-          /* 무시 */
-        }
+      // 학교가 바뀌면 이전에 고른 성함은 뜻이 없다. 처음부터 다시 묻는다.
+      setTeacher(defaultTeacher(l.input));
+      setNeedsPick(true);
+      try {
+        localStorage.removeItem(TEACHER_KEY);
+      } catch {
+        /* 무시 */
       }
       show(`${l.schoolName} 시간표를 불러왔습니다`);
     },
@@ -418,6 +444,15 @@ export function Workbench() {
     show('변경을 모두 되돌렸습니다');
   }, [entries, show]);
 
+  const onReason = useCallback((v: string) => {
+    setReason(v);
+    try {
+      localStorage.setItem(REASON_KEY, v);
+    } catch {
+      /* 무시 */
+    }
+  }, []);
+
   const onPrint = useCallback(() => {
     window.print();
   }, []);
@@ -432,6 +467,12 @@ export function Workbench() {
     setQueue([]);
     setUnavail({});
     setHovered(null);
+    setNeedsPick(false);
+    try {
+      localStorage.removeItem(TEACHER_KEY);
+    } catch {
+      /* 무시 */
+    }
   }, []);
 
   return (
@@ -451,13 +492,13 @@ export function Workbench() {
           {BRAND}
           <span className="beta">베타</span>
         </button>
-        {loaded && !atHome && (
+        {loaded && !atHome && !needsPick && (
           <span className="school-chip">
             {loaded.schoolName} | {loaded.source}
           </span>
         )}
         <span className="spacer" />
-        {loaded && input && !atHome && (
+        {loaded && input && !atHome && !needsPick && (
           <>
             <div className="seg" role="tablist" aria-label="보기 전환">
               <button
@@ -536,7 +577,7 @@ export function Workbench() {
         <button className="btn ghost theme-btn" title="화면 테마 전환" onClick={cycleTheme}>
           테마 {THEME_LABEL[theme]}
         </button>
-        {loaded && input && !atHome && (
+        {loaded && input && !atHome && !needsPick && (
           <>
             <button className="btn ghost" onClick={onSaveFile}>
               파일로 저장
@@ -572,6 +613,12 @@ export function Workbench() {
           savedName={loaded?.schoolName ?? ''}
           busy={busy}
         />
+      ) : needsPick ? (
+        <TeacherPick
+          schoolName={loaded.schoolName}
+          teachers={teachers}
+          onPick={commitTeacher}
+        />
       ) : (
         <main className="work">
           <Grid
@@ -582,6 +629,7 @@ export function Workbench() {
             absentSlots={queue}
             lockedSlots={currentTeacher !== null ? (unavail[currentTeacher] ?? []) : []}
             todayIdx={todayIdx}
+            closures={closures}
             preview={hovered}
             onToggleSlot={onToggleSlot}
             onToggleDay={onToggleDay}
@@ -608,13 +656,21 @@ export function Workbench() {
               onCopyNotice={onCopyNotice}
               onCopyNeisList={onCopyNeisList}
               onPrint={onPrint}
+              reason={reason}
+              onReason={onReason}
             />
           </div>
         </main>
       )}
 
       {loaded && input && (
-        <Sheet schoolName={loaded.schoolName} cfg={input.config} entries={entries} />
+        <Sheet
+          schoolName={loaded.schoolName}
+          cfg={input.config}
+          entries={entries}
+          teacher={currentTeacher ?? ''}
+          reason={reason}
+        />
       )}
 
       <footer className="foot">
