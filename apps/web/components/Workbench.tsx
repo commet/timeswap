@@ -20,6 +20,7 @@ import { Changes } from './Changes';
 import { Sheet } from './Sheet';
 import { NeisLoader } from './NeisLoader';
 import type { NeisEvent, NeisSchool } from '../lib/neis';
+import { BRAND } from '../lib/brand';
 import {
   applyAll,
   applyTheme,
@@ -70,6 +71,8 @@ function defaultTeacher(input: TimetableInput): string | null {
 export function Workbench() {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [showNeis, setShowNeis] = useState(false);
+  /** 로고를 누르면 시작 화면으로 돌아온다. 불러온 시간표는 지우지 않는다. */
+  const [atHome, setAtHome] = useState(false);
   const [neisKey, setNeisKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [teacher, setTeacher] = useState<string | null>(null);
@@ -109,7 +112,7 @@ export function Workbench() {
   const input = useMemo(() => {
     if (!base) return null;
     const applied = applyAll(base, entries);
-    // 근무 불가와 품앗이 부담은 저장된 상태에서 매번 다시 만든다.
+    // 근무 불가와 협조 부담은 저장된 상태에서 매번 다시 만든다.
     return { ...applied, unavailable: unavail, recentBurden: deriveBurden(entries) };
   }, [base, entries, unavail]);
 
@@ -184,7 +187,7 @@ export function Workbench() {
         await navigator.clipboard.writeText(text);
         show(done);
       } catch {
-        show('복사하지 못했습니다. 브라우저 권한을 확인하십시오');
+        show('복사하지 못했습니다. 브라우저의 클립보드 권한을 확인하십시오');
       }
     },
     [show],
@@ -221,6 +224,7 @@ export function Workbench() {
       saveUnavail({});
       setHovered(null);
       setView('teacher');
+      setAtHome(false);
       const t = defaultTeacher(l.input);
       setTeacher(t);
       if (t !== null) {
@@ -264,7 +268,7 @@ export function Workbench() {
     (school: NeisSchool, rows: NeisRow[], events: NeisEvent[], map: TeacherMap) => {
       const l = buildFromNeis(school, rows, events, map);
       if (l.input.assignments.length === 0) {
-        show('교사를 한 명도 배정하지 않아 시간표를 만들 수 없습니다');
+        show('담당 교사를 한 명 이상 입력해야 시간표를 만들 수 있습니다');
         return;
       }
       setShowNeis(false);
@@ -280,9 +284,13 @@ export function Workbench() {
     const a = document.createElement('a');
     a.href = url;
     a.download = `${loaded.schoolName} 시간표.json`;
+    // 문서에 붙이지 않으면 일부 브라우저가 파일 이름을 버리고 download 로 저장한다.
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
-    show('시간표를 파일로 저장했습니다');
+    a.remove();
+    // 내려받기가 시작되기 전에 주소를 거두면 이름을 잃는다. 한 박자 뒤에 거둔다.
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    show('시간표 파일을 저장했습니다');
   }, [loaded, show]);
 
   const onToggleSlot = useCallback((s: number) => {
@@ -357,7 +365,7 @@ export function Workbench() {
     if (!input || !loaded || entries.length === 0) return;
     void copy(
       buildNeisList(loaded.schoolName, entries, input.config),
-      '나이스 입력용 목록을 복사했습니다',
+      '나이스 입력 목록을 복사했습니다',
     );
   }, [input, loaded, entries, copy]);
 
@@ -366,7 +374,7 @@ export function Workbench() {
       if (!input) return;
       const after = applyAll(input, [{ id: 0, type: c.type, title: c.title, changes: c.changes }]);
       if (validate(after).length > 0) {
-        show('이 변경은 현재 시간표와 충돌합니다. 다른 방법을 고르십시오');
+        show('이 방법은 지금 시간표와 맞지 않습니다. 다른 방법을 선택하십시오');
         return;
       }
       const nextId = (entries[entries.length - 1]?.id ?? 0) + 1;
@@ -379,7 +387,7 @@ export function Workbench() {
         show(
           rest.length > 0
             ? `시간표에 반영했습니다. 남은 결강 ${rest.length}건`
-            : '시간표에 반영하고 오늘의 변경에 기록했습니다',
+            : '시간표에 반영했습니다',
         );
         if (rest.length === 0 && typeof window !== 'undefined' && window.innerWidth < 900) {
           window.setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 80);
@@ -397,17 +405,17 @@ export function Workbench() {
     saveEntries(next);
     setQueue([]);
     setHovered(null);
-    show('마지막 변경을 되돌렸습니다');
+    show('직전 변경을 되돌렸습니다');
   }, [entries, show]);
 
   const onUndoAll = useCallback(() => {
     if (entries.length === 0) return;
-    if (!window.confirm('오늘 반영한 변경을 모두 되돌립니까?')) return;
+    if (!window.confirm('반영한 변경을 모두 되돌리시겠습니까?')) return;
     setEntries([]);
     saveEntries([]);
     setQueue([]);
     setHovered(null);
-    show('반영한 변경을 모두 되돌렸습니다');
+    show('변경을 모두 되돌렸습니다');
   }, [entries, show]);
 
   const onPrint = useCallback(() => {
@@ -429,18 +437,27 @@ export function Workbench() {
   return (
     <div className="shell">
       <header className="topbar">
-        <span className="wordmark">
+        <button
+          className="wordmark"
+          onClick={() => {
+            setAtHome(true);
+            setShowNeis(false);
+            setHovered(null);
+            window.scrollTo({ top: 0 });
+          }}
+          title="처음 화면으로"
+        >
           <span className="tick" aria-hidden />
-          수업품앗이
+          {BRAND}
           <span className="beta">베타</span>
-        </span>
-        {loaded && (
+        </button>
+        {loaded && !atHome && (
           <span className="school-chip">
             {loaded.schoolName} | {loaded.source}
           </span>
         )}
         <span className="spacer" />
-        {loaded && input && (
+        {loaded && input && !atHome && (
           <>
             <div className="seg" role="tablist" aria-label="보기 전환">
               <button
@@ -472,8 +489,8 @@ export function Workbench() {
                   id="teacher-input"
                   className="select combo"
                   list="teacher-options"
-                  aria-label="교사 검색 선택"
-                  placeholder="교사 이름 검색"
+                  aria-label="선생님 성함 선택"
+                  placeholder="선생님 성함"
                   value={teacherInput}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => {
@@ -519,13 +536,13 @@ export function Workbench() {
         <button className="btn ghost theme-btn" title="화면 테마 전환" onClick={cycleTheme}>
           테마 {THEME_LABEL[theme]}
         </button>
-        {loaded && input && (
+        {loaded && input && !atHome && (
           <>
             <button className="btn ghost" onClick={onSaveFile}>
               파일로 저장
             </button>
-            <button className="btn ghost" onClick={onReset}>
-              데이터 지우기
+            <button className="btn ghost" onClick={onReset} title="이 기기에 저장된 시간표를 지웁니다">
+              자료 지우기
             </button>
           </>
         )}
@@ -545,11 +562,14 @@ export function Workbench() {
             />
           </section>
         </main>
-      ) : !loaded || !input ? (
+      ) : !loaded || !input || atHome ? (
         <Landing
           onNeis={() => setShowNeis(true)}
           onSample={onSample}
           onFile={onFile}
+          onResume={() => setAtHome(false)}
+          hasSaved={loaded !== null && input !== null}
+          savedName={loaded?.schoolName ?? ''}
           busy={busy}
         />
       ) : (
@@ -598,8 +618,8 @@ export function Workbench() {
       )}
 
       <footer className="foot">
-        <span>시간표는 이 브라우저 안에만 저장됩니다. 서버로 보내지 않습니다.</span>
-        <span>추천은 참고용이며, 확정은 학교 결재 절차를 따르십시오.</span>
+        <span>불러온 시간표는 이 기기에만 저장합니다.</span>
+        <span>최종 확정은 학교의 결재 절차를 따릅니다.</span>
       </footer>
 
       {toast && (

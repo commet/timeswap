@@ -74,7 +74,7 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
         setStage('배정');
         if (tt.truncated) {
           setError(
-            '인증키가 없어 일부만 받았습니다. 아래에서 확인은 되지만, 학교 전체를 보려면 무료 인증키를 넣어 주십시오.',
+            '인증키가 없어 일부만 받았습니다. 학교 전체를 받으려면 무료 인증키를 입력하십시오.',
           );
         }
       } catch (e) {
@@ -131,8 +131,8 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
           </button>
         </div>
         <p className="neis-lede">
-          교육부 나이스 교육정보 개방 포털의 공개 자료를 씁니다. 학교가 나이스에 올린 그날 시간표라
-          학기 중 변경과 보강이 반영되어 있습니다.
+          나이스 교육정보 개방 포털이 공개하는 학교 시간표를 그대로 받아 옵니다. 학교가 올린 그날
+          시간표라 학기 중에 바뀐 내용과 보강도 함께 들어 있습니다.
         </p>
 
         <label className="neis-field">
@@ -162,12 +162,13 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
           </span>
           <input
             className="input"
-            placeholder="키가 없어도 맛보기는 됩니다. 학교 전체를 보려면 넣어 주십시오"
+            placeholder="없어도 일부는 볼 수 있습니다. 학교 전체를 받으려면 입력하십시오"
             value={neisKey}
             onChange={(e) => onKeyChange(e.target.value.trim())}
           />
           <span className="neis-hint">
-            키는 이 브라우저에만 저장하고 나이스로만 보냅니다. 우리 서버는 없습니다.
+            나이스 공개 자료는 무료입니다. 인증키는 요금이 아니라 이용량을 구분하기 위한 것이며,
+            발급도 무료입니다. 입력한 키는 이 브라우저에만 저장하고 나이스에만 보냅니다.
           </span>
         </label>
 
@@ -201,8 +202,9 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
         </button>
       </div>
       <p className="neis-lede">
-        공개 자료에는 과목만 있고 교사는 없습니다. 교환을 찾으려면 누가 그 수업에 들어가는지가 필요합니다.
-        아는 것부터 채우십시오. 중간에 그만두어도 채운 만큼은 그대로 씁니다.
+        나이스 공개 자료에는 과목만 있고 담당 교사는 없습니다. 교체 방법을 찾으려면 누가 그 수업에
+        들어가는지가 필요합니다. 아시는 것부터 채우십시오. 중간에 멈추어도 채운 만큼은 그대로
+        쓸 수 있습니다.
       </p>
 
       <div className="neis-progress">
@@ -210,21 +212,21 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
           <span style={{ width: `${pairs.length ? (filled / pairs.length) * 100 : 0}%` }} />
         </div>
         <span className="neis-count">
-          {filled} / {pairs.length} 채움
+          {pairs.length}개 중 {filled}개 입력
         </span>
       </div>
 
       {report && (
         <p className="neis-facts">
-          최근 5주에서 휴업일 {report.holidays.length}일, 보강 {report.covers.length}건,
-          맞교환으로 보이는 사례 {report.swaps.length}건을 찾았습니다.
+          최근 5주 시간표를 받았습니다. 휴업일 {report.holidays.length}일과 보강{' '}
+          {report.covers.length}건이 들어 있습니다.
         </p>
       )}
       {error && <p className="neis-error">{error}</p>}
 
       <input
         className="input neis-filter"
-        placeholder="학급이나 과목으로 좁히기"
+        placeholder="학급이나 과목으로 좁혀 찾기"
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
       />

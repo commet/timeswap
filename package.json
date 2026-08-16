@@ -10,11 +10,12 @@
   },
   "scripts": {
     "test": "npm run test -w @timeswap/engine",
-    "typecheck": "tsc -p packages/engine/tsconfig.json --noEmit",
+    "typecheck": "tsc -p packages/engine/tsconfig.json --noEmit && npm run typecheck -w web",
     "build": "npm run build -w web",
     "dev": "npm run dev -w web",
     "serve": "node scripts/serve-checked.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "check": "node scripts/check-config.mjs"
   },
   "devDependencies": {
     "playwright": "^1.62.1"

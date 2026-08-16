@@ -5,9 +5,9 @@ import { slotName, type ScheduleConfig } from '@timeswap/engine';
 import type { AppliedEntry } from '../lib/app';
 
 const TYPE_LABEL: Record<AppliedEntry['type'], string> = {
-  move: '빈 시간 옮기기',
+  move: '빈 시간으로 이동',
   swap2: '맞바꾸기',
-  cycle3: '연쇄 교환',
+  cycle3: '연쇄 교체',
 };
 
 /** 인쇄 시에만 보이는 수업 교체 계획서(A4). 오늘의 변경 장부를 그대로 옮긴다. */

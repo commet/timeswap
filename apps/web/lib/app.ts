@@ -11,6 +11,7 @@ import {
   type ScheduleConfig,
   type TimetableInput,
 } from '@timeswap/engine';
+import { BRAND } from './brand';
 import type { NeisEvent, NeisSchool } from './neis';
 
 export const STORAGE_KEY = 'timeswap:v0:data';
@@ -122,7 +123,7 @@ export function saveNeisKey(key: string): void {
 }
 
 /**
- * 반영 장부에서 교사별 품앗이 횟수를 센다. 결강 당사자는 빼고,
+ * 반영 장부에서 교사별 협조 횟수를 센다. 결강 당사자는 빼고,
  * 자리를 내어 준 상대 교사만 센다. 추천 점수의 부담 균형 감점에 쓴다.
  */
 export function deriveBurden(entries: AppliedEntry[]): Record<string, number> {
@@ -156,7 +157,7 @@ export function buildNotice(
       );
     }
   });
-  lines.push('위와 같이 시간표가 바뀌었습니다. 수업 전에 확인해 주시기 바랍니다.');
+  lines.push('위와 같이 변경되었으니 수업 전 확인 바랍니다.');
   return lines.join('\n');
 }
 
@@ -241,7 +242,7 @@ export function toFile(loaded: Loaded): string {
 export function fromFile(raw: string): Loaded {
   const doc = JSON.parse(raw) as PumasiFile;
   if (!doc || doc.format !== 'pumasi.timetable' || !Array.isArray(doc.lessons)) {
-    throw new Error('수업품앗이 시간표 파일이 아닙니다. 내려받은 파일을 그대로 올려 주십시오.');
+    throw new Error(`${BRAND}에서 저장한 파일이 아닙니다. 저장한 파일을 그대로 열어 주십시오.`);
   }
   return {
     schoolName: doc.school || '이름 없는 학교',
@@ -252,7 +253,7 @@ export function fromFile(raw: string): Loaded {
 
 export function sampleSchool(): Loaded {
   return {
-    schoolName: '수업품앗이 시범 학교',
+    schoolName: `${BRAND} 예시 학교`,
     source: '샘플',
     input: genSchool({ classes: 12, seed: 42 }),
   };
