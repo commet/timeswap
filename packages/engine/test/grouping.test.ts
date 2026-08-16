@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fromNeis, neisToTimetable, groupCandidate, type NeisRow } from '../src/adapters/neis';
 import { recommend } from '../src/search';
-import { validate } from '../src/timetable';
+import { applyChanges, validate } from '../src/timetable';
 import { buildUnits } from '../src/units';
 
 /** 3학년 1, 2, 3반이 2교시에 같은 과목을 듣는 3주치 자료 */
@@ -177,5 +177,55 @@ describe('동명이인', () => {
   it('겹치는 자리가 없으면 충돌도 없다', () => {
     const clean = neisToTimetable(fromNeis(rows('미적분')), (k, s2) => `T${k}${s2}`);
     expect(clean.conflicts).toEqual([]);
+  });
+});
+
+describe('변경 적용이 계획에 없던 수업을 건드리지 않는지', () => {
+  const cfg = { days: 1, periods: 4, dayNames: ['월'] };
+
+  it('같은 이름이 같은 교시에 두 수업을 맡고 있어도 하나만 옮긴다', () => {
+    // 동명이인이거나 자료가 잘못된 자리다. 교사와 교시로만 찾으면 둘 다 옮겨진다.
+    const input = {
+      config: cfg,
+      assignments: [
+        { teacher: '김영희', klass: '3-1', subject: '국어', slot: 0 },
+        { teacher: '김영희', klass: '3-2', subject: '수학', slot: 0 },
+      ],
+    };
+    const after = applyChanges(input, [{ from: input.assignments[0]!, toSlot: 2 }]);
+    expect(after.assignments.find((a) => a.subject === '국어')?.slot).toBe(2);
+    expect(after.assignments.find((a) => a.subject === '수학')?.slot).toBe(0);
+  });
+
+  it('합반은 계획에 둘 다 들어 있으므로 둘 다 옮긴다', () => {
+    const input = {
+      config: cfg,
+      assignments: [
+        { teacher: '김체육', klass: '3-1', subject: '체육', slot: 0, group: 'g' },
+        { teacher: '김체육', klass: '3-2', subject: '체육', slot: 0, group: 'g' },
+      ],
+    };
+    const after = applyChanges(input, [
+      { from: input.assignments[0]!, toSlot: 2 },
+      { from: input.assignments[1]!, toSlot: 2 },
+    ]);
+    expect(after.assignments.every((a) => a.slot === 2)).toBe(true);
+  });
+
+  it('저장했다 다시 읽은 계획으로도 똑같이 동작한다', () => {
+    // 반영 장부는 브라우저에 글로 저장되므로 물체가 아니라 값으로 찾아야 한다
+    const input = {
+      config: cfg,
+      assignments: [
+        { teacher: '김영희', klass: '3-1', subject: '국어', slot: 0 },
+        { teacher: '김영희', klass: '3-2', subject: '수학', slot: 0 },
+      ],
+    };
+    const roundTrip = JSON.parse(
+      JSON.stringify([{ from: input.assignments[0], toSlot: 2 }]),
+    ) as Array<{ from: (typeof input.assignments)[0]; toSlot: number }>;
+    const after = applyChanges(input, roundTrip);
+    expect(after.assignments.find((a) => a.subject === '국어')?.slot).toBe(2);
+    expect(after.assignments.find((a) => a.subject === '수학')?.slot).toBe(0);
   });
 });

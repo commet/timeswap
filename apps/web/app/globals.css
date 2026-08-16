@@ -264,6 +264,10 @@ button.cell.empty:hover { border-color: var(--muted); }
 }
 .offday:hover { border-color: var(--warn); }
 .offday.on { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+/* 본인 근무 요일은 학교 전체 휴업과 성격이 달라 색을 나눈다. */
+.offday.mine:hover { border-color: var(--accent); }
+.offday.mine.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.offdays + .offdays { padding-top: 6px; }
 .offdays-hint { margin-left: 4px; font-size: 11.5px; opacity: 0.85; }
 
 .grid-legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 0 18px 14px; font-size: 12px; color: var(--muted); }

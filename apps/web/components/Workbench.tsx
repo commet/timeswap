@@ -481,6 +481,67 @@ export function Workbench() {
     });
   }, []);
 
+  /**
+   * 그 교사가 학교에 오지 않는 요일을 통째로 잠근다.
+   *
+   * 시간강사는 정해진 요일에만 오고, 육아시간이나 연구년도 근무 요일이 갈린다.
+   * 빈 칸을 하나씩 눌러 잠글 수는 있지만 하루 일곱 교시면 스물한 번을 눌러야 한다.
+   * 요일 하나로 끝내는 편이 실제로 쓰인다.
+   */
+  const onToggleMyOffDay = useCallback(
+    (d: number) => {
+      if (!input || currentTeacher === null) return;
+      setHovered(null);
+      const cfg = input.config;
+      // 이미 수업이 있는 칸은 잠그지 않는다. 잠그면 그 교사가 자기 수업 시간에
+      // 근무할 수 없다는 모순이 되어 불변식 검사가 모든 반영을 되돌린다.
+      const busy = new Set(
+        input.assignments.filter((a) => a.teacher === currentTeacher).map((a) => a.slot),
+      );
+      const daySlots = Array.from({ length: cfg.periods }, (_, p) => d * cfg.periods + p).filter(
+        (sl) => !busy.has(sl),
+      );
+      if (daySlots.length === 0) return;
+      setUnavail((u) => {
+        const cur = new Set(u[currentTeacher] ?? []);
+        const allLocked = daySlots.every((s) => cur.has(s));
+        for (const s of daySlots) {
+          if (allLocked) cur.delete(s);
+          else cur.add(s);
+        }
+        const next: Record<string, number[]> = { ...u };
+        if (cur.size === 0) delete next[currentTeacher];
+        else next[currentTeacher] = [...cur].sort((x, y) => x - y);
+        saveUnavail(next);
+        return next;
+      });
+    },
+    [input, currentTeacher],
+  );
+
+  /** 그 교사가 빈 시간을 통째로 잠가 둔 요일 */
+  const myOffDays = useMemo(() => {
+    if (!input || currentTeacher === null) return [];
+    const cfg = input.config;
+    const locked = new Set(unavail[currentTeacher] ?? []);
+    const busy = new Set(
+      input.assignments.filter((a) => a.teacher === currentTeacher).map((a) => a.slot),
+    );
+    const out: number[] = [];
+    for (let d = 0; d < cfg.days; d++) {
+      let free = 0;
+      let all = true;
+      for (let p = 0; p < cfg.periods; p++) {
+        const sl = d * cfg.periods + p;
+        if (busy.has(sl)) continue;
+        free++;
+        if (!locked.has(sl)) all = false;
+      }
+      if (free > 0 && all) out.push(d);
+    }
+    return out;
+  }, [input, currentTeacher, unavail]);
+
   const onSkip = useCallback(() => {
     setHovered(null);
     setQueue((q) => (q.length > 1 ? [...q.slice(1), q[0]!] : []));
@@ -766,6 +827,8 @@ export function Workbench() {
             onToggleLock={onToggleLock}
             offDays={offDays}
             onToggleOffDay={onToggleOffDay}
+            myOffDays={myOffDays}
+            onToggleMyOffDay={onToggleMyOffDay}
           />
           <div className="side" ref={sideRef}>
             <Panel

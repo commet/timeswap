@@ -178,14 +178,14 @@ if (candCount > 0) {
 // 5g. 수업 없는 날 지정. 그 요일로 가는 안이 실제로 사라지는지까지 본다.
 await page.locator('button.cell.lesson').nth(2).click();
 await page.waitForTimeout(350);
-const dayLabels = await page.locator('.offday').allTextContents();
+const dayLabels = await page.locator('.offday:not(.mine)').allTextContents();
 // 추천 목록에 실제로 등장하는 요일을 하나 골라 그 요일을 막는다.
 // 후보 수만 세면 뜻이 없다. 목록이 12개로 잘려 있어 빈자리를 다른 안이 채우기 때문이다.
 const titlesBefore = await page.locator('.cand-title').allTextContents();
 const blockable = dayLabels.findIndex((d) => titlesBefore.some((t) => t.includes(`${d}요일`)));
 if (blockable < 0) errors.push('추천에 등장하는 요일을 찾지 못함');
 const blockedDay = dayLabels[blockable] ?? '';
-await page.locator('.offday').nth(blockable).click();
+await page.locator('.offday:not(.mine)').nth(blockable).click();
 await page.waitForTimeout(400);
 const titlesAfter = await page.locator('.cand-title').allTextContents();
 const leaked = titlesAfter.filter((t) => t.includes(`${blockedDay}요일`));
@@ -199,10 +199,23 @@ console.log(
 if (marked !== 1) errors.push('수업 없는 날 표시 실패');
 if (leaked.length > 0) errors.push(`막은 요일(${blockedDay})로 가는 추천이 남음`);
 await page.screenshot({ path: `${OUT}/shot-15-offday.png` });
-await page.locator('.offday').nth(blockable).click();
+await page.locator('.offday:not(.mine)').nth(blockable).click();
 await page.waitForTimeout(200);
 await page.locator('button.cell.lesson.absent').first().click();
 await page.waitForTimeout(200);
+
+// 5h. 못 오는 요일 통째 잠그기. 시간강사처럼 근무일이 갈릴 때 쓴다.
+const beforeLocks = await page.locator('.cell.locked').count();
+await page.locator('.offday.mine').nth(2).click();
+await page.waitForTimeout(350);
+const afterLocks = await page.locator('.cell.locked').count();
+const mineOn = await page.locator('.offday.mine.on').count();
+console.log('못 오는 요일 잠금: 잠긴 칸', beforeLocks, '→', afterLocks, '| 표시', mineOn);
+if (mineOn !== 1 || afterLocks <= beforeLocks) errors.push('못 오는 요일 잠금 실패');
+await page.locator('.offday.mine').nth(2).click();
+await page.waitForTimeout(300);
+const back = await page.locator('.cell.locked').count();
+if (back !== beforeLocks) errors.push('못 오는 요일 잠금 해제 실패');
 
 // 6. 교사 검색 전환
 const names = await page.locator('#teacher-options option').evaluateAll((os) => os.map((o) => o.value));
