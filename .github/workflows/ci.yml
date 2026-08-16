@@ -82,7 +82,7 @@ jobs:
 
       - name: 화면 갈무리 보관
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: 화면-갈무리
           path: ${{ runner.temp }}/shot-*.png

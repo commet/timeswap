@@ -129,9 +129,9 @@ CSP 는 설정만 보고는 앱이 도는지 알 수 없다. 그래서 `scripts/
 
 메이저 상향은 검증 없이 하지 않는다. 두 건 모두 시험, 빌드, 브라우저 점검을 통과한 뒤에 넣었다.
 
-### 미리 알아 둘 것: 워크플로 액션의 Node 20 종료
+### 워크플로 액션의 Node 20 종료
 
-CI 로그에 다음 경고가 남는다. 지금은 통과하지만 언젠가 실패로 바뀐다.
+CI 로그에 이런 경고가 남고 있었다. 지금은 통과하지만 언젠가 실패로 바뀐다.
 
 ```
 Node.js 20 is deprecated. The following actions target Node.js 20 but are being
@@ -139,9 +139,22 @@ forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4,
 actions/setup-node@v4, actions/upload-artifact@v4
 ```
 
-GitHub 이 지금은 Node 24 로 대신 돌려 주지만 그 배려가 사라지면 관문 전체가 멈춘다.
-네 액션의 최신 메이저로 올려야 하고, 판 번호를 짐작으로 적으면 그 자리에서 CI 가 죽으므로
-각 저장소의 실제 태그를 확인한 뒤 한 번에 올린다. 다른 작업과 섞지 않는다.
+판 번호를 확인할 수 없는 자리에서 작업하고 있었다. 그래서 짐작으로 적는 대신
+**CI 에게 물었다.** 없는 판을 적으면 `Set up job` 단계에서 몇 초 만에 죽으므로
+확인 비용이 가장 싸다. 짐작으로 밀어 넣는 것과 다른 점은 틀렸을 때 즉시 드러난다는 것이다.
+
+결과를 남긴다.
+
+| 액션 | v5 | 비고 |
+|---|---|---|
+| `actions/checkout` | 있고 Node 24 | 경고 사라짐 |
+| `actions/setup-node` | 있고 Node 24 | 경고 사라짐 |
+| `actions/cache` | 있고 Node 24 | 경고 사라짐 |
+| `actions/upload-artifact` | 있으나 **여전히 Node 20** | 경고 남음 |
+
+`upload-artifact` 는 v5 도 Node 20 을 겨냥한다. 우리가 고칠 수 있는 것이 아니라
+그쪽이 판을 올려야 한다. 다행히 이 액션은 실패해도 화면 갈무리 보관만 멈추고
+검증 자체는 이미 끝난 뒤라 관문이 통째로 서지는 않는다.
 
 ---
 
