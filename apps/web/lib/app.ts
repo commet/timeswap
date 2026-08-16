@@ -72,11 +72,13 @@ export function loadEntries(): AppliedEntry[] {
   }
 }
 
-export function saveEntries(entries: AppliedEntry[]): void {
+/** 반영한 변경을 이 브라우저에 둔다. 실패하면 알려야 하므로 성공 여부를 돌려준다. */
+export function saveEntries(entries: AppliedEntry[]): boolean {
   try {
     localStorage.setItem(CHANGES_KEY, JSON.stringify(entries));
+    return true;
   } catch {
-    /* 무시 */
+    return false;
   }
 }
 
@@ -360,11 +362,19 @@ export function missingTeachers(report: NeisReport, map: TeacherMap): Array<[str
     .sort((a, b) => a[0].localeCompare(b[0], 'ko', { numeric: true }) || a[1].localeCompare(b[1], 'ko'));
 }
 
-export function saveRaw(raw: string): void {
+/**
+ * 시간표를 이 브라우저에 둔다. 성공 여부를 돌려준다.
+ *
+ * 조용히 삼키면 안 되는 실패다. 화면은 "이 기기에 저장합니다"라고 말하는데
+ * 실제로는 저장되지 않았다면, 선생님은 새로고침 한 번에 오늘 작업을 통째로 잃는다.
+ * 그 사실을 그때 알게 하지 않고 미리 알린다.
+ */
+export function saveRaw(raw: string): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, raw);
+    return true;
   } catch {
-    // 저장 실패(용량 초과 등)는 치명적이지 않다. 세션 안에서는 계속 쓸 수 있다.
+    return false;
   }
 }
 
@@ -396,7 +406,6 @@ export function subjectHue(subject: string): number {
   return HUES[h % HUES.length] ?? 152;
 }
 
-/** 상대 교사에게 보낼 합쇼체 요청 문구를 만든다. */
 /** 보강을 부탁드리는 문구. 교체가 없을 때 쓴다. */
 export function buildCoverPhrase(
   teacher: string,
@@ -415,6 +424,7 @@ export function buildCoverPhrase(
   ].join('\n');
 }
 
+/** 상대 교사에게 보낼 합쇼체 요청 문구를 만든다. */
 export function buildPhrase(
   cand: Candidate,
   cfg: ScheduleConfig,

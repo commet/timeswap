@@ -92,6 +92,12 @@ export function Workbench() {
   const [unavail, setUnavail] = useState<Record<string, number[]>>({});
   const [hovered, setHovered] = useState<Candidate | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  /**
+   * 이 브라우저에 저장하지 못한 상태.
+   * 사생활 보호 모드나 저장 공간 부족에서 생긴다. 새로고침 한 번에 오늘 작업이
+   * 통째로 사라지는 상황이라 조용히 넘길 수 없다.
+   */
+  const [noSave, setNoSave] = useState(false);
   const [todayIdx, setTodayIdx] = useState<number | null>(null);
   const [theme, setTheme] = useState<ThemeMode>('auto');
   const sideRef = useRef<HTMLDivElement>(null);
@@ -244,7 +250,8 @@ export function Workbench() {
   const install = useCallback(
     (l: Loaded) => {
       setLoaded(l);
-      saveRaw(toFile(l));
+      const stored = saveRaw(toFile(l));
+      setNoSave(!stored);
       setEntries([]);
       saveEntries([]);
       setQueue([]);
@@ -425,7 +432,7 @@ export function Workbench() {
       const nextId = (entries[entries.length - 1]?.id ?? 0) + 1;
       const next = [...entries, { id: nextId, type: c.type, title: c.title, changes: c.changes }];
       setEntries(next);
-      saveEntries(next);
+      if (!saveEntries(next)) setNoSave(true);
       setHovered(null);
       setQueue((q) => {
         const rest = q.slice(1);
@@ -691,6 +698,14 @@ export function Workbench() {
           teacher={currentTeacher ?? ''}
           reason={reason}
         />
+      )}
+
+      {noSave && (
+        <div className="warn-bar" role="alert">
+          <b>이 브라우저에 저장하지 못했습니다.</b> 새로고침하면 지금까지 하신 작업이 사라집니다.
+          위쪽 파일로 저장을 눌러 파일로 남겨 두십시오. 사생활 보호 모드이거나 저장 공간이 가득
+          찼을 때 생깁니다.
+        </div>
       )}
 
       <footer className="foot">

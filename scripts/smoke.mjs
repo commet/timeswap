@@ -253,6 +253,29 @@ await mob.goto(BASE, { waitUntil: 'networkidle' });
 await mob.waitForTimeout(400);
 await mob.screenshot({ path: `${OUT}/shot-6-mobile.png` });
 
+// 10. 저장이 막힌 브라우저. 사생활 보호 모드나 저장 공간 부족을 흉내 낸다.
+// 조용히 넘기면 새로고침 한 번에 작업이 사라지므로 알림이 반드시 떠야 한다.
+const noSavePage = await ctx.newPage();
+await noSavePage.addInitScript(() => {
+  const die = () => {
+    throw new DOMException('가득 참', 'QuotaExceededError');
+  };
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: { getItem: () => null, setItem: die, removeItem: () => {}, clear: () => {} },
+  });
+});
+await noSavePage.goto(BASE, { waitUntil: 'networkidle' });
+await noSavePage.getByRole('button', { name: '예시로 살펴보기' }).click();
+await noSavePage.waitForSelector('.pick-list', { timeout: 15000 });
+await noSavePage.locator('.pick-list button').first().click();
+await noSavePage.waitForTimeout(500);
+const warned = await noSavePage.locator('.warn-bar').count();
+console.log('저장 막힌 브라우저 알림:', warned === 1 ? '표시됨' : '없음');
+if (warned !== 1) errors.push('저장 실패 알림이 뜨지 않음');
+await noSavePage.screenshot({ path: `${OUT}/shot-14-nosave.png` });
+await noSavePage.close();
+
 // 보안 헤더를 씌우고 돌리면 막힌 자원이 여기에 남는다. CSP 를 손보기 전에 이걸 본다.
 console.log('리소스 경고:', warnings.length);
 for (const w of [...new Set(warnings)].slice(0, 8)) console.log('  ·', w.slice(0, 150));
