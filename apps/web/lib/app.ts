@@ -397,6 +397,24 @@ export function subjectHue(subject: string): number {
 }
 
 /** 상대 교사에게 보낼 합쇼체 요청 문구를 만든다. */
+/** 보강을 부탁드리는 문구. 교체가 없을 때 쓴다. */
+export function buildCoverPhrase(
+  teacher: string,
+  slot: number,
+  klass: string,
+  subject: string,
+  cfg: ScheduleConfig,
+  name: (s: number, c: ScheduleConfig) => string,
+): string {
+  return [
+    `${teacher} 선생님, 안녕하십니까.`,
+    `${name(slot, cfg)} ${klass} ${subject} 수업에 부득이한 사정이 생겼습니다.`,
+    `자리를 맞바꿀 수업을 찾지 못해 보강을 여쭙습니다.`,
+    `선생님께서는 그 시간에 수업이 없으신 것으로 확인하였습니다.`,
+    `가능하시면 제가 보강 계획을 올리겠습니다. 감사합니다.`,
+  ].join('\n');
+}
+
 export function buildPhrase(
   cand: Candidate,
   cfg: ScheduleConfig,

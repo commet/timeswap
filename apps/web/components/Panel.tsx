@@ -32,6 +32,7 @@ export function Panel({
   hovered,
   onHover,
   onCopy,
+  onCopyCover,
   onApply,
   onSkip,
 }: {
@@ -44,6 +45,7 @@ export function Panel({
   hovered: Candidate | null;
   onHover: (c: Candidate | null) => void;
   onCopy: (c: Candidate) => void;
+  onCopyCover: (teacher: string) => void;
   onApply: (c: Candidate) => void;
   onSkip: () => void;
 }) {
@@ -86,13 +88,24 @@ export function Panel({
           {result.notes.length > 0 ? result.notes.join(' ') : '보강으로 처리하셔야 합니다.'}
           {cover && cover.length > 0 && (
             <div className="cover">
-              <p className="cover-title">이 시간에 수업이 없는 교사</p>
+              <p className="cover-title">보강을 부탁드릴 수 있는 분</p>
               <ul className="cover-list">
-                {cover.map((c) => (
+                {cover.map((c, i) => (
                   <li key={c.teacher}>
-                    <span className="cover-name">{c.teacher}</span>
-                    {c.sameSubject && <span className="cover-badge">같은 과목</span>}
-                    <span className="cover-load">주당 {c.weeklyLessons}시간</span>
+                    <div className="cover-head">
+                      <span className="cover-rank">{i + 1}</span>
+                      <span className="cover-name">{c.teacher}</span>
+                      {c.sameSubject && <span className="cover-badge">같은 과목</span>}
+                      <span className="cover-load">주 {c.weeklyLessons}시간</span>
+                    </div>
+                    <ul className="cover-why">
+                      {c.notes.map((n, j) => (
+                        <li key={j}>{n}</li>
+                      ))}
+                    </ul>
+                    <button className="btn cover-copy" onClick={() => onCopyCover(c.teacher)}>
+                      보강 요청 문구 복사
+                    </button>
                   </li>
                 ))}
               </ul>

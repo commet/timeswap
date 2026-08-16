@@ -19,7 +19,7 @@
 - 시간표에 실제 반영, 되돌리기, 변경 장부
 - 요청 문구 복사, 변경 공지 복사, 나이스 입력 목록 복사
 - 결재용 교체 계획서 인쇄. 신청 교사와 사유, 변경 표, 협조 교사 확인란까지
-- 교체가 없을 때 그 교시에 비어 있는 교사 목록 제시
+- 교체가 없을 때 보강 후보를 같은 과목, 그날 부담, 최근 협조 횟수로 순위 매겨 제시하고 요청 문구까지 생성
 - 나이스 교육정보 개방 포털에서 학교를 찾아 학급 시간표와 학사일정을 직접 불러오기
 - 협조 균형: 이미 도와준 교사는 다음 추천에서 뒤로 밀림
 
@@ -37,7 +37,7 @@ packages/engine   프레임워크에 매이지 않는 탐색 엔진 (TypeScript)
   src/units.ts      묶음 단위 정의와 하드 제약 검사
   src/search.ts     전수 탐색: 이동, 2자 맞바꾸기, 3자 연쇄
   src/score.ts      소프트 점수와 근거 트레이스
-  src/cover.ts      교체가 없을 때의 보강 후보
+  src/cover.ts      교체가 없을 때의 보강 후보와 순위 근거
   src/synthetic.ts  구성적 학교 생성기 (이분 그래프 간선 색칠)
   src/adapters/neis.ts  나이스 개방 자료 해석과 변경 이력 복원
 apps/web          Next.js 정적 내보내기
@@ -65,7 +65,7 @@ scripts           검사 도구
 npm ci              # 잠금 파일 그대로 설치
 npm run check       # 배포 설정이 서로 맞는지
 npm run typecheck   # 엔진과 웹 앱 타입 검사
-npm test            # 엔진 시험 61개
+npm test            # 엔진 시험 70개
 npm run build       # 웹 정적 빌드 (결과는 apps/web/out)
 npm run demo        # 엔진 CLI 데모
 ```

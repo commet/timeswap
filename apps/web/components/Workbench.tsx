@@ -26,6 +26,7 @@ import {
   applyAll,
   applyTheme,
   buildClosures,
+  buildCoverPhrase,
   buildFromNeis,
   buildNeisList,
   buildNotice,
@@ -199,8 +200,8 @@ export function Workbench() {
 
   const cover: CoverCandidate[] | null = useMemo(() => {
     if (!input || !result || result.candidates.length > 0) return null;
-    return coverCandidates(input, result.target.slot, result.target.subject);
-  }, [input, result]);
+    return coverCandidates(input, result.target.slot, result.target.subject, 8, currentTeacher ?? undefined);
+  }, [input, result, currentTeacher]);
 
   const show = useCallback((msg: string) => {
     setToast(msg);
@@ -380,6 +381,24 @@ export function Workbench() {
       void copy(buildPhrase(c, input.config, slotName), '요청 문구를 복사했습니다');
     },
     [input, copy],
+  );
+
+  const onCopyCover = useCallback(
+    (name: string) => {
+      if (!input || !result) return;
+      void copy(
+        buildCoverPhrase(
+          name,
+          result.target.slot,
+          result.target.klass,
+          result.target.subject,
+          input.config,
+          slotName,
+        ),
+        '보강 요청 문구를 복사했습니다',
+      );
+    },
+    [input, result, copy],
   );
 
   const onCopyNotice = useCallback(() => {
@@ -644,6 +663,7 @@ export function Workbench() {
               hovered={hovered}
               onHover={setHovered}
               onCopy={onCopy}
+              onCopyCover={onCopyCover}
               onApply={onApply}
               onSkip={onSkip}
             />

@@ -396,13 +396,23 @@ button.cell.empty:hover { border-color: var(--muted); }
 .cand.top .cand-rank { color: var(--accent); }
 
 /* 보강 후보 */
-.cover { margin-top: 14px; text-align: left; }
-.cover-title { font-size: 12.5px; font-weight: 800; color: var(--ink); margin: 0 0 6px; }
-.cover-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-.cover-list li { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
-.cover-name { font-weight: 700; color: var(--ink); }
+.cover { margin-top: 16px; text-align: left; }
+.cover-title { font-size: 13px; font-weight: 800; color: var(--ink); margin: 0 0 8px; }
+.cover-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cover-list > li {
+  border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; background: var(--bg);
+}
+.cover-head { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.cover-rank { font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cover-name { font-weight: 800; color: var(--ink); font-size: 14px; }
 .cover-badge { font-size: 10.5px; font-weight: 800; border-radius: 999px; padding: 0 7px; background: var(--accent-soft); color: var(--accent); }
 .cover-load { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.cover-why {
+  list-style: none; margin: 6px 0 0; padding: 0;
+  display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--muted);
+}
+.cover-why li { padding-left: 9px; border-left: 2px solid var(--line); }
+.cover-copy { margin-top: 9px; padding: 4px 12px; font-size: 12.5px; }
 
 /* 좁은 화면 정비 */
 .tt-period, .tt-head.corner { position: sticky; left: 0; z-index: 2; background: var(--surface); }
