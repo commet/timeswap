@@ -162,13 +162,15 @@ export function Panel({
             {list.map((c, i) => {
               const best = i === 0 && filter === 'all';
               return (
+                // 카드 자체는 초점을 받지 않는다. 초점을 받는 div 는 화면 낭독기가
+                // 무엇으로 읽어야 할지 알 수 없다. 안의 단추로 탭하면 초점이 위로
+                // 올라오므로 onFocus 만으로 키보드 미리보기가 된다.
+                // 손가락으로 쓰는 화면에는 마우스 올림이 없어 눌러도 뜨게 둔다.
                 <div
                   key={c.title + i}
                   className={`cand${hovered === c ? ' hover' : ''}${best ? ' top' : ''}`}
-                  tabIndex={0}
                   onMouseEnter={() => onHover(c)}
                   onFocus={() => onHover(c)}
-                  // 손가락으로 쓰는 화면에는 마우스 올림이 없다. 눌러도 미리보기가 뜨게 한다.
                   onClick={() => onHover(c)}
                 >
                   <div className="cand-head">

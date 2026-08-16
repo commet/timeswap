@@ -143,18 +143,18 @@ actions/setup-node@v4, actions/upload-artifact@v4
 **CI 에게 물었다.** 없는 판을 적으면 `Set up job` 단계에서 몇 초 만에 죽으므로
 확인 비용이 가장 싸다. 짐작으로 밀어 넣는 것과 다른 점은 틀렸을 때 즉시 드러난다는 것이다.
 
-결과를 남긴다.
+두 번에 걸쳐 재고 다음을 얻었다.
 
-| 액션 | v5 | 비고 |
+| 액션 | 올린 판 | 결과 |
 |---|---|---|
-| `actions/checkout` | 있고 Node 24 | 경고 사라짐 |
-| `actions/setup-node` | 있고 Node 24 | 경고 사라짐 |
-| `actions/cache` | 있고 Node 24 | 경고 사라짐 |
-| `actions/upload-artifact` | 있으나 **여전히 Node 20** | 경고 남음 |
+| `actions/checkout` | v5 | Node 24. 경고 사라짐 |
+| `actions/setup-node` | v5 | Node 24. 경고 사라짐 |
+| `actions/cache` | v5 | Node 24. 경고 사라짐 |
+| `actions/upload-artifact` | v5 로는 부족, **v6** | v5 도 Node 20 이었다. v6 에서 사라짐 |
 
-`upload-artifact` 는 v5 도 Node 20 을 겨냥한다. 우리가 고칠 수 있는 것이 아니라
-그쪽이 판을 올려야 한다. 다행히 이 액션은 실패해도 화면 갈무리 보관만 멈추고
-검증 자체는 이미 끝난 뒤라 관문이 통째로 서지는 않는다.
+경고가 로그에서 통째로 없어졌다. 넷을 뭉뚱그려 "최신으로 올린다"고 적어 두었더라면
+`upload-artifact` 만 남는 것을 몰랐을 것이다. **한 번에 다 올리고 남는 경고를 읽는 편이
+저장소를 하나씩 찾아보는 것보다 빨랐다.**
 
 ---
 
