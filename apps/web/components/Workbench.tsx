@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   recommend,
   slotName,
+  validate,
   type Candidate,
   type RecommendResult,
   type TimetableInput,
@@ -11,14 +12,20 @@ import {
 import { Landing } from './Landing';
 import { Grid } from './Grid';
 import { Panel } from './Panel';
+import { Changes } from './Changes';
+import { Sheet } from './Sheet';
 import {
+  applyAll,
   buildPhrase,
   clearRaw,
+  loadEntries,
   loadRaw,
   parseAndAdapt,
+  saveEntries,
   saveRaw,
   SYNTH_MARK,
   TEACHER_KEY,
+  type AppliedEntry,
   type Loaded,
 } from '../lib/app';
 
@@ -43,6 +50,9 @@ export function Workbench() {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [busy, setBusy] = useState(false);
   const [teacher, setTeacher] = useState<string | null>(null);
+  const [entries, setEntries] = useState<AppliedEntry[]>([]);
+  const [view, setView] = useState<'teacher' | 'klass'>('teacher');
+  const [klass, setKlass] = useState<string | null>(null);
   const [absentSlot, setAbsentSlot] = useState<number | null>(null);
   const [hovered, setHovered] = useState<Candidate | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -53,6 +63,7 @@ export function Workbench() {
     try {
       const l = parseAndAdapt(raw, '업로드');
       setLoaded(l);
+      setEntries(loadEntries());
       const saved = localStorage.getItem(TEACHER_KEY);
       setTeacher(saved ?? defaultTeacher(l.adapted.input));
     } catch {
@@ -60,7 +71,8 @@ export function Workbench() {
     }
   }, []);
 
-  const input = loaded?.adapted.input ?? null;
+  const base = loaded?.adapted.input ?? null;
+  const input = useMemo(() => (base ? applyAll(base, entries) : null), [base, entries]);
 
   const teachers = useMemo(() => {
     if (!input) return [] as Array<{ name: string; n: number }>;
@@ -71,27 +83,37 @@ export function Workbench() {
       .map(([name, n]) => ({ name, n }));
   }, [input]);
 
+  const klasses = useMemo(() => {
+    if (!input) return [] as string[];
+    return [...new Set(input.assignments.map((a) => a.klass))].sort((x, y) =>
+      x.localeCompare(y, 'ko', { numeric: true }),
+    );
+  }, [input]);
+
   const currentTeacher =
     teacher !== null && teachers.some((t) => t.name === teacher)
       ? teacher
       : (teachers[0]?.name ?? null);
+  const currentKlass = klass !== null && klasses.includes(klass) ? klass : (klasses[0] ?? null);
 
-  const lessons = useMemo(
-    () =>
-      input && currentTeacher !== null
+  const lessons = useMemo(() => {
+    if (!input) return [];
+    if (view === 'teacher') {
+      return currentTeacher !== null
         ? input.assignments.filter((a) => a.teacher === currentTeacher)
-        : [],
-    [input, currentTeacher],
-  );
+        : [];
+    }
+    return currentKlass !== null ? input.assignments.filter((a) => a.klass === currentKlass) : [];
+  }, [input, view, currentTeacher, currentKlass]);
 
   const result: RecommendResult | null = useMemo(() => {
-    if (!input || currentTeacher === null || absentSlot === null) return null;
+    if (!input || view !== 'teacher' || currentTeacher === null || absentSlot === null) return null;
     try {
       return recommend(input, { teacher: currentTeacher, slot: absentSlot }, { max: 12 });
     } catch {
       return null;
     }
-  }, [input, currentTeacher, absentSlot]);
+  }, [input, view, currentTeacher, absentSlot]);
 
   const show = useCallback((msg: string) => {
     setToast(msg);
@@ -104,8 +126,11 @@ export function Workbench() {
         const l = parseAndAdapt(raw, source);
         setLoaded(l);
         saveRaw(raw);
+        setEntries([]);
+        saveEntries([]);
         setAbsentSlot(null);
         setHovered(null);
+        setView('teacher');
         const t = defaultTeacher(l.adapted.input);
         setTeacher(t);
         if (t !== null) {
@@ -135,7 +160,7 @@ export function Workbench() {
     } finally {
       setBusy(false);
     }
-  }, [applyRaw, show]);
+  }, [applyRaw]);
 
   const onFile = useCallback(
     (f: File) => {
@@ -161,10 +186,46 @@ export function Workbench() {
     [input, show],
   );
 
+  const onApply = useCallback(
+    (c: Candidate) => {
+      if (!base || !input) return;
+      const after = applyAll(input, [{ id: 0, type: c.type, title: c.title, changes: c.changes }]);
+      if (validate(after).length > 0) {
+        show('이 변경은 현재 시간표와 충돌합니다. 다른 방법을 고르십시오');
+        return;
+      }
+      const nextId = (entries[entries.length - 1]?.id ?? 0) + 1;
+      const next = [...entries, { id: nextId, type: c.type, title: c.title, changes: c.changes }];
+      setEntries(next);
+      saveEntries(next);
+      setAbsentSlot(null);
+      setHovered(null);
+      show('시간표에 반영하고 오늘의 변경에 기록했습니다');
+    },
+    [base, input, entries, show],
+  );
+
+  const onUndoLast = useCallback(() => {
+    if (entries.length === 0) return;
+    const next = entries.slice(0, -1);
+    setEntries(next);
+    saveEntries(next);
+    setAbsentSlot(null);
+    setHovered(null);
+    show('마지막 변경을 되돌렸습니다');
+  }, [entries, show]);
+
+  const onPrint = useCallback(() => {
+    window.print();
+  }, []);
+
   const onReset = useCallback(() => {
     clearRaw();
     setLoaded(null);
     setTeacher(null);
+    setEntries([]);
+    setKlass(null);
+    setView('teacher');
     setAbsentSlot(null);
     setHovered(null);
   }, []);
@@ -183,32 +244,72 @@ export function Workbench() {
           </span>
         )}
         <span className="spacer" />
-        {loaded && input && currentTeacher !== null && (
+        {loaded && input && (
           <>
-            <label htmlFor="teacher-select" style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 700 }}>
-              교사
-            </label>
-            <select
-              id="teacher-select"
-              className="select"
-              value={currentTeacher}
-              onChange={(e) => {
-                setTeacher(e.target.value);
-                setAbsentSlot(null);
-                setHovered(null);
-                try {
-                  localStorage.setItem(TEACHER_KEY, e.target.value);
-                } catch {
-                  /* 무시 */
-                }
-              }}
-            >
-              {teachers.map((t) => (
-                <option key={t.name} value={t.name}>
-                  {t.name} ({t.n})
-                </option>
-              ))}
-            </select>
+            <div className="seg" role="tablist" aria-label="보기 전환">
+              <button
+                role="tab"
+                aria-selected={view === 'teacher'}
+                className={view === 'teacher' ? 'on' : ''}
+                onClick={() => {
+                  setView('teacher');
+                  setHovered(null);
+                }}
+              >
+                교사
+              </button>
+              <button
+                role="tab"
+                aria-selected={view === 'klass'}
+                className={view === 'klass' ? 'on' : ''}
+                onClick={() => {
+                  setView('klass');
+                  setAbsentSlot(null);
+                  setHovered(null);
+                }}
+              >
+                학급
+              </button>
+            </div>
+            {view === 'teacher' && currentTeacher !== null && (
+              <select
+                id="teacher-select"
+                className="select"
+                aria-label="교사 선택"
+                value={currentTeacher}
+                onChange={(e) => {
+                  setTeacher(e.target.value);
+                  setAbsentSlot(null);
+                  setHovered(null);
+                  try {
+                    localStorage.setItem(TEACHER_KEY, e.target.value);
+                  } catch {
+                    /* 무시 */
+                  }
+                }}
+              >
+                {teachers.map((t) => (
+                  <option key={t.name} value={t.name}>
+                    {t.name} ({t.n})
+                  </option>
+                ))}
+              </select>
+            )}
+            {view === 'klass' && currentKlass !== null && (
+              <select
+                id="klass-select"
+                className="select"
+                aria-label="학급 선택"
+                value={currentKlass}
+                onChange={(e) => setKlass(e.target.value)}
+              >
+                {klasses.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
+              </select>
+            )}
             <button className="btn ghost" onClick={onReset}>
               데이터 지우기
             </button>
@@ -216,13 +317,14 @@ export function Workbench() {
         )}
       </header>
 
-      {!loaded || !input || currentTeacher === null ? (
+      {!loaded || !input ? (
         <Landing onSample={onSample} onFile={onFile} busy={busy} />
       ) : (
         <main className="work">
           <Grid
             cfg={input.config}
-            teacher={currentTeacher}
+            mode={view}
+            owner={(view === 'teacher' ? currentTeacher : currentKlass) ?? ''}
             lessons={lessons}
             absentSlot={absentSlot}
             preview={hovered}
@@ -231,14 +333,27 @@ export function Workbench() {
               setHovered(null);
             }}
           />
-          <Panel
-            cfg={input.config}
-            result={result}
-            hovered={hovered}
-            onHover={setHovered}
-            onCopy={onCopy}
-          />
+          <div className="side">
+            <Panel
+              cfg={input.config}
+              result={result}
+              hovered={hovered}
+              onHover={setHovered}
+              onCopy={onCopy}
+              onApply={onApply}
+            />
+            <Changes
+              cfg={input.config}
+              entries={entries}
+              onUndoLast={onUndoLast}
+              onPrint={onPrint}
+            />
+          </div>
         </main>
+      )}
+
+      {loaded && input && (
+        <Sheet schoolName={loaded.adapted.schoolName} cfg={input.config} entries={entries} />
       )}
 
       <footer className="foot">

@@ -55,6 +55,32 @@ if (candCount > 0) {
   console.log('--- 복사된 문구 ---');
   console.log(clip);
   console.log('-------------------');
+
+  // 5b. 시간표에 반영: 첫 후보 적용 → 장부 1건 → 결강 표시 해제
+  await page.locator('.cand').first().getByRole('button', { name: '이 방법으로 바꾸기' }).click();
+  await page.waitForTimeout(400);
+  const applied = await page.locator('.chg-list li').count();
+  const absentLeft = await page.locator('.cell.absent').count();
+  console.log('반영 후 장부 건수:', applied, '| 남은 결강 표시:', absentLeft);
+  await page.screenshot({ path: `${OUT}/shot-7-applied.png` });
+  if (applied !== 1 || absentLeft !== 0) errors.push('반영 흐름 실패');
+  const printBtn = await page.getByRole('button', { name: '수업 교체 계획서 인쇄' }).count();
+  console.log('계획서 인쇄 버튼:', printBtn);
+
+  // 5c. 학급 뷰 전환
+  await page.getByRole('tab', { name: '학급' }).click();
+  await page.waitForTimeout(300);
+  const klassCells = await page.locator('.cell.lesson').count();
+  console.log('학급 뷰 수업 셀:', klassCells);
+  await page.screenshot({ path: `${OUT}/shot-8-klass.png` });
+  await page.getByRole('tab', { name: '교사' }).click();
+  await page.waitForTimeout(200);
+
+  // 5d. 되돌리기
+  await page.getByRole('button', { name: '되돌리기' }).click();
+  await page.waitForTimeout(300);
+  const afterUndo = await page.locator('.chg-list li').count();
+  console.log('되돌리기 후 장부 건수:', afterUndo);
 }
 
 // 6. 교사 전환

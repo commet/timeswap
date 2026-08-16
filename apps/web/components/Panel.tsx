@@ -14,15 +14,17 @@ export function Panel({
   hovered,
   onHover,
   onCopy,
+  onApply,
 }: {
   cfg: ScheduleConfig;
   result: RecommendResult | null;
   hovered: Candidate | null;
   onHover: (c: Candidate | null) => void;
   onCopy: (c: Candidate) => void;
+  onApply: (c: Candidate) => void;
 }) {
   return (
-    <aside className="card panel panel-wrap" aria-label="교환 추천">
+    <aside className="card panel" aria-label="교환 추천">
       <div className="card-head">
         <h2>교환 추천</h2>
         {result && (
@@ -69,7 +71,10 @@ export function Panel({
                 ))}
               </ul>
               <div className="cand-foot">
-                <button className="btn primary" onClick={() => onCopy(c)}>
+                <button className="btn primary" onClick={() => onApply(c)}>
+                  이 방법으로 바꾸기
+                </button>
+                <button className="btn" onClick={() => onCopy(c)}>
                   요청 문구 복사
                 </button>
                 <span className="cand-score">수업 {c.changes.length}개 이동</span>

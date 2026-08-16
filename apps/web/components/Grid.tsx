@@ -6,32 +6,37 @@ import type { CSSProperties } from 'react';
 
 interface Props {
   cfg: ScheduleConfig;
-  teacher: string;
+  mode: 'teacher' | 'klass';
+  /** 교사 뷰에서는 교사 이름, 학급 뷰에서는 학급 이름 */
+  owner: string;
   lessons: Assignment[];
   absentSlot: number | null;
   preview: Candidate | null;
   onSelect: (slot: number | null) => void;
 }
 
-export function Grid({ cfg, teacher, lessons, absentSlot, preview, onSelect }: Props) {
+export function Grid({ cfg, mode, owner, lessons, absentSlot, preview, onSelect }: Props) {
   const bySlot = new Map<number, Assignment>();
   for (const a of lessons) bySlot.set(a.slot, a);
 
-  const own = preview?.changes.find((c) => c.from.teacher === teacher);
-  const incoming = preview?.changes.find(
-    (c) => c.from.teacher !== teacher && c.toSlot === absentSlot,
-  );
+  const teacherMode = mode === 'teacher';
+  const own = teacherMode ? preview?.changes.find((c) => c.from.teacher === owner) : undefined;
+  const incoming = teacherMode
+    ? preview?.changes.find((c) => c.from.teacher !== owner && c.toSlot === absentSlot)
+    : undefined;
 
   const cols = `44px repeat(${cfg.days}, minmax(96px, 1fr))`;
 
   return (
     <section className="card grid-wrap" aria-label="주간 시간표">
       <div className="card-head">
-        <h2>{teacher} 선생님의 한 주</h2>
+        <h2>{teacherMode ? `${owner} 선생님의 한 주` : `${owner} 반의 한 주`}</h2>
         <span className="sub">
-          {absentSlot === null
-            ? '바꿔야 할 수업을 누르십시오'
-            : `${slotName(absentSlot, cfg)} 수업을 바꿀 방법을 찾는 중`}
+          {!teacherMode
+            ? '반영한 변경까지 담긴 학급 시간표'
+            : absentSlot === null
+              ? '바꿔야 할 수업을 누르십시오'
+              : `${slotName(absentSlot, cfg)} 수업을 바꿀 방법을 찾는 중`}
         </span>
       </div>
       <div className="grid-scroll">
@@ -47,8 +52,9 @@ export function Grid({ cfg, teacher, lessons, absentSlot, preview, onSelect }: P
               key={p}
               p={p}
               cfg={cfg}
+              teacherMode={teacherMode}
               bySlot={bySlot}
-              absentSlot={absentSlot}
+              absentSlot={teacherMode ? absentSlot : null}
               own={own}
               incoming={incoming}
               onSelect={onSelect}
@@ -56,17 +62,19 @@ export function Grid({ cfg, teacher, lessons, absentSlot, preview, onSelect }: P
           ))}
         </div>
       </div>
-      <div className="grid-legend">
-        <span>
-          <i style={{ background: 'var(--warn)' }} /> 결강 지정
-        </span>
-        <span>
-          <i style={{ background: 'var(--accent)' }} /> 옮겨 갈 자리
-        </span>
-        <span>
-          <i style={{ background: 'var(--accent-soft)', outline: '1.5px dashed var(--accent)' }} /> 들어올 수업
-        </span>
-      </div>
+      {teacherMode && (
+        <div className="grid-legend">
+          <span>
+            <i style={{ background: 'var(--warn)' }} /> 결강 지정
+          </span>
+          <span>
+            <i style={{ background: 'var(--accent)' }} /> 옮겨 갈 자리
+          </span>
+          <span>
+            <i style={{ background: 'var(--accent-soft)', outline: '1.5px dashed var(--accent)' }} /> 들어올 수업
+          </span>
+        </div>
+      )}
     </section>
   );
 }
@@ -74,6 +82,7 @@ export function Grid({ cfg, teacher, lessons, absentSlot, preview, onSelect }: P
 function Row({
   p,
   cfg,
+  teacherMode,
   bySlot,
   absentSlot,
   own,
@@ -82,6 +91,7 @@ function Row({
 }: {
   p: number;
   cfg: ScheduleConfig;
+  teacherMode: boolean;
   bySlot: Map<number, Assignment>;
   absentSlot: number | null;
   own?: { from: Assignment; toSlot: number };
@@ -101,7 +111,7 @@ function Row({
 
         if (!a && arriving && own) {
           return (
-            <div key={s} className="cell lesson arriving" aria-label={`${slotName(s, cfg)}로 이동`}>
+            <div key={s} className="cell lesson arriving" aria-label={`${slotName(s, cfg)}로 옮기기`}>
               <span className="k">{own.from.klass}</span>
               <span className="s">{own.from.subject} 이동</span>
             </div>
@@ -124,6 +134,18 @@ function Row({
         if (isAbsent) cls.push('absent');
         if (leaving) cls.push('leaving');
         const style = { '--hue': subjectHue(a.subject) } as CSSProperties;
+        const primary = teacherMode ? a.klass : a.teacher;
+        if (!teacherMode) {
+          return (
+            <div key={s} className={cls.join(' ')} style={style} aria-label={`${slotName(s, cfg)} ${a.subject} ${a.teacher}`}>
+              <span className="k">{a.subject}</span>
+              <span className="s">
+                {primary}
+                {a.group && <span className="gmark">동시</span>}
+              </span>
+            </div>
+          );
+        }
         return (
           <button
             key={s}

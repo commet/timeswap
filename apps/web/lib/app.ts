@@ -1,14 +1,52 @@
 import {
+  applyChanges,
   fromComcigan,
   genSchool,
   type Candidate,
+  type Change,
   type ComciganAdaptResult,
   type ComciganData,
   type ScheduleConfig,
+  type TimetableInput,
 } from '@timeswap/engine';
 
 export const STORAGE_KEY = 'timeswap:v0:data';
 export const TEACHER_KEY = 'timeswap:v0:teacher';
+export const CHANGES_KEY = 'timeswap:v0:changes';
+
+/** 시간표에 반영한 교환 1건. 변경 장부와 교체 계획서의 원천이다. */
+export interface AppliedEntry {
+  id: number;
+  type: Candidate['type'];
+  title: string;
+  changes: Change[];
+}
+
+export function loadEntries(): AppliedEntry[] {
+  try {
+    const raw = localStorage.getItem(CHANGES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as AppliedEntry[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveEntries(entries: AppliedEntry[]): void {
+  try {
+    localStorage.setItem(CHANGES_KEY, JSON.stringify(entries));
+  } catch {
+    /* 무시 */
+  }
+}
+
+/** 원본 시간표에 장부의 변경을 순서대로 적용한 현재 시간표를 만든다. */
+export function applyAll(base: TimetableInput, entries: AppliedEntry[]): TimetableInput {
+  let cur = base;
+  for (const e of entries) cur = applyChanges(cur, e.changes);
+  return cur;
+}
 
 /** 샘플 파일이 없는 배포 환경에서 쓰는 합성 샘플 표식 */
 export const SYNTH_MARK = 'timeswap:synthetic:v1';
@@ -57,6 +95,7 @@ export function clearRaw(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(TEACHER_KEY);
+    localStorage.removeItem(CHANGES_KEY);
   } catch {
     /* 무시 */
   }

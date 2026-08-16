@@ -1,4 +1,4 @@
-/* 타임스왑 디자인 토큰.
+/* 수업품앗이 디자인 토큰.
    종이 바탕, 잉크 글자, 칠판 초록(교환, 성립), 정정 주황(결강, 보강).
    과목 셀 색은 hue 만 과목이 정하고 채도, 명도는 테마가 정한다. */
 :root {
@@ -216,4 +216,43 @@ select, input { font: inherit; color: inherit; }
 .foot {
   padding: 14px 20px 22px; color: var(--muted); font-size: 12.5px;
   border-top: 1px solid var(--line); display: flex; gap: 14px; flex-wrap: wrap;
+}
+
+/* 보기 전환 */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button { border: none; background: transparent; padding: 6px 14px; font-size: 14px; font-weight: 700; color: var(--muted); }
+.seg button.on { background: var(--accent); color: var(--on-accent); }
+
+/* 우측 열: 추천과 변경 장부 */
+.side { flex: 1; min-width: 300px; max-width: 400px; position: sticky; top: 66px; display: flex; flex-direction: column; gap: 16px; }
+@media (max-width: 900px) { .side { position: static; max-width: none; width: 100%; } }
+.panel-body { max-height: calc(100dvh - 380px); }
+.small-empty { padding: 18px 16px 22px; font-size: 13px; }
+
+/* 변경 장부 */
+.chg-list { list-style: none; margin: 0; padding: 10px 14px 4px; display: flex; flex-direction: column; gap: 8px; }
+.chg-list li { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.chg-no { font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+.chg-type { flex: none; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 1px 7px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.chg-title { flex: 1; line-height: 1.5; }
+.chg-undo { padding: 2px 8px; font-size: 12px; }
+.chg-foot { padding: 8px 14px 14px; }
+
+/* 인쇄용 수업 교체 계획서 */
+.sheet { display: none; }
+@media print {
+  .topbar, .work, .landing, .foot, .toast { display: none !important; }
+  body { background: #fff; color: #000; }
+  .sheet { display: block; padding: 24mm 18mm; font-size: 12pt; color: #000; }
+  .sheet h1 { text-align: center; font-size: 20pt; letter-spacing: 0.3em; margin: 10mm 0 4mm; }
+  .sheet-meta { text-align: center; margin: 0 0 8mm; font-size: 11pt; }
+  .sheet-approve { display: flex; justify-content: flex-end; }
+  .sheet-approve table { border-collapse: collapse; }
+  .sheet-approve-label { border: 1px solid #000; width: 22mm; text-align: center; font-size: 9pt; padding: 1mm; }
+  .sheet-approve-box { border: 1px solid #000; height: 14mm; }
+  .sheet-table { width: 100%; border-collapse: collapse; margin-bottom: 6mm; }
+  .sheet-table th, .sheet-table td { border: 1px solid #000; padding: 2.5mm 3mm; font-size: 10.5pt; text-align: left; }
+  .sheet-table th { text-align: center; background: #f0f0f0; }
+  .sheet-table td.c { text-align: center; }
+  .sheet-note { font-size: 10.5pt; }
 }
