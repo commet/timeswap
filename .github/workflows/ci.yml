@@ -1,7 +1,8 @@
 name: 검증
 
 # 배포 전에 반드시 통과해야 하는 관문이다.
-# 엔진 시험, 타입 검사, 웹 빌드, 브라우저 전 과정 점검을 한 자리에서 돌린다.
+# 빠른 검사부터 먼저 돌려 잘못을 이른 단계에서 드러낸다.
+# 설정 점검 → 타입 → 시험 → 빌드 → 정적 출력 → 브라우저 전 과정 순이다.
 on:
   push:
     branches: [main]
@@ -28,9 +29,9 @@ jobs:
       - name: 의존성 설치
         run: npm ci
 
-      - name: 알려진 취약점 확인
-        # 높음 이상이 새로 생기면 멈춘다. 낮은 등급은 알리기만 한다.
-        run: npm audit --audit-level=high
+      # 몇 초면 끝나고, 여기서 걸리면 뒤 단계를 돌릴 이유가 없다.
+      - name: 배포 설정 점검
+        run: npm run check
 
       - name: 타입 검사
         run: npm run typecheck
@@ -38,16 +39,35 @@ jobs:
       - name: 엔진 시험
         run: npm test
 
+      # 브라우저는 내려받는 데만 여러 분이 걸린다. 판이 같으면 저장분을 쓴다.
+      - name: 브라우저 판 확인
+        id: pw
+        run: echo "ver=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: 브라우저 저장분
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ steps.pw.outputs.ver }}
+
+      - name: 브라우저 설치
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
+
       - name: 웹 빌드
         run: npm run build
 
       - name: 정적 출력 확인
+        # 정적 내보내기가 실제로 파일을 남겼는지 본다.
+        # 그 경로가 vercel.json 과 맞는지는 앞의 배포 설정 점검이 본다.
         run: |
           test -f apps/web/out/index.html || { echo "정적 출력이 없습니다"; exit 1; }
           echo "정적 출력 확인: $(du -sh apps/web/out | cut -f1)"
-
-      - name: 브라우저 설치
-        run: npx playwright install --with-deps chromium
 
       - name: 전 과정 점검
         # 배포와 같은 응답 헤더를 씌워 띄운다.
@@ -68,3 +88,19 @@ jobs:
           path: ${{ runner.temp }}/shot-*.png
           if-no-files-found: ignore
           retention-days: 7
+
+  audit:
+    name: 취약점 점검
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # 높음 이상이 새로 생기면 멈춘다. 낮은 등급은 알리기만 한다.
+      # 본 관문과 나누어 돌려 시험 결과를 기다리게 하지 않는다.
+      - name: 알려진 취약점 확인
+        run: npm audit --audit-level=high

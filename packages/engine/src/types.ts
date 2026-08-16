@@ -3,6 +3,11 @@ export interface ScheduleConfig {
   days: number;
   periods: number;
   dayNames: string[];
+  /**
+   * 점심시간이 몇 교시 뒤에 오는지. 4 이면 4교시와 5교시 사이가 점심이다.
+   * 점심을 사이에 두고 수업이 이어 붙는 것을 가려내는 데 쓴다. 없으면 가운데로 본다.
+   */
+  lunchAfterPeriod?: number;
 }
 
 /** 수업 1개. group 은 분반, 동시수업 묶음 식별자(있으면 v0 엔진은 이동 후보에서 제외). */

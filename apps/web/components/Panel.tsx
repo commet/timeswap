@@ -10,9 +10,9 @@ import {
 } from '@timeswap/engine';
 
 const TYPE_LABEL: Record<Candidate['type'], string> = {
-  move: '빈 시간 옮기기',
+  move: '빈 시간으로 이동',
   swap2: '맞바꾸기',
-  cycle3: '연쇄 교환',
+  cycle3: '연쇄 교체',
 };
 
 type Filter = 'all' | Candidate['type'];
@@ -21,7 +21,7 @@ const FILTERS: Array<{ key: Filter; label: string }> = [
   { key: 'all', label: '전체' },
   { key: 'swap2', label: '맞바꾸기' },
   { key: 'cycle3', label: '연쇄' },
-  { key: 'move', label: '옮기기' },
+  { key: 'move', label: '이동' },
 ];
 
 export function Panel({
@@ -56,9 +56,9 @@ export function Panel({
         : result.candidates.filter((c) => c.type === filter);
 
   return (
-    <aside className="card panel" aria-label="교환 추천">
+    <aside className="card panel" aria-label="교체 방법">
       <div className="card-head">
-        <h2>교환 추천</h2>
+        <h2>교체 방법</h2>
         {result && (
           <span className="sub">
             {result.target.klass} {result.target.subject}, {slotName(result.target.slot, cfg)}
@@ -67,32 +67,32 @@ export function Panel({
         )}
         {queueLen > 1 && (
           <button className="btn ghost head-skip" onClick={onSkip}>
-            뒤로 미루기
+            나중에
           </button>
         )}
       </div>
       {!result ? (
         <div className="panel-empty">
-          시간표에서 <b>바꿔야 할 수업</b>을 누르면
+          왼쪽 시간표에서 <b>비울 수업</b>을 누르십시오.
           <br />
-          되는 방법을 여기에 정리합니다.
+          가능한 교체 방법을 이 자리에 정리해 드립니다.
           <br />
-          <span className="hint">요일 머리글을 누르면 그날 수업 전체가 결강으로 걸립니다.</span>
+          <span className="hint">요일 이름을 누르면 그날 수업이 한 번에 선택됩니다.</span>
         </div>
       ) : result.candidates.length === 0 ? (
         <div className="panel-empty">
-          <b>바꿀 방법을 찾지 못했습니다.</b>
+          <b>맞바꿀 수 있는 수업이 없습니다.</b>
           <br />
-          {result.notes.length > 0 ? result.notes.join(' ') : '보강으로 처리해야 할 수 있습니다.'}
+          {result.notes.length > 0 ? result.notes.join(' ') : '보강으로 처리하셔야 합니다.'}
           {cover && cover.length > 0 && (
             <div className="cover">
-              <p className="cover-title">이 교시에 비어 있는 선생님</p>
+              <p className="cover-title">이 시간에 수업이 없는 교사</p>
               <ul className="cover-list">
                 {cover.map((c) => (
                   <li key={c.teacher}>
                     <span className="cover-name">{c.teacher}</span>
                     {c.sameSubject && <span className="cover-badge">같은 과목</span>}
-                    <span className="cover-load">주 {c.weeklyLessons}시간</span>
+                    <span className="cover-load">주당 {c.weeklyLessons}시간</span>
                   </li>
                 ))}
               </ul>
@@ -114,46 +114,52 @@ export function Panel({
           </div>
           <div className="panel-body" onMouseLeave={() => onHover(null)}>
             {list.length === 0 && (
-              <div className="panel-empty small-empty">이 유형으로는 방법이 없습니다.</div>
+              <div className="panel-empty small-empty">이 방식으로는 가능한 교체가 없습니다.</div>
             )}
-            {list.map((c, i) => (
-              <div
-                key={c.title + i}
-                className={`cand${hovered === c ? ' hover' : ''}${i === 0 && filter === 'all' ? ' top' : ''}`}
-                onMouseEnter={() => onHover(c)}
-                onFocus={() => onHover(c)}
-              >
-                <div className="cand-head">
-                  <span className="cand-rank">{i + 1}</span>
-                  <span className="cand-type">{TYPE_LABEL[c.type]}</span>
-                  <span className="cand-title">{c.title}</span>
+            {list.map((c, i) => {
+              const best = i === 0 && filter === 'all';
+              return (
+                <div
+                  key={c.title + i}
+                  className={`cand${hovered === c ? ' hover' : ''}${best ? ' top' : ''}`}
+                  tabIndex={0}
+                  onMouseEnter={() => onHover(c)}
+                  onFocus={() => onHover(c)}
+                  // 손가락으로 쓰는 화면에는 마우스 올림이 없다. 눌러도 미리보기가 뜨게 한다.
+                  onClick={() => onHover(c)}
+                >
+                  <div className="cand-head">
+                    <span className="cand-rank">{i + 1}</span>
+                    <span className="cand-type">{TYPE_LABEL[c.type]}</span>
+                    {best && <span className="cand-best">가장 무난함</span>}
+                    <span className="cand-title">{c.title}</span>
+                  </div>
+                  <ul className="cand-trace">
+                    {c.trace.map((t, j) => (
+                      <li
+                        key={j}
+                        className={t.kind === '조건' ? 'ok' : t.kind === '감점' ? 'minus' : 'plus'}
+                      >
+                        {t.text}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="cand-foot">
+                    <button className="btn primary" onClick={() => onApply(c)}>
+                      이 방법으로 반영
+                    </button>
+                    <button className="btn" onClick={() => onCopy(c)}>
+                      요청 문구 복사
+                    </button>
+                    <span className="cand-score">
+                      {c.unitCount !== undefined && c.unitCount !== c.changes.length
+                        ? `묶음 ${c.unitCount}개, 수업 ${c.changes.length}개`
+                        : `수업 ${c.changes.length}개`}
+                    </span>
+                  </div>
                 </div>
-                <ul className="cand-trace">
-                  {c.trace.map((t, j) => (
-                    <li
-                      key={j}
-                      className={t.kind === '조건' ? 'ok' : t.kind === '감점' ? 'minus' : 'plus'}
-                    >
-                      {t.text}
-                      {t.points !== undefined ? ` (${t.points > 0 ? '+' : ''}${t.points})` : ''}
-                    </li>
-                  ))}
-                </ul>
-                <div className="cand-foot">
-                  <button className="btn primary" onClick={() => onApply(c)}>
-                    이 방법으로 바꾸기
-                  </button>
-                  <button className="btn" onClick={() => onCopy(c)}>
-                    요청 문구 복사
-                  </button>
-                  <span className="cand-score">
-                    {c.unitCount !== undefined && c.unitCount !== c.changes.length
-                      ? `묶음 ${c.unitCount}개 이동, 수업 ${c.changes.length}개`
-                      : `수업 ${c.changes.length}개 이동`}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}

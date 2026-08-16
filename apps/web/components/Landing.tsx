@@ -5,13 +5,13 @@ import { useRef, useState } from 'react';
 const ART_COLS = [8, 76, 144];
 const ART_ROWS = [8, 48, 88, 128];
 
-/** 랜딩 장식용 미니 시간표. 두 수업이 자리를 맞바꾸는 모습을 그린다. */
+/** 두 수업이 자리를 맞바꾸는 모습 */
 function HeroArt() {
   return (
     <svg className="hero-art" viewBox="0 0 220 168" aria-hidden="true">
       <defs>
         <marker
-          id="tsw-ah-a"
+          id="ah-a"
           viewBox="0 0 10 10"
           refX="8"
           refY="5"
@@ -22,7 +22,7 @@ function HeroArt() {
           <path d="M0 0L10 5L0 10z" fill="var(--accent)" />
         </marker>
         <marker
-          id="tsw-ah-w"
+          id="ah-w"
           viewBox="0 0 10 10"
           refX="8"
           refY="5"
@@ -58,7 +58,7 @@ function HeroArt() {
         stroke="var(--accent)"
         strokeWidth="3"
         strokeLinecap="round"
-        markerEnd="url(#tsw-ah-a)"
+        markerEnd="url(#ah-a)"
       />
       <path
         d="M138 148 C 92 160, 44 132, 34 92"
@@ -66,7 +66,7 @@ function HeroArt() {
         stroke="var(--warn)"
         strokeWidth="3"
         strokeLinecap="round"
-        markerEnd="url(#tsw-ah-w)"
+        markerEnd="url(#ah-w)"
       />
     </svg>
   );
@@ -76,11 +76,17 @@ export function Landing({
   onNeis,
   onSample,
   onFile,
+  onResume,
+  hasSaved,
+  savedName,
   busy,
 }: {
   onNeis: () => void;
   onSample: () => void;
   onFile: (file: File) => void;
+  onResume: () => void;
+  hasSaved: boolean;
+  savedName: string;
   busy: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -92,17 +98,28 @@ export function Landing({
         <div className="hero">
           <div className="hero-copy">
             <h1>
-              수업을 바꿔야 할 때,
+              들어가지 못하는 수업이 생겼을 때,
               <br />
-              경우의 수는 <em>수업품앗이</em>가 셉니다
+              <em>바꿀 수 있는 방법</em>을 모두 찾습니다
             </h1>
             <p className="lede">
-              결강이 생긴 수업을 누르면 맞바꾸기, 연쇄 교환, 빈 시간 옮기기까지 성립하는 방법을
-              전부 찾아 이유와 함께 보여 드립니다. 되는지 안 되는지 눈으로 훑지 않아도 됩니다.
+              비울 수업을 고르면 맞바꾸기와 연쇄 교체, 빈 시간 이동까지 가능한 경우를 모두 세어
+              좋은 순서로 보여 드립니다. 동료 교사께 보낼 요청 문구와 결재용 계획서도 함께
+              만듭니다.
             </p>
           </div>
           <HeroArt />
         </div>
+
+        {hasSaved && (
+          <button className="resume" onClick={onResume}>
+            <span className="resume-label">이어서 작업하기</span>
+            <span className="resume-name">{savedName}</span>
+            <span className="resume-go" aria-hidden>
+              →
+            </span>
+          </button>
+        )}
 
         <div
           className={`dropzone${over ? ' on' : ''}`}
@@ -118,16 +135,16 @@ export function Landing({
             if (f) onFile(f);
           }}
         >
-          <p>학교 시간표를 불러오는 방법은 세 가지입니다.</p>
+          <p className="dropzone-title">시간표 불러오기</p>
           <div className="actions">
             <button className="btn primary" onClick={onNeis} disabled={busy}>
-              나이스에서 불러오기
+              학교 이름으로 찾기
             </button>
             <button className="btn" onClick={() => inputRef.current?.click()} disabled={busy}>
               저장한 파일 열기
             </button>
             <button className="btn" onClick={onSample} disabled={busy}>
-              {busy ? '불러오는 중' : '샘플로 둘러보기'}
+              {busy ? '불러오는 중' : '예시로 살펴보기'}
             </button>
             <input
               ref={inputRef}
@@ -141,25 +158,26 @@ export function Landing({
               }}
             />
           </div>
+          <p className="dropzone-hint">저장해 둔 파일은 이 자리에 끌어다 놓아도 열립니다.</p>
         </div>
 
         <ol className="steps">
           <li>
             <b>시간표 불러오기</b>
-            <span>나이스 공개 자료에서 학교를 찾거나, 저장한 파일을 엽니다</span>
+            <span>학교 이름으로 찾거나 저장해 둔 파일을 엽니다</span>
           </li>
           <li>
-            <b>결강 수업 선택</b>
-            <span>하루 전체는 요일 머리글, 회의 시간은 빈 교시 잠금</span>
+            <b>비울 수업 고르기</b>
+            <span>하루 전체는 요일 이름을, 회의 시간은 빈칸을 누릅니다</span>
           </li>
           <li>
-            <b>추천 확인과 반영</b>
-            <span>근거를 읽고 한 번에 반영, 요청 문구와 계획서까지</span>
+            <b>방법 고르고 반영하기</b>
+            <span>근거를 보고 고르면 요청 문구와 계획서까지 만듭니다</span>
           </li>
         </ol>
 
         <p className="privacy">
-          시간표는 이 브라우저 안에만 저장됩니다. 우리 서버는 없고, 나이스 자료는 브라우저가 직접 받아 옵니다.
+          불러온 시간표는 이 기기에만 저장하며 외부로 보내지 않습니다. 회원 가입도 없습니다.
         </p>
       </div>
     </div>

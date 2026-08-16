@@ -29,7 +29,7 @@ console.log('제목:', await page.title());
 console.log('사용 3단계:', await page.locator('.steps li').count(), '| 일러스트:', await page.locator('.hero-art').count());
 
 // 1b. 나이스 불러오기: 브라우저에서 공식 개방 API 가 실제로 붙는지 확인
-await page.getByRole('button', { name: '나이스에서 불러오기' }).click();
+await page.getByRole('button', { name: '학교 이름으로 찾기' }).click();
 await page.waitForSelector('.neis', { timeout: 10000 });
 await page.getByPlaceholder('예: 수지고등학교').fill('수지고등학교');
 await page.getByRole('button', { name: '찾기' }).click();
@@ -46,7 +46,7 @@ await page.getByRole('button', { name: '닫기' }).click();
 await page.waitForTimeout(300);
 
 // 2. 샘플 로드
-await page.getByRole('button', { name: '샘플로 둘러보기' }).click();
+await page.getByRole('button', { name: '예시로 살펴보기' }).click();
 await page.waitForSelector('.tt-grid', { timeout: 15000 });
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${OUT}/shot-2-grid.png` });
@@ -80,17 +80,17 @@ if (candCount > 0) {
   console.log('-------------------');
 
   // 5b. 시간표에 반영: 첫 후보 적용 → 장부 1건 → 결강 표시 해제
-  await page.locator('.cand').first().getByRole('button', { name: '이 방법으로 바꾸기' }).click();
+  await page.locator('.cand').first().getByRole('button', { name: '이 방법으로 반영' }).click();
   await page.waitForTimeout(400);
   const applied = await page.locator('.chg-list li').count();
   const absentLeft = await page.locator('.cell.absent').count();
   console.log('반영 후 장부 건수:', applied, '| 남은 결강 표시:', absentLeft);
   await page.screenshot({ path: `${OUT}/shot-7-applied.png` });
   if (applied !== 1 || absentLeft !== 0) errors.push('반영 흐름 실패');
-  const printBtn = await page.getByRole('button', { name: '수업 교체 계획서 인쇄' }).count();
+  const printBtn = await page.getByRole('button', { name: '교체 계획서 인쇄' }).count();
   console.log('계획서 인쇄 버튼:', printBtn);
 
-  // 5b-2. 변경 공지 복사와 품앗이 기록
+  // 5b-2. 변경 공지 복사와 협조 기록
   await page.getByRole('button', { name: '변경 공지 복사' }).click();
   await page.waitForTimeout(300);
   const notice = await page.evaluate(() => navigator.clipboard.readText());
@@ -99,14 +99,14 @@ if (candCount > 0) {
   console.log('-----------------');
   if (!notice.includes('[수업 변경 안내]')) errors.push('변경 공지 문구 실패');
   const helpers = await page.locator('.chg-helpers').textContent();
-  console.log('품앗이 기록:', helpers?.trim());
-  if (!helpers?.includes('품앗이')) errors.push('품앗이 기록 표시 실패');
+  console.log('협조 기록:', helpers?.trim());
+  if (!helpers?.includes('협조해 주신 분')) errors.push('협조 기록 표시 실패');
 
-  // 5b-3. 나이스 입력용 목록
-  await page.getByRole('button', { name: '나이스 입력용 목록' }).click();
+  // 5b-3. 나이스 입력 목록
+  await page.getByRole('button', { name: '나이스 입력 목록' }).click();
   await page.waitForTimeout(300);
   const neisList = await page.evaluate(() => navigator.clipboard.readText());
-  console.log('--- 나이스 입력용 목록 ---');
+  console.log('--- 나이스 입력 목록 ---');
   console.log(neisList.split('\n').slice(0, 6).join('\n'));
   console.log('--------------------------');
   if (!neisList.includes('나이스 입력용')) errors.push('나이스 목록 출력 실패');
@@ -134,7 +134,7 @@ if (candCount > 0) {
   const subText = await page.locator('.panel .card-head .sub').textContent();
   console.log('대기열 배지:', queuedBadge, '| 패널 부제:', subText?.trim());
   if (queuedBadge !== 1 || !subText?.includes('대기')) errors.push('대기열 표시 실패');
-  await page.getByRole('button', { name: '뒤로 미루기' }).click();
+  await page.getByRole('button', { name: '나중에' }).click();
   await page.waitForTimeout(200);
   await page.locator('button.cell.lesson.absent').first().click();
   await page.locator('button.cell.lesson.absent').first().click();
@@ -213,7 +213,11 @@ const [download] = await Promise.all([
   page.waitForEvent('download', { timeout: 15000 }).catch(() => null),
   page.getByRole('button', { name: '파일로 저장' }).click(),
 ]);
-console.log('파일로 저장:', download ? download.suggestedFilename() : '실패');
+// 저장 이름이 "download" 로 나오는 판이 있다. 이건 앱 문제가 아니라 판 문제다.
+// 컨테이너 로케일이 POSIX 면 크로미움이 한글 파일 이름을 만들지 못하고 통째로 버린다.
+// 사용자 컴퓨터는 UTF-8 이라 그대로 저장된다. 여기서는 내려받기가 됐는지까지만 본다.
+const dlName = download ? download.suggestedFilename() : '';
+console.log('파일로 저장:', dlName || '실패', dlName === 'download' ? '(로케일 제약)' : '');
 if (!download) errors.push('시간표 파일 저장 실패');
 
 // 9. 모바일 랜딩

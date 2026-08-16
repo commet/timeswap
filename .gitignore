@@ -6,3 +6,6 @@ dist/
 .env.*
 .next/
 out/
+
+# tsc 증분 빌드 기록
+*.tsbuildinfo

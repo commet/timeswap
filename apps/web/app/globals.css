@@ -1,4 +1,4 @@
-/* 수업품앗이 디자인 토큰.
+/* 조율 디자인 토큰.
    종이 바탕, 잉크 글자, 칠판 초록(교환, 성립), 정정 주황(결강, 보강).
    과목 셀 색은 hue 만 과목이 정하고 채도, 명도는 테마가 정한다. */
 :root {
@@ -69,6 +69,10 @@ body {
   font-size: 15px;
   line-height: 1.65;
   -webkit-font-smoothing: antialiased;
+  /* 한국어는 낱말 가운데서 줄을 바꾸면 읽기가 나빠진다. "결재용"이 "결 / 재용"으로 갈리는 식이다.
+     낱말 단위로만 끊고, 한 낱말이 칸보다 길 때만 어쩔 수 없이 자른다. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 button { font: inherit; color: inherit; cursor: pointer; }
 select, input { font: inherit; color: inherit; }
@@ -83,7 +87,13 @@ select, input { font: inherit; color: inherit; }
   background: color-mix(in srgb, var(--bg) 88%, var(--surface));
   position: sticky; top: 0; z-index: 20; backdrop-filter: blur(6px);
 }
-.wordmark { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 17px; letter-spacing: -0.01em; }
+.wordmark {
+  display: flex; align-items: center; gap: 8px; flex: none;
+  font-weight: 800; font-size: 17px; letter-spacing: -0.01em;
+  border: 0; background: none; padding: 4px 6px; margin-left: -6px; border-radius: 8px;
+  transition: background 0.15s ease;
+}
+.wordmark:hover { background: var(--surface-2); }
 .wordmark .tick { width: 10px; height: 10px; border-radius: 3px; background: var(--accent); }
 .wordmark .beta { font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; }
 .school-chip { font-size: 13px; color: var(--muted); font-weight: 600; padding-left: 8px; border-left: 1px solid var(--line); }
@@ -115,7 +125,7 @@ select, input { font: inherit; color: inherit; }
 .hero-art { width: 208px; flex: none; }
 .landing h1 {
   font-size: clamp(28px, 5vw, 40px); line-height: 1.25; letter-spacing: -0.02em;
-  font-weight: 800; margin: 0 0 12px; text-wrap: balance; word-break: keep-all;
+  font-weight: 800; margin: 0 0 12px; text-wrap: balance;
 }
 .landing h1 em { font-style: normal; color: var(--accent); }
 .landing .lede { color: var(--muted); font-size: 16px; margin: 0 0 28px; text-wrap: pretty; }
@@ -124,8 +134,23 @@ select, input { font: inherit; color: inherit; }
   padding: 28px; text-align: center; transition: border-color 0.15s ease, background 0.15s ease;
 }
 .dropzone.on { border-color: var(--accent); background: var(--accent-soft); }
-.dropzone p { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+.dropzone-title { margin: 0 0 14px; font-size: 15px; font-weight: 700; color: var(--ink); }
 .dropzone .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.dropzone .actions .btn { padding: 9px 18px; }
+.dropzone-hint { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
+
+/* 이어서 작업. 저장된 시간표가 있을 때만 나오며 가장 먼저 눈에 들어와야 한다. */
+.resume {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  margin-bottom: 14px; padding: 13px 16px; border-radius: var(--radius);
+  border: 1.5px solid var(--accent); background: var(--accent-soft);
+  transition: background 0.15s ease;
+}
+.resume:hover { background: color-mix(in srgb, var(--accent-soft) 70%, var(--accent)); }
+.resume-label { font-weight: 800; font-size: 14.5px; color: var(--accent); }
+.resume-name { flex: 1; min-width: 0; font-size: 13.5px; color: var(--muted); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resume-go { font-weight: 800; color: var(--accent); }
 .landing .privacy {
   margin-top: 18px; font-size: 13px; color: var(--muted);
   display: flex; gap: 8px; align-items: baseline;
@@ -247,7 +272,9 @@ button.cell.empty:hover { border-color: var(--muted); }
 }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .cand:hover, .cand.hover { border-color: var(--accent); box-shadow: var(--shadow); }
-.cand-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.cand.top { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: var(--surface); }
+.cand-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+.cand-best { font-size: 11px; font-weight: 800; border-radius: 999px; padding: 1px 8px; background: var(--accent); color: var(--on-accent); white-space: nowrap; }
 .cand-rank { font-size: 13px; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cand-type { font-size: 11px; font-weight: 800; border-radius: 999px; padding: 1px 8px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
 .cand-title { font-size: 14px; font-weight: 800; line-height: 1.4; flex: 1; }

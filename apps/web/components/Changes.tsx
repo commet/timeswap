@@ -4,9 +4,9 @@ import type { ScheduleConfig } from '@timeswap/engine';
 import type { AppliedEntry } from '../lib/app';
 
 const TYPE_LABEL: Record<AppliedEntry['type'], string> = {
-  move: '빈 시간 옮기기',
+  move: '빈 시간으로 이동',
   swap2: '맞바꾸기',
-  cycle3: '연쇄 교환',
+  cycle3: '연쇄 교체',
 };
 
 export function Changes({
@@ -20,7 +20,7 @@ export function Changes({
 }: {
   cfg: ScheduleConfig;
   entries: AppliedEntry[];
-  /** 자리를 내어 준 교사와 횟수. 품앗이 균형의 근거를 보여준다. */
+  /** 자리를 내어 준 교사와 횟수. 부담 균형의 근거로 보여 준다. */
   helpers: Array<{ name: string; n: number }>;
   onUndoLast: () => void;
   onUndoAll: () => void;
@@ -29,16 +29,16 @@ export function Changes({
   onPrint: () => void;
 }) {
   return (
-    <section className="card changes" aria-label="오늘의 변경">
+    <section className="card changes" aria-label="반영한 변경">
       <div className="card-head">
-        <h2>오늘의 변경</h2>
-        <span className="sub">{entries.length === 0 ? '아직 없음' : `${entries.length}건 반영`}</span>
+        <h2>반영한 변경</h2>
+        <span className="sub">{entries.length === 0 ? '없음' : `${entries.length}건 반영`}</span>
       </div>
       {entries.length === 0 ? (
         <div className="panel-empty small-empty">
-          추천안에서 <b>이 방법으로 바꾸기</b>를 누르면
+          교체 방법을 선택해 <b>반영</b>하면
           <br />
-          여기에 기록되고 시간표에 반영됩니다.
+          이곳에 기록됩니다.
         </div>
       ) : (
         <>
@@ -58,8 +58,8 @@ export function Changes({
           </ol>
           {helpers.length > 0 && (
             <p className="chg-helpers">
-              품앗이 기록: {helpers.map((h) => `${h.name} ${h.n}회`).join(', ')}
-              <span className="chg-helpers-hint">여러 번 도와준 분은 다음 추천에서 뒤로 밀립니다</span>
+              협조해 주신 분: {helpers.map((h) => `${h.name} ${h.n}회`).join(', ')}
+              <span className="chg-helpers-hint">같은 분께 부담이 몰리지 않도록 순서에 반영합니다</span>
             </p>
           )}
           <div className="chg-foot">
@@ -67,10 +67,10 @@ export function Changes({
               변경 공지 복사
             </button>
             <button className="btn" onClick={onCopyNeisList}>
-              나이스 입력용 목록
+              나이스 입력 목록
             </button>
             <button className="btn" onClick={onPrint}>
-              수업 교체 계획서 인쇄
+              교체 계획서 인쇄
             </button>
             <button className="btn ghost" onClick={onUndoAll}>
               전체 되돌리기

@@ -73,7 +73,9 @@ describe('골든: 빈 교시 이동이 최선인 학교', () => {
     const top = candidates[0]!;
     expect(top.type).toBe('move');
     expect(top.changes[0]!.toSlot).toBe(4); // 화요일 2교시
-    expect(top.score).toBe(-10);
+    // 수업 1개 이동(-10) + 화요일 하교가 1교시 늦어짐(-2)
+    expect(top.score).toBe(-12);
+    expect(top.trace.some((t) => t.text.includes('늦게 끝납니다'))).toBe(true);
     // 맞교환(A 선생님)도 후보로는 존재하되 순위가 밀린다
     expect(candidates.some((c) => c.type === 'swap2')).toBe(true);
   });

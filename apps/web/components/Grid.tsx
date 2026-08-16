@@ -55,10 +55,10 @@ export function Grid({
         <h2>{teacherMode ? `${owner} 선생님의 한 주` : `${owner} 반의 한 주`}</h2>
         <span className="sub">
           {!teacherMode
-            ? '반영한 변경까지 담긴 학급 시간표'
+            ? '변경이 반영된 학급 시간표'
             : active === null
-              ? '바꿔야 할 수업이나 요일 머리글을 누르십시오'
-              : `${slotName(active, cfg)} 수업을 바꿀 방법을 찾는 중`}
+              ? '바꿀 수업을 선택하십시오. 요일 이름을 누르면 그날 전체가 선택됩니다'
+              : `${slotName(active, cfg)} 수업의 교체 방법`}
         </span>
       </div>
       <div className="grid-scroll">
@@ -69,7 +69,7 @@ export function Grid({
               <button
                 key={d}
                 className={`tt-head day-btn${todayIdx === di ? ' today' : ''}`}
-                title="그날 수업 전체를 결강으로 걸거나 풉니다"
+                title="그날 수업 전체 선택"
                 onClick={() => onToggleDay(di)}
               >
                 {d}
@@ -102,16 +102,16 @@ export function Grid({
       {teacherMode && (
         <div className="grid-legend">
           <span>
-            <i style={{ background: 'var(--warn)' }} /> 결강 지정
+            <i style={{ background: 'var(--warn)' }} /> 선택한 수업
           </span>
           <span>
-            <i style={{ background: 'var(--accent)' }} /> 옮겨 갈 자리
+            <i style={{ background: 'var(--accent)' }} /> 이동할 자리
           </span>
           <span>
-            <i style={{ background: 'var(--accent-soft)', outline: '1.5px dashed var(--accent)' }} /> 들어올 수업
+            <i style={{ background: 'var(--accent-soft)', outline: '1.5px dashed var(--accent)' }} /> 들어오는 수업
           </span>
           <span>
-            <i style={{ background: 'var(--surface-2)', outline: '1.5px dashed var(--muted)' }} /> 근무 불가 (빈 교시를 눌러 잠금)
+            <i style={{ background: 'var(--surface-2)', outline: '1.5px dashed var(--muted)' }} /> 수업 불가 시간
           </span>
         </div>
       )}
@@ -178,14 +178,14 @@ function Row({
               className={`cell empty${isLocked ? ' locked' : ''}${today}`}
               title={
                 isLocked
-                  ? '근무 불가로 잠긴 시간입니다. 누르면 풉니다'
-                  : '누르면 근무 불가 시간으로 잠급니다 (회의, 출장 등)'
+                  ? '수업 불가 시간입니다. 다시 누르면 해제됩니다'
+                  : '회의나 출장 등으로 수업이 불가능한 시간으로 지정합니다'
               }
               aria-label={`${slotName(s, cfg)} ${isLocked ? '근무 불가' : '공강'}`}
               aria-pressed={isLocked}
               onClick={() => onToggleLock(s)}
             >
-              {isLocked && <span className="lock-mark">잠금</span>}
+              {isLocked && <span className="lock-mark">불가</span>}
             </button>
           );
         }
@@ -194,7 +194,7 @@ function Row({
             <div key={s} className={`cell incoming${today}`} aria-label="이 시간에 들어올 수업">
               <span className="k">{incoming.from.teacher}</span>
               <span className="s">
-                {incoming.from.subject} 수업이 들어옵니다
+                {incoming.from.subject}
               </span>
             </div>
           );
@@ -215,7 +215,7 @@ function Row({
               <span className="k">{a.subject}</span>
               <span className="s">
                 {a.teacher}
-                {a.group && <span className="gmark">동시</span>}
+                {a.group && <span className="gmark">이동</span>}
               </span>
             </div>
           );
@@ -225,17 +225,17 @@ function Row({
             key={s}
             className={`${cls.join(' ')}${today}`}
             style={style}
-            title={a.group ? '분반, 동시수업 묶음' : undefined}
+            title={a.group ? '이동수업입니다. 묶음 전체가 함께 움직입니다' : undefined}
             aria-label={`${slotName(s, cfg)} ${a.klass} ${a.subject}`}
             aria-pressed={isActive || isQueued}
             onClick={() => onToggleSlot(s)}
           >
-            {isActive && <span className="badge-absent">결강</span>}
+            {isActive && <span className="badge-absent">선택</span>}
             {isQueued && <span className="badge-absent queued">대기</span>}
             <span className="k">{a.klass}</span>
             <span className="s">
               {a.subject}
-              {a.group && <span className="gmark">동시</span>}
+              {a.group && <span className="gmark">이동</span>}
             </span>
           </button>
         );
