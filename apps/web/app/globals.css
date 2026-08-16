@@ -314,6 +314,10 @@ button.cell.empty:hover { border-color: var(--muted); }
 .peers .btn { padding: 4px 12px; font-size: 12.5px; }
 /* 이미 묶여 있다는 안내는 경고가 아니다. 알아 두면 되는 사실이라 조용히 둔다. */
 .peers.undo { border-color: var(--line); background: var(--surface-2); }
+/* 학년 단위 안내. 자리마다 뜨는 알림이 아니라 배경 설명이라 조용히 둔다. */
+.peers.elective { border-color: var(--line); background: var(--surface-2); }
+.peers.elective p { margin: 0; color: var(--muted); }
+.peers.elective b { color: var(--ink); }
 .peers.undo p { color: var(--muted); }
 
 /* 토스트 */

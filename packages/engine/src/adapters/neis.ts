@@ -299,6 +299,59 @@ export interface TeacherConflict {
 }
 
 /**
+ * 학년별 과목 다양성. 선택과목 구간인지 가르는 데 쓴다.
+ *
+ * 실제 학교 셋(일반고 둘, 특목고 하나)의 나이스 자료를 받아 재어 보고 만들었다.
+ * 학년이 올라갈수록 한 학년에 동시에 열리는 과목 종수가 뚜렷하게 는다.
+ *
+ * | 학교 | 1학년 | 2학년 | 3학년 |
+ * |---|---|---|---|
+ * | 일반고 A | 1.0 | 1.4 | 2.0 |
+ * | 일반고 B | 1.1 | 1.8 | 2.1 |
+ * | 특목고 | 1.7 | 2.1 | 2.5 |
+ *
+ * 학급 수로 나눈 값이다. 공통과목만 도는 학년은 1.0 언저리이고
+ * 선택과목이 열리는 학년은 2.0을 넘는다. 고교학점제가 자료에 이렇게 보인다.
+ *
+ * 자리마다 "이동수업입니까"를 묻던 규칙은 같은 자료에서 판별력이 없었다.
+ * 학년과 무관하게 비슷한 수가 나와, 공통과목만 있는 1학년에서도 같은 빈도로 떴다.
+ * 반면 이 비율은 학년을 깨끗하게 가른다. 그래서 묻는 단위를 자리에서 학년으로 옮겼다.
+ */
+export interface GradeShape {
+  /** 학년. 학급 이름 맨 앞 숫자 */
+  grade: number;
+  klasses: number;
+  subjects: number;
+  /** 학급 수로 나눈 과목 종수 */
+  ratio: number;
+  /** 선택과목 구간으로 볼 만한지 */
+  elective: boolean;
+}
+
+/** 이 값을 넘으면 선택과목이 열리는 학년으로 본다. 실측에서 공통과목 학년은 1.1 이하였다. */
+export const ELECTIVE_RATIO = 1.5;
+
+export function gradeShapes(input: TimetableInput): GradeShape[] {
+  const klasses = new Map<number, Set<string>>();
+  const subjects = new Map<number, Set<string>>();
+  for (const a of input.assignments) {
+    const m = /\d+/.exec(a.klass);
+    if (!m) continue;
+    const g = Number(m[0]);
+    if (!Number.isFinite(g) || g < 1 || g > 12) continue;
+    (klasses.get(g) ?? klasses.set(g, new Set()).get(g)!).add(a.klass);
+    (subjects.get(g) ?? subjects.set(g, new Set()).get(g)!).add(a.subject);
+  }
+  const out: GradeShape[] = [];
+  for (const [g, ks] of klasses) {
+    const ss = subjects.get(g)?.size ?? 0;
+    const ratio = ks.size === 0 ? 0 : ss / ks.size;
+    out.push({ grade: g, klasses: ks.size, subjects: ss, ratio, elective: ratio >= ELECTIVE_RATIO });
+  }
+  return out.sort((a, b) => a.grade - b.grade);
+}
+
+/**
  * 이동수업으로 의심되는 자리를 찾는다. 아니면 빈 배열이다.
  *
  * 나이스 공개 자료에는 이동수업 표시가 없다. 그렇다고 "같은 교시에 같은 과목"만 보고

@@ -32,6 +32,7 @@ export function Panel({
   cover,
   hovered,
   peers,
+  electiveGrade,
   grouped,
   onGroup,
   onUngroup,
@@ -51,6 +52,8 @@ export function Panel({
   hovered: Candidate | null;
   /** 같은 교시에 같은 과목을 듣는 다른 학급. 이동수업일 수 있다 */
   peers: Assignment[];
+  /** 선택과목이 많은 학년이면 그 모양. 아니면 null */
+  electiveGrade: { grade: number; klasses: number; subjects: number } | null;
   /** 손으로 묶어 둔 자리인지. 자동으로 묶인 것은 풀 수 없다 */
   grouped: boolean;
   onGroup: () => void;
@@ -86,6 +89,16 @@ export function Panel({
           </button>
         )}
       </div>
+      {result && electiveGrade && (
+        <div className="peers elective" role="status">
+          <p>
+            {electiveGrade.grade}학년은 학급 {electiveGrade.klasses}개에 과목{' '}
+            {electiveGrade.subjects}종이 열립니다. <b>선택과목 구간</b>이라 수강 학생이 여러
+            학급에 흩어져 있고, 그런 수업은 통째로 옮길 자리를 찾기 어렵습니다. 교체가 안 되면
+            아래 보강을 보십시오.
+          </p>
+        </div>
+      )}
       {result && peers.length > 0 && (
         <div className="peers" role="status">
           <p>

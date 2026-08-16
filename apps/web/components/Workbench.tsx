@@ -5,6 +5,7 @@ import {
   coverCandidates,
   dayOf,
   recommend,
+  gradeShapes,
   groupCandidate,
   slotName,
   validate,
@@ -263,6 +264,19 @@ export function Workbench() {
    * 같은 교시에 같은 과목을 듣는 다른 학급.
    * 나이스 자료에는 이동수업 표시가 없어 도구가 가릴 수 없다. 알리고 선생님이 정하신다.
    */
+  /**
+   * 선택과목이 많은 학년인지. 실제 학교 셋을 재어 만든 기준이다.
+   * 공통과목만 도는 학년은 학급 수 대비 과목 종수가 1.0 언저리이고,
+   * 선택과목이 열리는 학년은 2.0을 넘는다.
+   */
+  const electiveGrade = useMemo(() => {
+    if (!input || !result) return null;
+    const m = /\d+/.exec(result.target.klass);
+    if (!m) return null;
+    const g = Number(m[0]);
+    return gradeShapes(input).find((x) => x.grade === g && x.elective) ?? null;
+  }, [input, result]);
+
   const peers = useMemo(() => {
     if (!input || !result) return [];
     const target = input.assignments.find(
@@ -908,6 +922,7 @@ export function Workbench() {
               cover={cover}
               hovered={hovered}
               peers={peers}
+              electiveGrade={electiveGrade}
               grouped={grouped}
               onGroup={onGroup}
               onUngroup={onUngroup}
