@@ -9,7 +9,7 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "test": "npm run test -w @timeswap/engine",
+    "test": "npm run test -w @timeswap/engine && npm run test -w web",
     "typecheck": "tsc -p packages/engine/tsconfig.json --noEmit && npm run typecheck -w web",
     "build": "npm run build -w web",
     "dev": "npm run dev -w web",

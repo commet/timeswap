@@ -300,6 +300,8 @@ button.cell.empty:hover { border-color: var(--muted); }
   color: var(--ink); font-size: 13.5px; line-height: 1.55;
 }
 .warn-bar b { color: var(--warn); }
+/* 급하지 않은 알림. 알아 두면 좋은 정도라 테두리만 남긴다. */
+.warn-bar.soft { border-color: var(--line); background: var(--surface-2); }
 
 .foot {
   padding: 14px 20px 22px; color: var(--muted); font-size: 12.5px;

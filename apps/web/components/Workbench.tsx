@@ -27,6 +27,7 @@ import {
   applyTheme,
   buildClosures,
   buildCoverPhrase,
+  calendarCoversThisWeek,
   buildFromNeis,
   buildNeisList,
   buildNotice,
@@ -131,11 +132,16 @@ export function Workbench() {
    * 시간표는 되풀이되는 한 주지만 학사일정은 날짜라 이번 주에 걸리는 것만 요일로 옮긴다.
    */
   const closures = useMemo(() => {
-    const events = loaded?.neis?.events;
-    if (!events || events.length === 0 || !base) return [];
+    const cal = loaded?.calendar;
+    if (!cal || cal.events.length === 0 || !base) return [];
+    if (!calendarCoversThisWeek(cal)) return [];
     const ks = [...new Set(base.assignments.map((a) => a.klass))];
-    return buildClosures(events, ks);
+    return buildClosures(cal.events, ks);
   }, [loaded, base]);
+
+  /** 학사일정을 받아 두긴 했는데 그 기간이 이번 주를 지나쳤다. 다시 받아야 한다. */
+  const staleCalendar =
+    loaded?.calendar !== undefined && !calendarCoversThisWeek(loaded.calendar);
 
   const input = useMemo(() => {
     if (!base) return null;
@@ -299,8 +305,14 @@ export function Workbench() {
   );
 
   const onNeisDone = useCallback(
-    (school: NeisSchool, rows: NeisRow[], events: NeisEvent[], map: TeacherMap) => {
-      const l = buildFromNeis(school, rows, events, map);
+    (
+      school: NeisSchool,
+      rows: NeisRow[],
+      events: NeisEvent[],
+      map: TeacherMap,
+      range: { from: string; to: string },
+    ) => {
+      const l = buildFromNeis(school, rows, events, map, range);
       if (l.input.assignments.length === 0) {
         show('담당 교사를 한 명 이상 입력해야 시간표를 만들 수 있습니다');
         return;
@@ -698,6 +710,13 @@ export function Workbench() {
           teacher={currentTeacher ?? ''}
           reason={reason}
         />
+      )}
+
+      {staleCalendar && !atHome && !needsPick && (
+        <div className="warn-bar soft" role="status">
+          받아 둔 학사일정이 이번 주를 지나쳤습니다. 휴업일을 걸러 내려면 나이스에서 시간표를 다시
+          불러오십시오.
+        </div>
       )}
 
       {noSave && (

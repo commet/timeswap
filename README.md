@@ -42,7 +42,9 @@ packages/engine   프레임워크에 매이지 않는 탐색 엔진 (TypeScript)
   src/adapters/neis.ts  나이스 개방 자료 해석과 변경 이력 복원
 apps/web          Next.js 정적 내보내기
   lib/brand.ts      제품 이름 한 곳
+  lib/app.ts        저장 형식, 학사일정 변환, 문구 생성
   lib/neis.ts       나이스 개방 포털 클라이언트
+  test/             lib 아래 순수 함수 시험
 scripts           검사 도구
   check-config.mjs  배포 설정이 서로 어긋났는지
   serve-checked.mjs 배포와 같은 응답 헤더로 띄우기
@@ -65,7 +67,7 @@ scripts           검사 도구
 npm ci              # 잠금 파일 그대로 설치
 npm run check       # 배포 설정이 서로 맞는지
 npm run typecheck   # 엔진과 웹 앱 타입 검사
-npm test            # 엔진 시험 70개
+npm test            # 엔진 70개, 웹 lib 17개
 npm run build       # 웹 정적 빌드 (결과는 apps/web/out)
 npm run demo        # 엔진 CLI 데모
 ```

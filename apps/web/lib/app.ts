@@ -266,10 +266,23 @@ export const SYNTH_MARK = 'pumasi:sample:v1';
 
 export type SourceKind = '샘플' | '나이스' | '파일';
 
+/** 받아 둔 학사일정과 그 기간. 저장 파일에도 남겨 새로고침해도 살아남는다. */
+export interface Calendar {
+  /** "20260713" */
+  from: string;
+  to: string;
+  events: NeisEvent[];
+}
+
 export interface Loaded {
   schoolName: string;
   input: TimetableInput;
   source: SourceKind;
+  /**
+   * 학사일정. 휴업일을 탐색에서 빼는 데 쓴다.
+   * neis 안에 두지 않고 따로 두는 이유는 저장 파일에서 되살려야 하기 때문이다.
+   */
+  calendar?: Calendar;
   /** 나이스에서 불러온 경우의 부가 정보 */
   neis?: {
     school: NeisSchool;
@@ -278,19 +291,25 @@ export interface Loaded {
   };
 }
 
-/** 우리 저장 형식. 다른 도구에 매이지 않도록 필요한 것만 담는다. */
+/**
+ * 우리 저장 형식. 다른 도구에 매이지 않도록 필요한 것만 담는다.
+ *
+ * 판 2에서 학사일정을 넣었다. 넣기 전에는 새로고침 한 번에 휴업일이 사라져
+ * 쉬는 날로 옮기라는 추천이 조용히 되살아났다. 판 1 파일도 그대로 열린다.
+ */
 export interface PumasiFile {
   format: 'pumasi.timetable';
-  version: 1;
+  version: 1 | 2;
   school: string;
   config: ScheduleConfig;
   lessons: Array<{ teacher: string; klass: string; subject: string; slot: number; group?: string }>;
+  calendar?: Calendar;
 }
 
 export function toFile(loaded: Loaded): string {
   const doc: PumasiFile = {
     format: 'pumasi.timetable',
-    version: 1,
+    version: 2,
     school: loaded.schoolName,
     config: loaded.input.config,
     lessons: loaded.input.assignments.map((a) => ({
@@ -300,6 +319,7 @@ export function toFile(loaded: Loaded): string {
       slot: a.slot,
       ...(a.group ? { group: a.group } : {}),
     })),
+    ...(loaded.calendar ? { calendar: loaded.calendar } : {}),
   };
   return JSON.stringify(doc, null, 1);
 }
@@ -313,7 +333,22 @@ export function fromFile(raw: string): Loaded {
     schoolName: doc.school || '이름 없는 학교',
     source: '파일',
     input: { config: doc.config, assignments: doc.lessons },
+    ...(doc.calendar ? { calendar: doc.calendar } : {}),
   };
+}
+
+/**
+ * 받아 둔 학사일정이 지금 다루는 주를 덮는지 본다.
+ *
+ * 나이스에서 5주치를 받아 두는데, 몇 주 뒤에 다시 열면 그 기간이 이번 주를 지나쳐 있다.
+ * 그러면 휴업일이 없어서 안 걸리는 것인지 자료가 낡아서 안 걸리는 것인지 구분이 안 된다.
+ * 화면에서 다시 불러오라고 말해 주려고 이 판정을 둔다.
+ */
+export function calendarCoversThisWeek(cal: Calendar | undefined, monday = weekMondayOf()): boolean {
+  if (!cal) return false;
+  const friday = new Date(monday);
+  friday.setDate(friday.getDate() + 4);
+  return cal.from <= ymd(monday) && ymd(friday) <= cal.to;
 }
 
 export function sampleSchool(): Loaded {
@@ -338,6 +373,7 @@ export function buildFromNeis(
   rows: NeisRow[],
   events: NeisEvent[],
   map: TeacherMap,
+  range?: { from: string; to: string },
 ): Loaded {
   const report = fromNeis(rows);
   const input = neisToTimetable(report, (klass, subject) => map[mapKey(klass, subject)]);
@@ -345,6 +381,7 @@ export function buildFromNeis(
     schoolName: school.name,
     source: '나이스',
     input,
+    ...(range ? { calendar: { from: range.from, to: range.to, events } } : {}),
     neis: { school, report, events },
   };
 }
