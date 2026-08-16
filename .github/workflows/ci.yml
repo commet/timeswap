@@ -50,6 +50,8 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: 전 과정 점검
+        # 배포와 같은 응답 헤더를 씌워 띄운다.
+        # 헤더 없이 점검하면 CSP 가 자원을 막는지 여기서 못 잡는다.
         run: |
           npm run serve &
           for i in $(seq 1 30); do
