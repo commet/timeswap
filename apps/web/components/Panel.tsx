@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import {
   slotName,
+  type Assignment,
   type Candidate,
   type CoverCandidate,
   type RecommendResult,
@@ -30,6 +31,10 @@ export function Panel({
   queueLen,
   cover,
   hovered,
+  peers,
+  grouped,
+  onGroup,
+  onUngroup,
   onHover,
   onCopy,
   onCopyCover,
@@ -43,6 +48,12 @@ export function Panel({
   /** 교환이 없을 때 보여줄 보강 후보 */
   cover: CoverCandidate[] | null;
   hovered: Candidate | null;
+  /** 같은 교시에 같은 과목을 듣는 다른 학급. 이동수업일 수 있다 */
+  peers: Assignment[];
+  /** 손으로 묶어 둔 자리인지. 자동으로 묶인 것은 풀 수 없다 */
+  grouped: boolean;
+  onGroup: () => void;
+  onUngroup: () => void;
   onHover: (c: Candidate | null) => void;
   onCopy: (c: Candidate) => void;
   onCopyCover: (teacher: string) => void;
@@ -73,6 +84,25 @@ export function Panel({
           </button>
         )}
       </div>
+      {result && peers.length > 0 && (
+        <div className="peers" role="status">
+          <p>
+            같은 교시에 <b>{peers.map((a) => a.klass).join(', ')}</b>도 {result.target.subject}{' '}
+            수업입니다. 이동수업이라면 함께 움직여야 하므로 묶어 주십시오.
+          </p>
+          <button className="btn" onClick={onGroup}>
+            이동수업으로 묶기
+          </button>
+        </div>
+      )}
+      {result && grouped && (
+        <div className="peers undo" role="status">
+          <p>이 수업은 이동수업으로 묶여 있어 같은 묶음이 함께 움직입니다.</p>
+          <button className="btn" onClick={onUngroup}>
+            묶음 해제
+          </button>
+        </div>
+      )}
       {!result ? (
         <div className="panel-empty">
           왼쪽 시간표에서 <b>비울 수업</b>을 누르십시오.

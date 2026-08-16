@@ -195,10 +195,24 @@ export function fromNeis(rows: NeisRow[]): NeisReport {
   }
 
   const maxPeriod = cells.reduce((m, c) => Math.max(m, c.period + 1), 0);
+
+  // 요일별 교시 수. 여러 주, 모든 학급을 훑어 그 요일에 실제로 쓰인 마지막 교시를 잡는다.
+  // 학급 수십 개를 몇 주에 걸쳐 본 결과라 "아무도 안 쓴 교시"는 그 요일에 없는 교시로 봐도 된다.
+  // 학급 한둘짜리 자료였다면 그저 비어 있는 칸과 가릴 수 없지만, 학교 전체 자료라 가릴 수 있다.
+  const lastPeriodOfDay = new Array<number>(5).fill(0);
+  for (const c of cells) {
+    if (c.kind !== '수업') continue;
+    if (c.day < 0 || c.day >= 5) continue;
+    if (c.period + 1 > (lastPeriodOfDay[c.day] ?? 0)) lastPeriodOfDay[c.day] = c.period + 1;
+  }
   const config: ScheduleConfig = {
     days: 5,
     periods: Math.max(maxPeriod, 1),
     dayNames: ['월', '화', '수', '목', '금'],
+    // 요일마다 다를 때만 넣는다. 다 같으면 굳이 실어 보낼 값이 아니다.
+    ...(new Set(lastPeriodOfDay).size > 1 && lastPeriodOfDay.every((n) => n > 0)
+      ? { periodsPerDay: lastPeriodOfDay }
+      : {}),
   };
 
   return {
@@ -221,7 +235,7 @@ export function fromNeis(rows: NeisRow[]): NeisReport {
 export function neisToTimetable(
   report: NeisReport,
   teacherOf: (klass: string, subject: string) => string | undefined,
-): TimetableInput {
+): TimetableInput & { conflicts: TeacherConflict[] } {
   const assignments: Assignment[] = [];
   for (const [key, subject] of report.base) {
     const [klass, dayStr, periodStr] = key.split('|');
@@ -236,5 +250,89 @@ export function neisToTimetable(
     });
   }
   assignments.sort((a, b) => a.slot - b.slot || a.klass.localeCompare(b.klass, 'ko'));
-  return { config: report.config, assignments };
+
+  // 한 사람이 같은 교시에 두 학급에 들어갈 수는 없다.
+  // 그런 배정이 나왔다면 그 수업들은 실제로 한 몸이다. 합반이거나 이동수업이다.
+  // 짐작이 아니라 물리적으로 그럴 수밖에 없는 경우라 여기서 묶어 준다.
+  // 묶지 않으면 한 학급만 떼어 옮기는, 현실에서 불가능한 안이 추천에 오른다.
+  // 다만 과목까지 같을 때만 묶는다. 같은 이름이 같은 교시에 서로 다른 과목을 맡고 있다면
+  // 그건 합반이 아니라 동명이인이거나 배정이 잘못된 것이다. 묶어 버리면 두 사람의 수업이
+  // 한 몸으로 움직이는 엉뚱한 안이 나온다. 그런 자리는 묶지 않고 conflicts 로 넘겨 알린다.
+  const bySlotTeacher = new Map<string, Assignment[]>();
+  for (const a of assignments) {
+    const k = `${a.teacher}|${a.slot}`;
+    const list = bySlotTeacher.get(k);
+    if (list) list.push(a);
+    else bySlotTeacher.set(k, [a]);
+  }
+  const conflicts: TeacherConflict[] = [];
+  for (const [k, list] of bySlotTeacher) {
+    if (list.length < 2) continue;
+    const subjects = [...new Set(list.map((a) => a.subject))];
+    if (subjects.length === 1) {
+      for (const a of list) a.group = `동시:${k}`;
+    } else {
+      conflicts.push({
+        teacher: list[0]!.teacher,
+        slot: list[0]!.slot,
+        subjects: subjects.sort((x, y) => x.localeCompare(y, 'ko')),
+        klasses: list.map((a) => a.klass).sort((x, y) => x.localeCompare(y, 'ko', { numeric: true })),
+      });
+    }
+  }
+
+  return { config: report.config, assignments, conflicts };
+}
+
+/**
+ * 한 이름이 같은 교시에 서로 다른 과목을 맡고 있는 자리.
+ *
+ * 대개 동명이인이다. 학교에 김영희 선생님이 두 분이면 교사 배정에서 같은 이름으로 들어오고,
+ * 도구는 한 사람이 같은 시간에 두 곳에 있는 시간표로 읽는다.
+ * 이름 말고는 사람을 가릴 열쇠가 없어 도구가 풀 수 없다. 알리고 구분을 부탁한다.
+ */
+export interface TeacherConflict {
+  teacher: string;
+  slot: number;
+  subjects: string[];
+  klasses: string[];
+}
+
+/**
+ * 이동수업으로 의심되는 자리를 찾는다. 아니면 빈 배열이다.
+ *
+ * 나이스 공개 자료에는 이동수업 표시가 없다. 그렇다고 "같은 교시에 같은 과목"만 보고
+ * 알리면 하루에도 수십 번 뜬다. 1학년 여섯 반이 1교시에 다 같이 국어를 듣는 일은
+ * 이동수업이 아니라 그냥 흔한 편성이다. 그렇게 자주 뜨는 알림은 곧 무시당한다.
+ *
+ * 그래서 한 가지를 더 본다. **짝이 늘 같은가**이다.
+ * 이동수업이면 같은 학급 무리가 그 과목 시간마다 통째로 함께 움직인다.
+ * 우연히 겹친 것이면 다른 교시에서는 짝이 달라진다.
+ * 그 과목이 걸린 모든 교시에서 학급 구성이 똑같을 때만 알린다.
+ *
+ * 이래도 단정은 아니다. 그래서 묶지 않고 여쭙기만 한다. 아는 사람은 선생님이다.
+ */
+export function groupCandidate(
+  input: TimetableInput,
+  slot: number,
+  subject: string,
+  klass: string,
+): Assignment[] {
+  const here = input.assignments.filter((a) => a.slot === slot && a.subject === subject);
+  if (here.length < 2 || here.some((a) => a.group !== undefined)) return [];
+  const mine = new Set(here.map((a) => a.klass));
+  if (!mine.has(klass)) return [];
+
+  // 이 학급들이 이 과목을 듣는 모든 교시를 모은다.
+  const slots = new Set(
+    input.assignments.filter((a) => a.subject === subject && mine.has(a.klass)).map((a) => a.slot),
+  );
+  for (const s of slots) {
+    const there = input.assignments.filter((a) => a.slot === s && a.subject === subject);
+    const set = new Set(there.map((a) => a.klass));
+    // 한 교시라도 학급 구성이 다르면 늘 붙어 다니는 무리가 아니다.
+    if (set.size !== mine.size) return [];
+    for (const k of mine) if (!set.has(k)) return [];
+  }
+  return here.filter((a) => a.klass !== klass);
 }

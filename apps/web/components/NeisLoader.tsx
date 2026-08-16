@@ -11,9 +11,10 @@ import {
   type NeisEvent,
   type NeisSchool,
 } from '../lib/neis';
-import { mapKey, type TeacherMap } from '../lib/app';
+import { gradeOf, mapKey, normalizeName, sameGradeSubject, type TeacherMap } from '../lib/app';
 
 type Stage = '검색' | '배정';
+
 
 interface Props {
   neisKey: string;
@@ -251,25 +252,43 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
             <h3>{klass}</h3>
             {list.map((p) => {
               const k = mapKey(p.klass, p.subject);
+              const name = map[k] ?? '';
+              const spread = name ? sameGradeSubject(pairs, map, p.klass, p.subject) : [];
               return (
-                <label key={k} className="map-row">
+                <div key={k} className="map-row">
                   <span className="map-subject">{p.subject}</span>
                   <input
                     className="input"
                     list="known-teachers"
                     placeholder="교사 이름"
-                    value={map[k] ?? ''}
+                    aria-label={`${p.klass} ${p.subject} 담당 교사`}
+                    value={name}
                     onChange={(e) => {
-                      const v = e.target.value;
+                      const v = normalizeName(e.target.value);
                       setMap((m) => {
                         const next = { ...m };
-                        if (v.trim()) next[k] = v.trim();
+                        if (v) next[k] = v;
                         else delete next[k];
                         return next;
                       });
                     }}
                   />
-                </label>
+                  {spread.length > 0 && (
+                    <button
+                      className="btn map-spread"
+                      title="같은 학년의 같은 과목에 이 이름을 한 번에 채웁니다"
+                      onClick={() => {
+                        setMap((m) => {
+                          const next = { ...m };
+                          for (const q of spread) next[mapKey(q.klass, q.subject)] = name;
+                          return next;
+                        });
+                      }}
+                    >
+                      같은 학년 {spread.length}곳에도
+                    </button>
+                  )}
+                </div>
               );
             })}
           </section>

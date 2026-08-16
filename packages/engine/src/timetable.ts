@@ -135,14 +135,26 @@ export function totalHoles(input: TimetableInput): number {
   return sum;
 }
 
+/**
+ * 수업 한 개를 가리키는 열쇠.
+ *
+ * 교사와 교시만으로는 모자란다. 같은 이름이 같은 교시에 두 학급을 맡은 자리가 실제로 있고
+ * (합반이거나 동명이인이다) 그때 교사와 교시로만 찾으면 계획에 없던 수업까지 함께 옮겨진다.
+ * 학급과 과목까지 넣어야 한 개를 정확히 가리킨다.
+ *
+ * 물체 자체를 비교하지 않는 이유는 저장했다 열면 다른 물체가 되기 때문이다.
+ * 반영 장부는 브라우저에 글로 저장되므로 값으로 찾아야 한다.
+ */
+const cellKey = (a: Assignment): string => `${a.teacher}|${a.klass}|${a.subject}|${a.slot}`;
+
 /** 변경 목록을 적용한 새 시간표를 돌려준다. 원본은 건드리지 않는다. */
 export function applyChanges(input: TimetableInput, changes: Change[]): TimetableInput {
   const moved = new Map<string, number>();
-  for (const c of changes) moved.set(tsKey(c.from.teacher, c.from.slot), c.toSlot);
+  for (const c of changes) moved.set(cellKey(c.from), c.toSlot);
   return {
     ...input,
     assignments: input.assignments.map((a) => {
-      const to = moved.get(tsKey(a.teacher, a.slot));
+      const to = moved.get(cellKey(a));
       return to === undefined ? a : { ...a, slot: to };
     }),
   };

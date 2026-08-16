@@ -5,6 +5,7 @@ import {
   coverCandidates,
   dayOf,
   recommend,
+  groupCandidate,
   slotName,
   validate,
   type Candidate,
@@ -37,12 +38,14 @@ import {
   fromFile,
   loadEntries,
   loadNeisKey,
+  loadOffDays,
   loadRaw,
   loadTheme,
   loadUnavail,
   sampleSchool,
   saveEntries,
   saveNeisKey,
+  saveOffDays,
   saveRaw,
   saveUnavail,
   REASON_KEY,
@@ -91,6 +94,8 @@ export function Workbench() {
   const [klass, setKlass] = useState<string | null>(null);
   const [queue, setQueue] = useState<number[]>([]);
   const [unavail, setUnavail] = useState<Record<string, number[]>>({});
+  /** 손으로 지정한 수업 없는 요일. 학사일정에 안 잡히는 정기고사와 학교 행사를 위한 것이다 */
+  const [offDays, setOffDays] = useState<number[]>([]);
   const [hovered, setHovered] = useState<Candidate | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   /**
@@ -120,6 +125,7 @@ export function Workbench() {
       }
     }
     setNeisKey(loadNeisKey());
+    setOffDays(loadOffDays());
     setTheme(loadTheme());
     const wd = new Date().getDay(); // 일 0, 월 1
     setTodayIdx(wd >= 1 && wd <= 5 ? wd - 1 : null);
@@ -132,12 +138,13 @@ export function Workbench() {
    * 시간표는 되풀이되는 한 주지만 학사일정은 날짜라 이번 주에 걸리는 것만 요일로 옮긴다.
    */
   const closures = useMemo(() => {
+    const own = offDays.map((day) => ({ day, reason: '수업 없는 날로 지정됨' }));
     const cal = loaded?.calendar;
-    if (!cal || cal.events.length === 0 || !base) return [];
-    if (!calendarCoversThisWeek(cal)) return [];
+    if (!cal || cal.events.length === 0 || !base || !calendarCoversThisWeek(cal)) return own;
     const ks = [...new Set(base.assignments.map((a) => a.klass))];
-    return buildClosures(cal.events, ks);
-  }, [loaded, base]);
+    // 손으로 지정한 것이 학사일정보다 뒤에 온다. 앞의 것이 이기므로 학사일정 사유가 남는다.
+    return [...buildClosures(cal.events, ks), ...own];
+  }, [loaded, base, offDays]);
 
   /** 학사일정을 받아 두긴 했는데 그 기간이 이번 주를 지나쳤다. 다시 받아야 한다. */
   const staleCalendar =
@@ -231,6 +238,94 @@ export function Workbench() {
     },
     [show],
   );
+
+  /**
+   * 같은 교시에 같은 과목을 듣는 다른 학급.
+   * 나이스 자료에는 이동수업 표시가 없어 도구가 가릴 수 없다. 알리고 선생님이 정하신다.
+   */
+  const peers = useMemo(() => {
+    if (!input || !result) return [];
+    const target = input.assignments.find(
+      (a) => a.slot === result.target.slot && a.klass === result.target.klass,
+    );
+    if (!target || target.group) return [];
+    return groupCandidate(
+      input,
+      result.target.slot,
+      result.target.subject,
+      result.target.klass,
+    );
+  }, [input, result]);
+
+  /**
+   * 대상 수업과 같은 교시 같은 과목을 한 묶음으로 표시한다.
+   * 표시는 저장 파일에도 남아 다음에 열 때까지 이어진다.
+   */
+  const onGroup = useCallback(() => {
+    if (!loaded || !input || !result) return;
+    const { slot, subject } = result.target;
+    const id = `이동:${subject}:${slot}`;
+    // 교시로 찾되 지금 화면(반영이 얹힌 시간표)에서 찾는다.
+    // 저장하는 곳은 원본이고, 이미 반영한 변경 때문에 두 곳의 교시가 다를 수 있다.
+    // 그래서 화면에서 고른 수업을 교사, 학급, 과목으로 원본에서 다시 찾는다.
+    const picked = new Set(
+      input.assignments
+        .filter((a) => a.slot === slot && a.subject === subject && a.group === undefined)
+        .map((a) => `${a.teacher}|${a.klass}|${a.subject}`),
+    );
+    if (picked.size === 0) return;
+    const next: Loaded = {
+      ...loaded,
+      input: {
+        ...loaded.input,
+        assignments: loaded.input.assignments.map((a) =>
+          picked.has(`${a.teacher}|${a.klass}|${a.subject}`) && a.group === undefined
+            ? { ...a, group: id }
+            : a,
+        ),
+      },
+    };
+    setLoaded(next);
+    if (!saveRaw(toFile(next))) setNoSave(true);
+    setHovered(null);
+    const n = next.input.assignments.filter((a) => a.group === id).length;
+    show(`${subject} 수업 ${n}개를 한 묶음으로 표시했습니다. 이제 함께 움직입니다`);
+  }, [loaded, input, result, show]);
+
+  /** 손으로 묶어 둔 자리인지. "동시:" 로 시작하는 자동 묶음은 물리적으로 필요해 풀 수 없다. */
+  const grouped = useMemo(() => {
+    if (!input || !result) return false;
+    const target = input.assignments.find(
+      (a) => a.slot === result.target.slot && a.klass === result.target.klass,
+    );
+    return target?.group?.startsWith('이동:') === true;
+  }, [input, result]);
+
+  const onUngroup = useCallback(() => {
+    if (!loaded || !input || !result) return;
+    // 묶음 이름은 화면에서 읽는다. 원본과 교시가 다를 수 있기 때문이다.
+    const shown = input.assignments.find(
+      (a) => a.slot === result.target.slot && a.klass === result.target.klass,
+    );
+    const id = shown?.group;
+    if (id === undefined || !id.startsWith('이동:')) return;
+    const next: Loaded = {
+      ...loaded,
+      input: {
+        ...loaded.input,
+        assignments: loaded.input.assignments.map((a) => {
+          if (a.group !== id) return a;
+          const { group, ...rest } = a;
+          void group;
+          return rest;
+        }),
+      },
+    };
+    setLoaded(next);
+    if (!saveRaw(toFile(next))) setNoSave(true);
+    setHovered(null);
+    show('묶음을 해제했습니다. 이제 따로 움직입니다');
+  }, [loaded, input, result, show]);
 
   const cycleTheme = useCallback(() => {
     setTheme((cur) => {
@@ -388,6 +483,76 @@ export function Workbench() {
     },
     [currentTeacher],
   );
+
+  const onToggleOffDay = useCallback((d: number) => {
+    setHovered(null);
+    setOffDays((cur) => {
+      const next = cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d].sort((a, b) => a - b);
+      saveOffDays(next);
+      return next;
+    });
+  }, []);
+
+  /**
+   * 그 교사가 학교에 오지 않는 요일을 통째로 잠근다.
+   *
+   * 시간강사는 정해진 요일에만 오고, 육아시간이나 연구년도 근무 요일이 갈린다.
+   * 빈 칸을 하나씩 눌러 잠글 수는 있지만 하루 일곱 교시면 스물한 번을 눌러야 한다.
+   * 요일 하나로 끝내는 편이 실제로 쓰인다.
+   */
+  const onToggleMyOffDay = useCallback(
+    (d: number) => {
+      if (!input || currentTeacher === null) return;
+      setHovered(null);
+      const cfg = input.config;
+      // 이미 수업이 있는 칸은 잠그지 않는다. 잠그면 그 교사가 자기 수업 시간에
+      // 근무할 수 없다는 모순이 되어 불변식 검사가 모든 반영을 되돌린다.
+      const busy = new Set(
+        input.assignments.filter((a) => a.teacher === currentTeacher).map((a) => a.slot),
+      );
+      const daySlots = Array.from({ length: cfg.periods }, (_, p) => d * cfg.periods + p).filter(
+        (sl) => !busy.has(sl),
+      );
+      if (daySlots.length === 0) return;
+      setUnavail((u) => {
+        const cur = new Set(u[currentTeacher] ?? []);
+        const allLocked = daySlots.every((s) => cur.has(s));
+        for (const s of daySlots) {
+          if (allLocked) cur.delete(s);
+          else cur.add(s);
+        }
+        const next: Record<string, number[]> = { ...u };
+        if (cur.size === 0) delete next[currentTeacher];
+        else next[currentTeacher] = [...cur].sort((x, y) => x - y);
+        saveUnavail(next);
+        return next;
+      });
+    },
+    [input, currentTeacher],
+  );
+
+  /** 그 교사가 빈 시간을 통째로 잠가 둔 요일 */
+  const myOffDays = useMemo(() => {
+    if (!input || currentTeacher === null) return [];
+    const cfg = input.config;
+    const locked = new Set(unavail[currentTeacher] ?? []);
+    const busy = new Set(
+      input.assignments.filter((a) => a.teacher === currentTeacher).map((a) => a.slot),
+    );
+    const out: number[] = [];
+    for (let d = 0; d < cfg.days; d++) {
+      let free = 0;
+      let all = true;
+      for (let p = 0; p < cfg.periods; p++) {
+        const sl = d * cfg.periods + p;
+        if (busy.has(sl)) continue;
+        free++;
+        if (!locked.has(sl)) all = false;
+      }
+      if (free > 0 && all) out.push(d);
+    }
+    return out;
+  }, [input, currentTeacher, unavail]);
 
   const onSkip = useCallback(() => {
     setHovered(null);
@@ -672,6 +837,10 @@ export function Workbench() {
             onToggleSlot={onToggleSlot}
             onToggleDay={onToggleDay}
             onToggleLock={onToggleLock}
+            offDays={offDays}
+            onToggleOffDay={onToggleOffDay}
+            myOffDays={myOffDays}
+            onToggleMyOffDay={onToggleMyOffDay}
           />
           <div className="side" ref={sideRef}>
             <Panel
@@ -680,6 +849,10 @@ export function Workbench() {
               queueLen={queue.length}
               cover={cover}
               hovered={hovered}
+              peers={peers}
+              grouped={grouped}
+              onGroup={onGroup}
+              onUngroup={onUngroup}
               onHover={setHovered}
               onCopy={onCopy}
               onCopyCover={onCopyCover}
@@ -710,6 +883,21 @@ export function Workbench() {
           teacher={currentTeacher ?? ''}
           reason={reason}
         />
+      )}
+
+      {loaded?.conflicts && loaded.conflicts.length > 0 && !atHome && !needsPick && input && (
+        <div className="warn-bar" role="alert">
+          <b>같은 이름이 같은 교시에 두 과목을 맡고 있습니다.</b>{' '}
+          {loaded.conflicts
+            .slice(0, 3)
+            .map(
+              (c) =>
+                `${c.teacher} 선생님 ${slotName(c.slot, input.config)} (${c.subjects.join(', ')})`,
+            )
+            .join(', ')}
+          {loaded.conflicts.length > 3 ? ` 외 ${loaded.conflicts.length - 3}건` : ''}. 동명이인이라면
+          교사 배정에서 이름을 구분해 다시 불러오십시오. 그대로 두면 그 자리의 추천이 어긋납니다.
+        </div>
       )}
 
       {staleCalendar && !atHome && !needsPick && (

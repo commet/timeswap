@@ -9,6 +9,7 @@ import {
   type NeisReport,
   type DayClosure,
   type NeisRow,
+  type TeacherConflict,
   type ScheduleConfig,
   type TimetableInput,
 } from '@timeswap/engine';
@@ -21,6 +22,7 @@ export const CHANGES_KEY = 'timeswap:v0:changes';
 export const UNAVAIL_KEY = 'timeswap:v0:unavail';
 export const THEME_KEY = 'timeswap:v0:theme';
 export const REASON_KEY = 'timeswap:v0:reason';
+export const OFFDAY_KEY = 'timeswap:v0:offdays';
 export const NEIS_KEY_STORE = 'timeswap:v0:neiskey';
 
 export type ThemeMode = 'auto' | 'light' | 'dark';
@@ -139,6 +141,33 @@ export function weekMondayOf(today = new Date()): Date {
   return d;
 }
 
+/**
+ * 학급 이름에서 학년을 뽑는다.
+ *
+ * 나이스에서 오면 "1-1" 꼴이지만 학교가 내보낸 파일은 제각각이다.
+ * "1학년 1반", "1-01", "3학년11반" 이 다 나온다. 맨 앞 숫자를 학년으로 본다.
+ * 못 읽으면 null 이다. 짐작해서 엉뚱한 학년에 휴업일을 거는 것보다 안 거는 편이 낫다.
+ */
+export function gradeOf(klass: string): number | null {
+  const m = /\d+/.exec(klass);
+  if (!m) return null;
+  const n = Number(m[0]);
+  return Number.isFinite(n) && n >= 1 && n <= 12 ? n : null;
+}
+
+/**
+ * 사람이 친 이름을 다듬는다.
+ *
+ * "김영희", "김영희 ", "김 영희" 가 각각 다른 교사로 잡히면 시간표가 조각난다.
+ * 앞뒤 공백을 떼고 가운데 공백을 하나로 줄인다. 이름 안의 띄어쓰기는 없앤다.
+ * 한글 이름에서 "김 영희"와 "김영희"는 같은 사람이다.
+ */
+export function normalizeName(raw: string): string {
+  const t = raw.trim().replace(/\s+/g, ' ');
+  // 한글로만 이루어진 이름이면 띄어쓰기를 없앤다. 영문 이름은 띄어쓰기가 뜻을 가지므로 둔다.
+  return /^[가-힣\s]+$/.test(t) ? t.replace(/\s/g, '') : t;
+}
+
 const ymd = (d: Date): string =>
   `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 
@@ -180,7 +209,10 @@ export function buildClosures(
   for (const [day, { reason, grades }] of found) {
     if (grades === null) out.push({ day, reason });
     else {
-      const hit = klasses.filter((k) => grades.has(Number(k.split('-')[0])));
+      const hit = klasses.filter((k) => {
+        const g = gradeOf(k);
+        return g !== null && grades.has(g);
+      });
       if (hit.length > 0) out.push({ day, reason, klasses: hit });
     }
   }
@@ -283,6 +315,8 @@ export interface Loaded {
    * neis 안에 두지 않고 따로 두는 이유는 저장 파일에서 되살려야 하기 때문이다.
    */
   calendar?: Calendar;
+  /** 한 이름이 같은 교시에 다른 과목을 맡은 자리. 대개 동명이인이다 */
+  conflicts?: TeacherConflict[];
   /** 나이스에서 불러온 경우의 부가 정보 */
   neis?: {
     school: NeisSchool;
@@ -325,14 +359,52 @@ export function toFile(loaded: Loaded): string {
 }
 
 export function fromFile(raw: string): Loaded {
-  const doc = JSON.parse(raw) as PumasiFile;
+  let doc: PumasiFile;
+  try {
+    doc = JSON.parse(raw) as PumasiFile;
+  } catch {
+    throw new Error('파일이 깨졌거나 시간표 파일이 아닙니다. 저장한 파일을 그대로 열어 주십시오.');
+  }
   if (!doc || doc.format !== 'pumasi.timetable' || !Array.isArray(doc.lessons)) {
     throw new Error(`${BRAND}에서 저장한 파일이 아닙니다. 저장한 파일을 그대로 열어 주십시오.`);
+  }
+  const cfg = doc.config;
+  if (
+    !cfg ||
+    !Number.isInteger(cfg.days) ||
+    !Number.isInteger(cfg.periods) ||
+    cfg.days < 1 ||
+    cfg.periods < 1 ||
+    !Array.isArray(cfg.dayNames) ||
+    cfg.dayNames.length < cfg.days
+  ) {
+    throw new Error('파일의 시간표 틀이 올바르지 않습니다. 다시 내보내 주십시오.');
+  }
+  // 칸 밖으로 나간 수업이 있으면 격자를 그릴 때 조용히 사라진다. 여기서 막는다.
+  const size = cfg.days * cfg.periods;
+  const bad = doc.lessons.filter(
+    (l) =>
+      !l ||
+      typeof l.teacher !== 'string' ||
+      typeof l.klass !== 'string' ||
+      typeof l.subject !== 'string' ||
+      !Number.isInteger(l.slot) ||
+      l.slot < 0 ||
+      l.slot >= size,
+  );
+  if (bad.length > 0) {
+    throw new Error(
+      `수업 ${bad.length}개가 시간표 칸을 벗어났거나 항목이 비어 있습니다. 파일을 다시 내보내 주십시오.`,
+    );
   }
   return {
     schoolName: doc.school || '이름 없는 학교',
     source: '파일',
-    input: { config: doc.config, assignments: doc.lessons },
+    input: {
+      config: cfg,
+      // 파일마다 이름 표기가 흔들린다. 여기서 한 번 다듬어야 같은 사람이 한 사람으로 잡힌다.
+      assignments: doc.lessons.map((l) => ({ ...l, teacher: normalizeName(l.teacher) })),
+    },
     ...(doc.calendar ? { calendar: doc.calendar } : {}),
   };
 }
@@ -376,14 +448,42 @@ export function buildFromNeis(
   range?: { from: string; to: string },
 ): Loaded {
   const report = fromNeis(rows);
-  const input = neisToTimetable(report, (klass, subject) => map[mapKey(klass, subject)]);
+  const { conflicts, ...input } = neisToTimetable(
+    report,
+    (klass, subject) => map[mapKey(klass, subject)],
+  );
   return {
     schoolName: school.name,
     source: '나이스',
     input,
+    ...(conflicts.length > 0 ? { conflicts } : {}),
     ...(range ? { calendar: { from: range.from, to: range.to, events } } : {}),
     neis: { school, report, events },
   };
+}
+
+/**
+ * 같은 학년에서 같은 과목인데 아직 안 채운 자리.
+ *
+ * 한 학교의 (학급, 과목) 짝은 수백 개다. 손으로 다 채우게 두면 아무도 끝까지 못 간다.
+ * 그런데 실제로는 한 교사가 같은 학년 여러 반의 같은 과목을 맡는 경우가 대부분이다.
+ * 한 곳을 채우면 나머지를 한 번에 채울 수 있게 한다.
+ */
+export function sameGradeSubject(
+  pairs: Array<{ klass: string; subject: string }>,
+  map: TeacherMap,
+  klass: string,
+  subject: string,
+): Array<{ klass: string; subject: string }> {
+  const g = gradeOf(klass);
+  if (g === null) return [];
+  return pairs.filter(
+    (p) =>
+      p.subject === subject &&
+      p.klass !== klass &&
+      gradeOf(p.klass) === g &&
+      !map[mapKey(p.klass, p.subject)],
+  );
 }
 
 /** 교사 표에서 아직 안 채운 (학급, 과목) 목록을 뽑는다. */
@@ -406,6 +506,30 @@ export function missingTeachers(report: NeisReport, map: TeacherMap): Array<[str
  * 실제로는 저장되지 않았다면, 선생님은 새로고침 한 번에 오늘 작업을 통째로 잃는다.
  * 그 사실을 그때 알게 하지 않고 미리 알린다.
  */
+/**
+ * 손으로 지정한 수업 없는 요일.
+ *
+ * 나이스 학사일정에 안 잡히는 날이 있다. 정기고사 기간, 학교 행사, 갑자기 정해진 재량휴업이다.
+ * 도구가 알 길이 없으므로 선생님이 눌러 알려 주신다. 학사일정에서 온 것과 함께 걸린다.
+ */
+export function loadOffDays(): number[] {
+  try {
+    const raw = localStorage.getItem(OFFDAY_KEY);
+    const v = raw ? (JSON.parse(raw) as unknown) : [];
+    return Array.isArray(v) ? v.filter((x): x is number => Number.isInteger(x)) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveOffDays(days: number[]): void {
+  try {
+    localStorage.setItem(OFFDAY_KEY, JSON.stringify(days));
+  } catch {
+    /* 저장 못 해도 이 화면에서는 그대로 쓴다 */
+  }
+}
+
 export function saveRaw(raw: string): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, raw);

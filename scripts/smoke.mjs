@@ -175,6 +175,80 @@ if (candCount > 0) {
   await page.waitForTimeout(200);
 }
 
+// 5f-2. 반영을 한 건 얹은 상태에서 묶기가 엉뚱한 수업을 잡지 않는지.
+// 저장하는 곳은 원본이고 화면은 반영이 얹힌 시간표라 두 곳의 교시가 다를 수 있다.
+{
+  await page.locator('button.cell.lesson').nth(2).click();
+  await page.waitForTimeout(350);
+  const canApply = await page.locator('.cand .btn.primary').count();
+  if (canApply > 0) {
+    await page.locator('.cand').first().getByRole('button', { name: '이 방법으로 반영' }).click();
+    await page.waitForTimeout(400);
+    // 반영이 얹힌 뒤에도 묶기 알림이 뜨면 눌러 본다. 안 뜨면 그냥 넘어간다.
+    await page.locator('button.cell.lesson').nth(4).click();
+    await page.waitForTimeout(350);
+    const hasPeers = await page.locator('.peers .btn').count();
+    if (hasPeers > 0) {
+      await page.locator('.peers .btn').first().click();
+      await page.waitForTimeout(400);
+      const toastText = (await page.locator('.toast').textContent().catch(() => '')) ?? '';
+      console.log('반영 후 묶기:', toastText.trim() || '토스트 없음');
+      if (toastText && !/묶음|해제/.test(toastText)) errors.push('반영 후 묶기 결과가 이상함');
+    } else {
+      console.log('반영 후 묶기: 이 자리에는 묶기 알림 없음(정상)');
+    }
+    await page.getByRole('button', { name: '전체 되돌리기' }).click();
+    await page.waitForTimeout(400);
+  }
+  const left = await page.locator('.cell.absent').count();
+  for (let i = 0; i < left; i++) {
+    await page.locator('button.cell.lesson.absent').first().click();
+    await page.waitForTimeout(120);
+  }
+}
+
+// 5g. 수업 없는 날 지정. 그 요일로 가는 안이 실제로 사라지는지까지 본다.
+await page.locator('button.cell.lesson').nth(2).click();
+await page.waitForTimeout(350);
+const dayLabels = await page.locator('.offday:not(.mine)').allTextContents();
+// 추천 목록에 실제로 등장하는 요일을 하나 골라 그 요일을 막는다.
+// 후보 수만 세면 뜻이 없다. 목록이 12개로 잘려 있어 빈자리를 다른 안이 채우기 때문이다.
+const titlesBefore = await page.locator('.cand-title').allTextContents();
+const blockable = dayLabels.findIndex((d) => titlesBefore.some((t) => t.includes(`${d}요일`)));
+if (blockable < 0) errors.push('추천에 등장하는 요일을 찾지 못함');
+const blockedDay = dayLabels[blockable] ?? '';
+await page.locator('.offday:not(.mine)').nth(blockable).click();
+await page.waitForTimeout(400);
+const titlesAfter = await page.locator('.cand-title').allTextContents();
+const leaked = titlesAfter.filter((t) => t.includes(`${blockedDay}요일`));
+const marked = await page.locator('.offday.on').count();
+console.log(
+  '수업 없는 날 지정:', dayLabels.join(''),
+  '| 막은 요일', blockedDay,
+  '| 그 요일 추천', titlesBefore.filter((t) => t.includes(`${blockedDay}요일`)).length, '→', leaked.length,
+  '| 표시', marked,
+);
+if (marked !== 1) errors.push('수업 없는 날 표시 실패');
+if (leaked.length > 0) errors.push(`막은 요일(${blockedDay})로 가는 추천이 남음`);
+await page.screenshot({ path: `${OUT}/shot-15-offday.png` });
+await page.locator('.offday:not(.mine)').nth(blockable).click();
+await page.waitForTimeout(200);
+await page.locator('button.cell.lesson.absent').first().click();
+await page.waitForTimeout(200);
+
+// 5h. 못 오는 요일 통째 잠그기. 시간강사처럼 근무일이 갈릴 때 쓴다.
+const beforeLocks = await page.locator('.cell.locked').count();
+await page.locator('.offday.mine').nth(2).click();
+await page.waitForTimeout(350);
+const afterLocks = await page.locator('.cell.locked').count();
+const mineOn = await page.locator('.offday.mine.on').count();
+console.log('못 오는 요일 잠금: 잠긴 칸', beforeLocks, '→', afterLocks, '| 표시', mineOn);
+if (mineOn !== 1 || afterLocks <= beforeLocks) errors.push('못 오는 요일 잠금 실패');
+await page.locator('.offday.mine').nth(2).click();
+await page.waitForTimeout(300);
+const back = await page.locator('.cell.locked').count();
+if (back !== beforeLocks) errors.push('못 오는 요일 잠금 해제 실패');
+
 // 6. 교사 검색 전환
 const names = await page.locator('#teacher-options option').evaluateAll((os) => os.map((o) => o.value));
 console.log('교사 수:', names.length);
