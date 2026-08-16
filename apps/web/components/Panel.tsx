@@ -159,6 +159,26 @@ export function Panel({
             {list.length === 0 && (
               <div className="panel-empty small-empty">이 방식으로는 가능한 교체가 없습니다.</div>
             )}
+            {cover && cover.length > 0 && (
+              <div className="cover inline">
+                <p className="cover-title">교체가 어려운 자리입니다. 보강도 함께 살펴보십시오</p>
+                <ul className="cover-list">
+                  {cover.slice(0, 3).map((c, i) => (
+                    <li key={c.teacher}>
+                      <div className="cover-head">
+                        <span className="cover-rank">{i + 1}</span>
+                        <span className="cover-name">{c.teacher}</span>
+                        {c.sameSubject && <span className="cover-badge">같은 과목</span>}
+                        <span className="cover-load">주 {c.weeklyLessons}시간</span>
+                      </div>
+                      <button className="btn cover-copy" onClick={() => onCopyCover(c.teacher)}>
+                        보강 요청 문구 복사
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {list.map((c, i) => {
               const best = i === 0 && filter === 'all';
               return (

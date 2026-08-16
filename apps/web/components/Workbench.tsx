@@ -217,9 +217,29 @@ export function Workbench() {
     }
   }, [input, view, currentTeacher, activeSlot]);
 
+  /**
+   * 보강 후보를 언제 함께 보여 줄지.
+   *
+   * 이동수업은 학급 전원과 교사 전원이 같은 시간에 비어야 옮길 수 있어 교체가
+   * 거의 성립하지 않는다. 합성 학교로 재어 보니 묶음 수업은 열에 여덟이 교체안 0이고,
+   * 학년 전체가 걸리는 큰 묶음은 사실상 0% 였다.
+   * 그런 자리에서 안 하나를 겨우 내밀고 끝내면 선생님은 막다른 길에 선다.
+   * 그래서 묶음이면 교체안이 적을 때도 보강 후보를 함께 놓는다.
+   */
   const cover: CoverCandidate[] | null = useMemo(() => {
-    if (!input || !result || result.candidates.length > 0) return null;
-    return coverCandidates(input, result.target.slot, result.target.subject, 8, currentTeacher ?? undefined);
+    if (!input || !result) return null;
+    const target = input.assignments.find(
+      (a) => a.slot === result.target.slot && a.klass === result.target.klass,
+    );
+    const scarce = target?.group ? result.candidates.length < 3 : result.candidates.length === 0;
+    if (!scarce) return null;
+    return coverCandidates(
+      input,
+      result.target.slot,
+      result.target.subject,
+      8,
+      currentTeacher ?? undefined,
+    );
   }, [input, result, currentTeacher]);
 
   const show = useCallback((msg: string) => {
