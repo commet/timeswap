@@ -462,6 +462,30 @@ export function buildFromNeis(
   };
 }
 
+/**
+ * 같은 학년에서 같은 과목인데 아직 안 채운 자리.
+ *
+ * 한 학교의 (학급, 과목) 짝은 수백 개다. 손으로 다 채우게 두면 아무도 끝까지 못 간다.
+ * 그런데 실제로는 한 교사가 같은 학년 여러 반의 같은 과목을 맡는 경우가 대부분이다.
+ * 한 곳을 채우면 나머지를 한 번에 채울 수 있게 한다.
+ */
+export function sameGradeSubject(
+  pairs: Array<{ klass: string; subject: string }>,
+  map: TeacherMap,
+  klass: string,
+  subject: string,
+): Array<{ klass: string; subject: string }> {
+  const g = gradeOf(klass);
+  if (g === null) return [];
+  return pairs.filter(
+    (p) =>
+      p.subject === subject &&
+      p.klass !== klass &&
+      gradeOf(p.klass) === g &&
+      !map[mapKey(p.klass, p.subject)],
+  );
+}
+
 /** 교사 표에서 아직 안 채운 (학급, 과목) 목록을 뽑는다. */
 export function missingTeachers(report: NeisReport, map: TeacherMap): Array<[string, string]> {
   const pairs = new Set<string>();

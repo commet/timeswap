@@ -5,6 +5,7 @@ import {
   fromFile,
   gradeOf,
   normalizeName,
+  sameGradeSubject,
   toFile,
   weekMondayOf,
   type Calendar,
@@ -246,5 +247,37 @@ describe('이상한 파일 막기', () => {
       lessons: [{ teacher: ' 김 국어 ', klass: '1-1', subject: '국어', slot: 0 }],
     };
     expect(fromFile(JSON.stringify(messy)).input.assignments[0]?.teacher).toBe('김국어');
+  });
+});
+
+describe('교사 배정 일괄 채우기', () => {
+  // 한 학교의 (학급, 과목) 짝은 수백 개다. 손으로 다 채우게 두면 아무도 끝까지 못 간다.
+  // 실제로는 한 교사가 같은 학년 여러 반의 같은 과목을 맡는 경우가 대부분이다.
+  const pairs = [
+    { klass: '1-1', subject: '국어' },
+    { klass: '1-2', subject: '국어' },
+    { klass: '1-3', subject: '국어' },
+    { klass: '1-1', subject: '수학' },
+    { klass: '2-1', subject: '국어' },
+  ];
+
+  it('같은 학년 같은 과목만 고른다', () => {
+    const got = sameGradeSubject(pairs, {}, '1-1', '국어');
+    expect(got.map((p) => p.klass)).toEqual(['1-2', '1-3']);
+  });
+
+  it('이미 채운 자리는 건드리지 않는다', () => {
+    const got = sameGradeSubject(pairs, { '1-2|국어': '김국어' }, '1-1', '국어');
+    expect(got.map((p) => p.klass)).toEqual(['1-3']);
+  });
+
+  it('학년이 다르면 고르지 않는다', () => {
+    const got = sameGradeSubject(pairs, {}, '2-1', '국어');
+    expect(got).toEqual([]);
+  });
+
+  it('학년을 못 읽으면 아무것도 고르지 않는다', () => {
+    const got = sameGradeSubject([{ klass: '과학중점', subject: '국어' }], {}, '과학중점', '국어');
+    expect(got).toEqual([]);
   });
 });
