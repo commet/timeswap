@@ -41,6 +41,28 @@ export const WEIGHTS = {
   sameKlassTwiceADay: -4,
   /** 학급의 그날 마지막 교시 뒤로 수업이 더 붙어 하교가 늦어질 때 1교시당 */
   laterDismissal: -2,
+  /**
+   * 이어 붙은 같은 과목 덩어리에서 한 교시를 떼어 낼 때, 남는 교시 1개당.
+   *
+   * 실습과 실기는 여러 교시를 이어 붙여 편성한다. 앞 시간에 준비하고 뒤 시간에 만든다.
+   * 그 가운데 한 교시만 다른 날로 보내는 안은 표 위에서만 성립한다.
+   *
+   * 학교 14곳을 재어 값을 정했다. 학급 하루 안에서 같은 과목이 이어진 길이를 셌다.
+   *
+   * | 무리 | 학교 | 덩어리 안 수업 칸 | 길이 3 이상 |
+   * |---|---|---|---|
+   * | 일반고 | 10곳 | 3.5% | 0개 |
+   * | 마이스터고와 예술고 | 4곳 | 23~58% | 164개 |
+   *
+   * 일반고에서는 길이 3 이상이 하나도 없었다. 거기서 보이는 길이 2는 이어 하려고
+   * 붙인 것이 아니라 편성하다 붙은 것일 때가 많다. 그래서 길이로 무게를 가른다.
+   * 길이 2를 쪼개면 -8 로 묶음 하나를 더 옮기는 값(-10)과 비슷하고,
+   * 길이 3은 -16, 길이 4는 -24 로 다른 어떤 항목보다 무겁다.
+   *
+   * 막지 않고 깎는 이유가 있다. 정말 아무 방법이 없을 때는 쪼개서라도 메우는 것이
+   * 결손보다 낫고, 그 판단은 선생님 몫이다. 대신 근거 문장에 그대로 적어 보인다.
+   */
+  blockSplit: -8,
 } as const;
 
 /** 마스크에서 그 요일의 수업 수 */
@@ -48,6 +70,59 @@ function dayLoad(mask: bigint, day: number, cfg: { periods: number }): number {
   let n = 0;
   for (let p = 0; p < cfg.periods; p++) if (hasBit(mask, day * cfg.periods + p)) n++;
   return n;
+}
+
+/**
+ * 그 학급 그날에서 slot 을 품고 이어진 같은 과목 덩어리의 길이.
+ *
+ * 분반이라 한 칸에 과목이 둘인 자리도 있다. 같은 과목이 이어졌는지만 보므로
+ * 한쪽만 세면 되고, 실제로 나뉜 짝은 한 묶음이라 함께 움직인다.
+ */
+function subjectRun(
+  idx: Indexes,
+  cfg: { periods: number },
+  klass: string,
+  subject: string,
+  slot: number,
+): number {
+  const day = Math.floor(slot / cfg.periods);
+  const here = new Set<number>();
+  for (const a of idx.klassAssignments.get(klass) ?? []) {
+    if (a.subject === subject && Math.floor(a.slot / cfg.periods) === day) here.add(a.slot);
+  }
+  if (!here.has(slot)) return 0;
+  let run = 1;
+  for (let s = slot - 1; s >= day * cfg.periods && here.has(s); s--) run++;
+  for (let s = slot + 1; s < (day + 1) * cfg.periods && here.has(s); s++) run++;
+  return run;
+}
+
+/**
+ * 옮기고 나서도 덩어리가 통째로 남는지.
+ *
+ * 통째로 남는 경우는 하나뿐이다. 같은 날 안에서 덩어리 끝에 다시 붙어, 길이도 줄지 않고
+ * 사이가 끊기지도 않을 때다. 1, 2, 3교시 실습에서 1교시를 4교시로 옮기면 2, 3, 4교시가 된다.
+ * 다른 날로 나가면 그날 덩어리가 짧아지므로 통째가 아니다.
+ */
+function stillWhole(
+  idx: Indexes,
+  cfg: { periods: number },
+  klass: string,
+  subject: string,
+  from: number,
+  to: number,
+): boolean {
+  const day = Math.floor(from / cfg.periods);
+  if (Math.floor(to / cfg.periods) !== day) return false;
+  const after = new Set<number>();
+  for (const a of idx.klassAssignments.get(klass) ?? []) {
+    if (a.subject === subject && Math.floor(a.slot / cfg.periods) === day && a.slot !== from) {
+      after.add(a.slot);
+    }
+  }
+  after.add(to);
+  const slots = [...after].sort((x, y) => x - y);
+  return slots[slots.length - 1]! - slots[0]! === slots.length - 1;
 }
 
 /** 그 요일에서 가장 긴 연속 수업 시간 */
@@ -141,6 +216,18 @@ export function scoreCandidate(idx: Indexes, input: TimetableInput, cand: Candid
         '감점',
         WEIGHTS.subjectTwiceADay,
         `${c.from.klass} ${cfg.dayNames[toDay]}요일에 ${c.from.subject} 수업이 두 번 들어갑니다`,
+      );
+    }
+
+    // 이어 붙은 같은 과목 덩어리에서 한 교시만 떼어 내는지.
+    // 같은 날 안에서 덩어리 끝에 다시 붙는 이동은 덩어리째 밀리는 것이라 그대로 둔다.
+    const run = subjectRun(idx, cfg, c.from.klass, c.from.subject, c.from.slot);
+    if (run >= 2 && !stillWhole(idx, cfg, c.from.klass, c.from.subject, c.from.slot, c.toSlot)) {
+      const what = c.from.pro ? '전문교과 실습' : c.from.subject;
+      note(
+        '감점',
+        WEIGHTS.blockSplit * (run - 1),
+        `${c.from.klass} ${what}은 ${run}교시가 이어진 수업인데 그 가운데 한 교시만 떨어져 나갑니다`,
       );
     }
 
