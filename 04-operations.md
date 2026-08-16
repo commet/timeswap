@@ -124,6 +124,20 @@ CSP 는 설정만 보고는 앱이 도는지 알 수 없다. 그래서 `scripts/
 
 메이저 상향은 검증 없이 하지 않는다. 두 건 모두 시험, 빌드, 브라우저 점검을 통과한 뒤에 넣었다.
 
+### 미리 알아 둘 것: 워크플로 액션의 Node 20 종료
+
+CI 로그에 다음 경고가 남는다. 지금은 통과하지만 언젠가 실패로 바뀐다.
+
+```
+Node.js 20 is deprecated. The following actions target Node.js 20 but are being
+forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4,
+actions/setup-node@v4, actions/upload-artifact@v4
+```
+
+GitHub 이 지금은 Node 24 로 대신 돌려 주지만 그 배려가 사라지면 관문 전체가 멈춘다.
+네 액션의 최신 메이저로 올려야 하고, 판 번호를 짐작으로 적으면 그 자리에서 CI 가 죽으므로
+각 저장소의 실제 태그를 확인한 뒤 한 번에 올린다. 다른 작업과 섞지 않는다.
+
 ---
 
 ## 4. 자료를 어디에 두는가
