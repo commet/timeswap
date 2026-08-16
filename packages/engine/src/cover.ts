@@ -7,6 +7,8 @@ export interface CoverCandidate {
   teacher: string;
   /** 결강 수업과 같은 과목을 가르치는 교사인지 */
   sameSubject: boolean;
+  /** 전문교과 실습을 하나라도 맡고 계신 분인지 */
+  proTeacher: boolean;
   /** 주당 담당 시수 */
   weeklyLessons: number;
   /** 그날 이미 맡은 수업 수 */
@@ -41,6 +43,18 @@ export const COVER_WEIGHTS = {
   burdenCap: 3,
   /** 주당 시수 1시간당. 여력이 있는 분을 앞에 두되 크게 흔들지는 않는다 */
   weeklyPer: -0.3,
+  /**
+   * 전문교과 실습인데 전문교과를 하나도 맡지 않는 분이면.
+   *
+   * 특성화고와 마이스터고의 전공 실습은 학과 전용 실습실에서 기계를 다룬다.
+   * 그 학과 교사가 아니면 진도를 잇는 것이 아니라 안전을 지키는 것부터 어렵다.
+   * 같은 과목 가점(10)보다 크게 잡아, 과목이 다르더라도 전문교과를 맡는 분이
+   * 일반교과만 맡는 분보다 앞에 오게 한다.
+   *
+   * 빼지 않고 뒤로 미는 이유가 있다. 아무도 없을 때가 있고, 그때는 자습 감독이
+   * 현실의 답이다. 후보에서 감추면 그 사실을 알 길이 없다.
+   */
+  proMismatch: -12,
 } as const;
 
 /**
@@ -69,6 +83,10 @@ export function coverCandidates(
 
   const subjectsOf = new Map<string, Set<string>>();
   const countOf = new Map<string, number>();
+  const proTeachers = new Set<string>();
+  // 이 과목이 전문교과인지. 표시는 과목마다 일정해서 시간표 어디를 봐도 같다.
+  // 실측 37곳에서 같은 과목이 표시가 붙은 채와 안 붙은 채로 함께 나온 적은 없었다.
+  let proSubject = false;
   for (const a of input.assignments) {
     let s = subjectsOf.get(a.teacher);
     if (!s) {
@@ -77,6 +95,10 @@ export function coverCandidates(
     }
     s.add(a.subject);
     countOf.set(a.teacher, (countOf.get(a.teacher) ?? 0) + 1);
+    if (a.pro) {
+      proTeachers.add(a.teacher);
+      if (a.subject === subject) proSubject = true;
+    }
   }
 
   const out: CoverCandidate[] = [];
@@ -86,6 +108,7 @@ export function coverCandidates(
     if (hasBit(idx.unavailMask.get(teacher) ?? 0n, slot)) continue;
 
     const sameSubject = subjectsOf.get(teacher)?.has(subject) ?? false;
+    const proTeacher = proTeachers.has(teacher);
     const weekly = countOf.get(teacher) ?? 0;
     const burden = Math.min(input.recentBurden?.[teacher] ?? 0, COVER_WEIGHTS.burdenCap);
 
@@ -105,6 +128,12 @@ export function coverCandidates(
     if (sameSubject) {
       score += COVER_WEIGHTS.sameSubject;
       notes.push(`${subject} 과목을 맡고 계셔서 진도를 이어 갈 수 있습니다`);
+    }
+    if (proSubject && !proTeacher) {
+      score += COVER_WEIGHTS.proMismatch;
+      notes.push('전문교과 실습이라 실습을 맡지 않으시는 분께는 부탁드리기 어렵습니다');
+    } else if (proSubject && proTeacher && !sameSubject) {
+      notes.push('전문교과 실습을 맡고 계셔서 실습실 수업을 아십니다');
     }
     if (dayLessons > COVER_WEIGHTS.heavyDayThreshold) {
       score += COVER_WEIGHTS.heavyDay * (dayLessons - COVER_WEIGHTS.heavyDayThreshold);
@@ -126,6 +155,7 @@ export function coverCandidates(
     out.push({
       teacher,
       sameSubject,
+      proTeacher,
       weeklyLessons: weekly,
       dayLessons,
       recentBurden: burden,

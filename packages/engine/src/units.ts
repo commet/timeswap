@@ -64,8 +64,14 @@ export function buildUnits(input: TimetableInput): Map<string, Unit> {
 export function unitLabel(u: Unit): string {
   if (!u.grouped) return `${u.teachers[0]} 선생님`;
   const subjects = [...new Set(u.assignments.map((a) => a.subject))];
-  if (subjects.length === 1) return `${subjects[0]} 이동수업 (${u.klasses.length}개 학급)`;
-  return `${u.klasses.length}개 학급이 함께 하는 수업`;
+  if (subjects.length === 1) {
+    return u.klasses.length === 1
+      ? `${subjects[0]} 복수교사 수업`
+      : `${subjects[0]} 이동수업 (${u.klasses.length}개 학급)`;
+  }
+  // 한 학급이 여러 강좌로 갈리는 편성. 예술 계열 전공 실기가 이렇게 온다.
+  if (u.klasses.length === 1) return `${u.klasses[0]} 분반 수업 (강좌 ${subjects.length}개)`;
+  return `${u.klasses.length}개 학급이 강좌 ${subjects.length}개로 나뉘는 수업`;
 }
 
 /** 앞말의 받침에 따라 와 또는 과를 고른다. 괄호로 끝나면 마지막 한글을 본다. */

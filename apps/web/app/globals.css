@@ -463,6 +463,11 @@ button.cell.empty:hover { border-color: var(--muted); }
   display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--muted);
 }
 .cover-why li { padding-left: 9px; border-left: 2px solid var(--line); }
+/* 접힌 목록의 한 줄짜리 근거 */
+.cover-why-one {
+  margin: 6px 0 0; padding-left: 9px; border-left: 2px solid var(--line);
+  font-size: 12.5px; color: var(--muted);
+}
 .cover-foot { display: flex; gap: 7px; margin-top: 9px; flex-wrap: wrap; }
 .cover-foot .btn { padding: 4px 12px; font-size: 12.5px; }
 .chg-type.cover { background: var(--warn-soft); color: var(--warn); }

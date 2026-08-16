@@ -100,3 +100,47 @@ describe('보강 후보', () => {
     for (const c of list) expect(c.notes.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * 전문교과 실습의 보강.
+ *
+ * 특성화고와 마이스터고에서 결강한 자리가 전공 실습이면 아무나 대신 들어갈 수 없다.
+ * 학과 전용 실습실에서 기계를 다루는 시간이라, 그 학과 교사가 아니면
+ * 진도를 잇는 것이 아니라 안전을 지키는 것부터 어렵다.
+ * 실측한 특성화고 13곳에서 3학년 과목의 중앙 73%가 전문교과였다. 드문 경우가 아니다.
+ */
+describe('전문교과 실습의 보강 후보', () => {
+  const shop: TimetableInput = {
+    config: cfg,
+    assignments: [
+      // 결강 자리: 월4(슬롯 3) 3-1 용접 작업, 전문교과
+      { teacher: '결강', klass: '3-1', subject: '용접 작업', slot: 3, pro: true },
+      // 다른 전문교과를 맡는 분. 과목은 다르다
+      { teacher: '실습왕', klass: '3-2', subject: '선반 가공', slot: 0, pro: true },
+      // 일반교과만 맡는 분. 그날이 훨씬 가볍다
+      { teacher: '국어샘', klass: '3-3', subject: '문학', slot: 0 },
+    ],
+  };
+  const list = coverCandidates(shop, 3, '용접 작업', 8, '결강');
+
+  it('전문교과를 맡는 분을 앞에 둔다', () => {
+    expect(list[0]?.teacher).toBe('실습왕');
+    expect(list[0]?.proTeacher).toBe(true);
+  });
+
+  it('일반교과만 맡는 분께는 어렵다고 밝힌다', () => {
+    const 국어샘 = list.find((c) => c.teacher === '국어샘');
+    expect(국어샘?.proTeacher).toBe(false);
+    expect(국어샘?.notes.join(' ')).toContain('전문교과 실습이라');
+  });
+
+  it('그래도 후보에서 빼지는 않는다', () => {
+    // 아무도 없으면 자습 감독이 현실의 답이다. 감추면 그 사실을 알 길이 없다.
+    expect(list.map((c) => c.teacher)).toContain('국어샘');
+  });
+
+  it('일반교과 결강에는 이 규칙이 걸리지 않는다', () => {
+    const normal = coverCandidates(shop, 3, '문학', 8, '결강');
+    for (const c of normal) expect(c.notes.join(' ')).not.toContain('전문교과 실습이라');
+  });
+});

@@ -52,8 +52,13 @@ export function Panel({
   hovered: Candidate | null;
   /** 같은 교시에 같은 과목을 듣는 다른 학급. 이동수업일 수 있다 */
   peers: Assignment[];
-  /** 선택과목이 많은 학년이면 그 모양. 아니면 null */
-  electiveGrade: { grade: number; klasses: number; subjects: number } | null;
+  /** 과목이 많아 교체가 어려운 학년이면 그 모양. 아니면 null */
+  electiveGrade: {
+    grade: number;
+    klasses: number;
+    subjects: number;
+    kind: '보통' | '선택과목' | '전공실습';
+  } | null;
   /** 손으로 묶어 둔 자리인지. 자동으로 묶인 것은 풀 수 없다 */
   grouped: boolean;
   onGroup: () => void;
@@ -93,9 +98,19 @@ export function Panel({
         <div className="peers elective" role="status">
           <p>
             {electiveGrade.grade}학년은 학급 {electiveGrade.klasses}개에 과목{' '}
-            {electiveGrade.subjects}종이 열립니다. <b>선택과목 구간</b>이라 수강 학생이 여러
-            학급에 흩어져 있고, 그런 수업은 통째로 옮길 자리를 찾기 어렵습니다. 교체가 안 되면
-            아래 보강을 보십시오.
+            {electiveGrade.subjects}종이 열립니다.{' '}
+            {electiveGrade.kind === '전공실습' ? (
+              <>
+                <b>학과별 전공 편성</b>이라 과목이 많습니다. 전공 실습은 학과 전용 실습실에서
+                그 학과 선생님이 맡으시므로 대신 들어갈 분을 찾기 어렵습니다.
+              </>
+            ) : (
+              <>
+                <b>선택과목 구간</b>이라 수강 학생이 여러 학급에 흩어져 있고, 그런 수업은 통째로
+                옮길 자리를 찾기 어렵습니다.
+              </>
+            )}{' '}
+            교체가 안 되면 아래 보강을 보십시오.
           </p>
         </div>
       )}
@@ -191,6 +206,8 @@ export function Panel({
                         {c.sameSubject && <span className="cover-badge">같은 과목</span>}
                         <span className="cover-load">주 {c.weeklyLessons}시간</span>
                       </div>
+                      {/* 접힌 목록이라 근거를 한 줄만 싣는다. 없는 것보다 훨씬 낫다 */}
+                      {c.notes[0] && <p className="cover-why-one">{c.notes[0]}</p>}
                       <div className="cover-foot">
                         <button className="btn primary cover-apply" onClick={() => onApplyCover(c.teacher)}>
                           이 분으로 보강 반영
