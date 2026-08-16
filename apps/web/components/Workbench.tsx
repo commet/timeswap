@@ -174,7 +174,7 @@ export function Workbench() {
       <header className="topbar">
         <span className="wordmark">
           <span className="tick" aria-hidden />
-          바꿈표
+          수업품앗이
           <span className="beta">베타</span>
         </span>
         {loaded && (
