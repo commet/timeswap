@@ -1,5 +1,5 @@
-import type { Assignment, Change, ScheduleConfig, TimetableInput } from './types.js';
-import { bit, dayOf, hasBit, periodOf, slotName } from './slots.js';
+import type { Assignment, Change, ScheduleConfig, TimetableInput } from './types';
+import { bit, dayOf, hasBit, periodOf, slotName } from './slots';
 
 export interface Indexes {
   teacherMask: Map<string, bigint>;

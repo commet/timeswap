@@ -1,5 +1,5 @@
-import type { Assignment, ScheduleConfig, TimetableInput } from './types.js';
-import { slotOf } from './slots.js';
+import type { Assignment, ScheduleConfig, TimetableInput } from './types';
+import { slotOf } from './slots';
 
 /** 결정적 의사 난수 (mulberry32). 같은 시드는 같은 학교를 만든다. */
 export function mulberry32(seed: number): () => number {

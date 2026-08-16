@@ -1,0 +1,82 @@
+import { chromium } from 'playwright';
+
+const BASE = process.env.BASE_URL ?? 'http://localhost:3100';
+const OUT = process.env.SHOT_DIR ?? '.';
+const errors = [];
+
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const ctx = await browser.newContext({
+  viewport: { width: 1360, height: 860 },
+  permissions: ['clipboard-read', 'clipboard-write'],
+});
+const page = await ctx.newPage();
+const warnings = [];
+page.on('console', (m) => {
+  // 리소스 로드 실패(폰트 CDN 차단 등)는 환경 요인이라 경고로만 남긴다.
+  if (m.type() === 'error') warnings.push(m.text());
+});
+page.on('pageerror', (e) => errors.push(String(e)));
+
+// 1. 랜딩
+await page.goto(BASE, { waitUntil: 'networkidle' });
+await page.screenshot({ path: `${OUT}/shot-1-landing.png` });
+console.log('제목:', await page.title());
+
+// 2. 샘플 로드
+await page.getByRole('button', { name: '샘플 학교로 체험' }).click();
+await page.waitForSelector('.tt-grid', { timeout: 15000 });
+await page.waitForTimeout(400);
+await page.screenshot({ path: `${OUT}/shot-2-grid.png` });
+const school = await page.locator('.school-chip').textContent();
+console.log('학교 칩:', school?.trim());
+
+// 3. 결강 지정: 수업이 있는 셀 중 세 번째를 클릭
+const cells = page.locator('button.cell.lesson');
+console.log('수업 셀 수:', await cells.count());
+await cells.nth(2).click();
+await page.waitForTimeout(400);
+const candCount = await page.locator('.cand').count();
+console.log('추천 후보 수:', candCount);
+await page.screenshot({ path: `${OUT}/shot-3-candidates.png` });
+
+// 4. 첫 후보에 호버해서 diff 미리보기
+if (candCount > 0) {
+  await page.locator('.cand').first().hover();
+  await page.waitForTimeout(350);
+  await page.screenshot({ path: `${OUT}/shot-4-preview.png` });
+  const arriving = await page.locator('.cell.arriving').count();
+  const incoming = await page.locator('.cell.incoming').count();
+  console.log('미리보기 표시: 옮겨 갈 자리', arriving, '| 들어올 수업', incoming);
+
+  // 5. 요청 문구 복사
+  await page.locator('.cand').first().getByRole('button', { name: '요청 문구 복사' }).click();
+  await page.waitForSelector('.toast', { timeout: 5000 });
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  console.log('--- 복사된 문구 ---');
+  console.log(clip);
+  console.log('-------------------');
+}
+
+// 6. 교사 전환
+const select = page.locator('#teacher-select');
+const options = await select.locator('option').allTextContents();
+console.log('교사 수:', options.length);
+await select.selectOption({ index: 5 });
+await page.waitForTimeout(300);
+await page.screenshot({ path: `${OUT}/shot-5-teacher-switch.png` });
+
+// 7. 새로고침 후 복원 확인
+await page.reload({ waitUntil: 'networkidle' });
+const restored = (await page.locator('.tt-grid').count()) > 0;
+console.log('새로고침 후 복원:', restored ? '성공' : '실패');
+
+// 8. 모바일 뷰
+const mob = await ctx.newPage();
+await mob.setViewportSize({ width: 390, height: 844 });
+await mob.goto(BASE, { waitUntil: 'networkidle' });
+await mob.waitForTimeout(400);
+await mob.screenshot({ path: `${OUT}/shot-6-mobile.png` });
+
+console.log('리소스 경고:', warnings.length); console.log('페이지 오류:', errors.length === 0 ? '없음' : errors);
+await browser.close();
+process.exit(errors.length > 0 ? 1 : 0);

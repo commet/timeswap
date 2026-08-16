@@ -1,0 +1,16 @@
+{
+  "name": "timeswap",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "npm run test -w @timeswap/engine",
+    "build": "npm run build -w web",
+    "dev": "npm run dev -w web"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}

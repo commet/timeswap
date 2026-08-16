@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { TimetableInput } from '../src/types.js';
-import { recommend } from '../src/search.js';
-import { applyChanges, buildIndexes, tsKey, validate } from '../src/timetable.js';
+import type { TimetableInput } from '../src/types';
+import { recommend } from '../src/search';
+import { applyChanges, buildIndexes, tsKey, validate } from '../src/timetable';
 
 // 손으로 만든 2일 x 3교시 학교. 정답 교환안을 수작업으로 검증해 두었다.
 // 슬롯: 월1=0 월2=1 월3=2 화1=3 화2=4 화3=5

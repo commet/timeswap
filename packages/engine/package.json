@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "description": "학기 중 수업 교환 추천 엔진. 전수 탐색, 하드 필터, 소프트 점수, 근거 트레이스.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

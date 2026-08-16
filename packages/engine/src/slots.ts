@@ -1,4 +1,4 @@
-import type { ScheduleConfig } from './types.js';
+import type { ScheduleConfig } from './types';
 
 export const slotOf = (day: number, period: number, cfg: ScheduleConfig): number =>
   day * cfg.periods + period;

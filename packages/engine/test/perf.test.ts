@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { fromComcigan, type ComciganData } from '../src/adapters/comcigan.js';
-import { recommend } from '../src/search.js';
+import { fromComcigan, type ComciganData } from '../src/adapters/comcigan';
+import { recommend } from '../src/search';
 
 // 계획 5.2의 성능 예산: 결강 1건 탐색 1초 안.
 // 합성이 목표하던 표준 규모(학급 30, 교사 60)보다 큰 실제 학교(학급 41, 교사 80+)로 잰다.

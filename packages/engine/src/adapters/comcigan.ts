@@ -1,5 +1,5 @@
-import type { Assignment, ScheduleConfig, TimetableInput } from './../types.js';
-import { slotOf } from './../slots.js';
+import type { Assignment, ScheduleConfig, TimetableInput } from './../types';
+import { slotOf } from './../slots';
 
 /**
  * 컴시간알리미 계열 뷰어가 쓰는 전체 시간표 JSON(학년 > 반 > 셀 배열)을

@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { fromComcigan, type ComciganData } from '../src/adapters/comcigan.js';
-import { recommend } from '../src/search.js';
-import { applyChanges, totalHoles, validate } from '../src/timetable.js';
+import { fromComcigan, type ComciganData } from '../src/adapters/comcigan';
+import { recommend } from '../src/search';
+import { applyChanges, totalHoles, validate } from '../src/timetable';
 
 // 실제 고등학교(교사명은 소스에서 마스킹됨)의 컴시간 뷰어 JSON 픽스처.
 // 학기 중 변경(isChanged) 반영본이라 현실의 지저분함(동시수업, 중간 공강)이 그대로 있다.

@@ -1,7 +1,7 @@
-import type { Assignment, Candidate, TimetableInput, TraceEntry } from './types.js';
-import { bit, dayOf, hasBit, slotName, slotOf } from './slots.js';
-import { buildIndexes, dayHoles, tsKey } from './timetable.js';
-import { scoreCandidate } from './score.js';
+import type { Assignment, Candidate, TimetableInput, TraceEntry } from './types';
+import { bit, dayOf, hasBit, slotName, slotOf } from './slots';
+import { buildIndexes, dayHoles, tsKey } from './timetable';
+import { scoreCandidate } from './score';
 
 export interface RecommendOptions {
   /** 돌려줄 최대 후보 수. 기본 20. */
@@ -119,7 +119,7 @@ export function recommend(
         if (!freeAt(c.teacher, a.slot, c.slot)) continue;
         candidates.push({
           type: 'cycle3',
-          title: `3자 순환 (${a.teacher}, ${b.teacher}, ${c.teacher} 선생님)`,
+          title: `${a.teacher}, ${b.teacher}, ${c.teacher} 선생님의 자리 순환`,
           changes: [
             { from: a, toSlot: b.slot },
             { from: b, toSlot: c.slot },

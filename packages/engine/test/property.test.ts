@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { genSchool, mulberry32 } from '../src/synthetic.js';
-import { recommend } from '../src/search.js';
+import { genSchool, mulberry32 } from '../src/synthetic';
+import { recommend } from '../src/search';
 import {
   applyChanges,
   buildIndexes,
@@ -8,7 +8,7 @@ import {
   totalHoles,
   tsKey,
   validate,
-} from '../src/timetable.js';
+} from '../src/timetable';
 
 // 속성: 어떤 무작위 학교, 어떤 결강에 대해서도
 //   1) 합성 시간표 자체가 불변식을 지킨다

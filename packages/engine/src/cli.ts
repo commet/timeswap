@@ -5,12 +5,12 @@
  * 합성 학교(또는 컴시간 뷰어 JSON)에서 결강 1건에 대한 교환 추천을 출력한다.
  */
 import { readFileSync } from 'node:fs';
-import { genSchool } from './synthetic.js';
-import { fromComcigan, type ComciganData } from './adapters/comcigan.js';
-import { recommend } from './search.js';
-import { validate } from './timetable.js';
-import { slotName } from './slots.js';
-import type { TimetableInput } from './types.js';
+import { genSchool } from './synthetic';
+import { fromComcigan, type ComciganData } from './adapters/comcigan';
+import { recommend } from './search';
+import { validate } from './timetable';
+import { slotName } from './slots';
+import type { TimetableInput } from './types';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);

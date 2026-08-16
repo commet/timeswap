@@ -1,6 +1,6 @@
-import type { Candidate, TimetableInput } from './types.js';
-import { bit, dayOf, slotName } from './slots.js';
-import { ksdKey, teacherBlocks, type Indexes } from './timetable.js';
+import type { Candidate, TimetableInput } from './types';
+import { bit, dayOf, slotName } from './slots';
+import { ksdKey, teacherBlocks, type Indexes } from './timetable';
 
 /** 소프트 점수 가중치. 설정 화면에서 조정할 값의 기본값이다. */
 export const WEIGHTS = {
