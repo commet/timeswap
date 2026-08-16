@@ -12,11 +12,14 @@ interface Props {
   lessons: Assignment[];
   /** 결강 대기열. 첫 항목이 지금 처리 중인 결강이다. */
   absentSlots: number[];
+  /** 현재 교사의 근무 불가 슬롯. 빈 교시를 눌러 잠근다. */
+  lockedSlots: number[];
   /** 오늘 요일 열 강조 (0 = 월). 주말이면 null */
   todayIdx: number | null;
   preview: Candidate | null;
   onToggleSlot: (slot: number) => void;
   onToggleDay: (day: number) => void;
+  onToggleLock: (slot: number) => void;
 }
 
 export function Grid({
@@ -25,10 +28,12 @@ export function Grid({
   owner,
   lessons,
   absentSlots,
+  lockedSlots,
   todayIdx,
   preview,
   onToggleSlot,
   onToggleDay,
+  onToggleLock,
 }: Props) {
   const bySlot = new Map<number, Assignment>();
   for (const a of lessons) bySlot.set(a.slot, a);
@@ -36,6 +41,7 @@ export function Grid({
   const teacherMode = mode === 'teacher';
   const active = teacherMode ? (absentSlots[0] ?? null) : null;
   const queued = teacherMode ? new Set(absentSlots) : new Set<number>();
+  const locked = teacherMode ? new Set(lockedSlots) : new Set<number>();
   const own = teacherMode ? preview?.changes.find((c) => c.from.teacher === owner) : undefined;
   const incoming = teacherMode
     ? preview?.changes.find((c) => c.from.teacher !== owner && c.toSlot === active)
@@ -83,10 +89,12 @@ export function Grid({
               bySlot={bySlot}
               active={active}
               queued={queued}
+              locked={locked}
               todayIdx={todayIdx}
               own={own}
               incoming={incoming}
               onToggleSlot={onToggleSlot}
+              onToggleLock={onToggleLock}
             />
           ))}
         </div>
@@ -102,6 +110,9 @@ export function Grid({
           <span>
             <i style={{ background: 'var(--accent-soft)', outline: '1.5px dashed var(--accent)' }} /> 들어올 수업
           </span>
+          <span>
+            <i style={{ background: 'var(--surface-2)', outline: '1.5px dashed var(--muted)' }} /> 근무 불가 (빈 교시를 눌러 잠금)
+          </span>
         </div>
       )}
     </section>
@@ -115,10 +126,12 @@ function Row({
   bySlot,
   active,
   queued,
+  locked,
   todayIdx,
   own,
   incoming,
   onToggleSlot,
+  onToggleLock,
 }: {
   p: number;
   cfg: ScheduleConfig;
@@ -126,10 +139,12 @@ function Row({
   bySlot: Map<number, Assignment>;
   active: number | null;
   queued: Set<number>;
+  locked: Set<number>;
   todayIdx: number | null;
   own?: { from: Assignment; toSlot: number };
   incoming?: { from: Assignment; toSlot: number };
   onToggleSlot: (slot: number) => void;
+  onToggleLock: (slot: number) => void;
 }) {
   return (
     <>
@@ -153,7 +168,26 @@ function Row({
           );
         }
         if (!a) {
-          return <div key={s} className={`cell empty${today}`} aria-label={`${slotName(s, cfg)} 공강`} />;
+          if (!teacherMode) {
+            return <div key={s} className={`cell empty${today}`} aria-label={`${slotName(s, cfg)} 공강`} />;
+          }
+          const isLocked = locked.has(s);
+          return (
+            <button
+              key={s}
+              className={`cell empty${isLocked ? ' locked' : ''}${today}`}
+              title={
+                isLocked
+                  ? '근무 불가로 잠긴 시간입니다. 누르면 풉니다'
+                  : '누르면 근무 불가 시간으로 잠급니다 (회의, 출장 등)'
+              }
+              aria-label={`${slotName(s, cfg)} ${isLocked ? '근무 불가' : '공강'}`}
+              aria-pressed={isLocked}
+              onClick={() => onToggleLock(s)}
+            >
+              {isLocked && <span className="lock-mark">잠금</span>}
+            </button>
+          );
         }
         if (showIncoming && incoming) {
           return (

@@ -16,11 +16,13 @@ page.on('console', (m) => {
   if (m.type() === 'error') warnings.push(m.text());
 });
 page.on('pageerror', (e) => errors.push(String(e)));
+page.on('dialog', (d) => d.accept());
 
 // 1. 랜딩
 await page.goto(BASE, { waitUntil: 'networkidle' });
 await page.screenshot({ path: `${OUT}/shot-1-landing.png` });
 console.log('제목:', await page.title());
+console.log('사용 3단계:', await page.locator('.steps li').count(), '| 일러스트:', await page.locator('.hero-art').count());
 
 // 2. 샘플 로드
 await page.getByRole('button', { name: '샘플 학교로 체험' }).click();
@@ -67,6 +69,18 @@ if (candCount > 0) {
   const printBtn = await page.getByRole('button', { name: '수업 교체 계획서 인쇄' }).count();
   console.log('계획서 인쇄 버튼:', printBtn);
 
+  // 5b-2. 변경 공지 복사와 품앗이 기록
+  await page.getByRole('button', { name: '변경 공지 복사' }).click();
+  await page.waitForTimeout(300);
+  const notice = await page.evaluate(() => navigator.clipboard.readText());
+  console.log('--- 변경 공지 ---');
+  console.log(notice);
+  console.log('-----------------');
+  if (!notice.includes('[수업 변경 안내]')) errors.push('변경 공지 문구 실패');
+  const helpers = await page.locator('.chg-helpers').textContent();
+  console.log('품앗이 기록:', helpers?.trim());
+  if (!helpers?.includes('품앗이')) errors.push('품앗이 기록 표시 실패');
+
   // 5c. 학급 뷰 전환
   await page.getByRole('tab', { name: '학급' }).click();
   await page.waitForTimeout(300);
@@ -77,7 +91,7 @@ if (candCount > 0) {
   await page.waitForTimeout(200);
 
   // 5d. 되돌리기
-  await page.getByRole('button', { name: '되돌리기' }).click();
+  await page.getByRole('button', { name: '되돌리기', exact: true }).click();
   await page.waitForTimeout(300);
   const afterUndo = await page.locator('.chg-list li').count();
   console.log('되돌리기 후 장부 건수:', afterUndo);
@@ -105,26 +119,66 @@ if (candCount > 0) {
   await page.waitForTimeout(200);
 }
 
-// 6b. 모바일 작업 화면
-await page.setViewportSize({ width: 390, height: 844 });
-await page.waitForTimeout(400);
-await page.screenshot({ path: `${OUT}/shot-9-mobile-work.png` });
-await page.setViewportSize({ width: 1360, height: 860 });
-
-// 6. 교사 전환
-const select = page.locator('#teacher-select');
-const options = await select.locator('option').allTextContents();
-console.log('교사 수:', options.length);
-await select.selectOption({ index: 5 });
+// 6. 교사 검색 전환
+const names = await page.locator('#teacher-options option').evaluateAll((os) => os.map((o) => o.value));
+console.log('교사 수:', names.length);
+const target = names[5] ?? names[0];
+const combo = page.locator('#teacher-input');
+await combo.click();
+await combo.fill(target);
+await page.keyboard.press('Enter');
 await page.waitForTimeout(300);
+const gridHead = await page.locator('.grid-wrap h2').textContent();
+console.log('전환 후 격자 제목:', gridHead?.trim());
+if (!gridHead?.includes(target)) errors.push('교사 검색 전환 실패');
 await page.screenshot({ path: `${OUT}/shot-5-teacher-switch.png` });
 
-// 7. 새로고침 후 복원 확인
-await page.reload({ waitUntil: 'networkidle' });
-const restored = (await page.locator('.tt-grid').count()) > 0;
-console.log('새로고침 후 복원:', restored ? '성공' : '실패');
+// 6b. 근무 불가 잠금
+await page.locator('button.cell.empty').first().click();
+await page.waitForTimeout(250);
+const lockedCount = await page.locator('.cell.locked').count();
+console.log('잠금 표시 수:', lockedCount);
+if (lockedCount !== 1) errors.push('근무 불가 잠금 실패');
+await page.screenshot({ path: `${OUT}/shot-10-locked.png` });
 
-// 8. 모바일 뷰
+// 6c. 테마 전환: 자동 → 밝음 → 어둠 → 자동
+const themeBtn = page.getByRole('button', { name: /^테마/ });
+await themeBtn.click();
+await page.waitForTimeout(150);
+const t1 = await page.evaluate(() => document.documentElement.dataset.theme);
+await themeBtn.click();
+await page.waitForTimeout(150);
+const t2 = await page.evaluate(() => document.documentElement.dataset.theme);
+await page.screenshot({ path: `${OUT}/shot-11-dark.png` });
+await themeBtn.click();
+await page.waitForTimeout(150);
+const t3 = await page.evaluate(() => document.documentElement.dataset.theme);
+console.log('테마 순환:', t1, '→', t2, '→', t3 ?? '자동');
+if (t1 !== 'light' || t2 !== 'dark' || t3 !== undefined) errors.push('테마 전환 실패');
+
+// 7. 새로고침 후 복원 확인 (교사, 잠금 유지)
+await page.reload({ waitUntil: 'networkidle' });
+await page.waitForTimeout(400);
+const restored = (await page.locator('.tt-grid').count()) > 0;
+const lockedAfter = await page.locator('.cell.locked').count();
+console.log('새로고침 후 복원:', restored ? '성공' : '실패', '| 잠금 유지:', lockedAfter);
+if (lockedAfter !== 1) errors.push('잠금 복원 실패');
+await page.locator('.cell.locked').first().click();
+await page.waitForTimeout(200);
+
+// 8. 모바일 작업 화면: 결강 선택 시 추천 패널로 이동
+await page.setViewportSize({ width: 390, height: 844 });
+await page.waitForTimeout(400);
+await page.locator('button.cell.lesson').nth(2).click();
+await page.waitForTimeout(1000);
+const sideBox = await page.locator('.side').boundingBox();
+console.log('모바일 패널 위치 y:', sideBox ? Math.round(sideBox.y) : '없음');
+if (!sideBox || sideBox.y > 500) errors.push('모바일 패널 자동 이동 실패');
+await page.screenshot({ path: `${OUT}/shot-9-mobile-work.png` });
+await page.setViewportSize({ width: 1360, height: 860 });
+await page.waitForTimeout(300);
+
+// 9. 모바일 랜딩
 const mob = await ctx.newPage();
 await mob.setViewportSize({ width: 390, height: 844 });
 await mob.goto(BASE, { waitUntil: 'networkidle' });

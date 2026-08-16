@@ -11,12 +11,19 @@ const TYPE_LABEL: Record<AppliedEntry['type'], string> = {
 
 export function Changes({
   entries,
+  helpers,
   onUndoLast,
+  onUndoAll,
+  onCopyNotice,
   onPrint,
 }: {
   cfg: ScheduleConfig;
   entries: AppliedEntry[];
+  /** 자리를 내어 준 교사와 횟수. 품앗이 균형의 근거를 보여준다. */
+  helpers: Array<{ name: string; n: number }>;
   onUndoLast: () => void;
+  onUndoAll: () => void;
+  onCopyNotice: () => void;
   onPrint: () => void;
 }) {
   return (
@@ -47,9 +54,21 @@ export function Changes({
               </li>
             ))}
           </ol>
+          {helpers.length > 0 && (
+            <p className="chg-helpers">
+              품앗이 기록: {helpers.map((h) => `${h.name} ${h.n}회`).join(', ')}
+              <span className="chg-helpers-hint">여러 번 도와준 분은 다음 추천에서 뒤로 밀립니다</span>
+            </p>
+          )}
           <div className="chg-foot">
+            <button className="btn" onClick={onCopyNotice}>
+              변경 공지 복사
+            </button>
             <button className="btn" onClick={onPrint}>
               수업 교체 계획서 인쇄
+            </button>
+            <button className="btn ghost" onClick={onUndoAll}>
+              전체 되돌리기
             </button>
           </div>
         </>

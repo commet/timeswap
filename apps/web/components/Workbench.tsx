@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   coverCandidates,
   dayOf,
@@ -19,17 +19,26 @@ import { Changes } from './Changes';
 import { Sheet } from './Sheet';
 import {
   applyAll,
+  applyTheme,
+  buildNotice,
   buildPhrase,
   clearRaw,
+  deriveBurden,
   loadEntries,
   loadRaw,
+  loadTheme,
+  loadUnavail,
   parseAndAdapt,
   saveEntries,
   saveRaw,
+  saveUnavail,
   SYNTH_MARK,
   TEACHER_KEY,
+  THEME_LABEL,
+  THEME_ORDER,
   type AppliedEntry,
   type Loaded,
+  type ThemeMode,
 } from '../lib/app';
 
 function defaultTeacher(input: TimetableInput): string | null {
@@ -53,13 +62,17 @@ export function Workbench() {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [busy, setBusy] = useState(false);
   const [teacher, setTeacher] = useState<string | null>(null);
+  const [teacherInput, setTeacherInput] = useState('');
   const [entries, setEntries] = useState<AppliedEntry[]>([]);
   const [view, setView] = useState<'teacher' | 'klass'>('teacher');
   const [klass, setKlass] = useState<string | null>(null);
   const [queue, setQueue] = useState<number[]>([]);
+  const [unavail, setUnavail] = useState<Record<string, number[]>>({});
   const [hovered, setHovered] = useState<Candidate | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [todayIdx, setTodayIdx] = useState<number | null>(null);
+  const [theme, setTheme] = useState<ThemeMode>('auto');
+  const sideRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const raw = loadRaw();
@@ -68,18 +81,25 @@ export function Workbench() {
         const l = parseAndAdapt(raw, '업로드');
         setLoaded(l);
         setEntries(loadEntries());
+        setUnavail(loadUnavail());
         const saved = localStorage.getItem(TEACHER_KEY);
         setTeacher(saved ?? defaultTeacher(l.adapted.input));
       } catch {
         clearRaw();
       }
     }
+    setTheme(loadTheme());
     const wd = new Date().getDay(); // 일 0, 월 1
     setTodayIdx(wd >= 1 && wd <= 5 ? wd - 1 : null);
   }, []);
 
   const base = loaded?.adapted.input ?? null;
-  const input = useMemo(() => (base ? applyAll(base, entries) : null), [base, entries]);
+  const input = useMemo(() => {
+    if (!base) return null;
+    const applied = applyAll(base, entries);
+    // 근무 불가와 품앗이 부담은 저장된 상태에서 매번 다시 만든다.
+    return { ...applied, unavailable: unavail, recentBurden: deriveBurden(entries) };
+  }, [base, entries, unavail]);
 
   const teachers = useMemo(() => {
     if (!input) return [] as Array<{ name: string; n: number }>;
@@ -102,6 +122,18 @@ export function Workbench() {
       ? teacher
       : (teachers[0]?.name ?? null);
   const currentKlass = klass !== null && klasses.includes(klass) ? klass : (klasses[0] ?? null);
+
+  useEffect(() => {
+    setTeacherInput(currentTeacher ?? '');
+  }, [currentTeacher]);
+
+  const helpers = useMemo(() => {
+    const burden = deriveBurden(entries);
+    return Object.entries(burden)
+      .sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0], 'ko'))
+      .slice(0, 4)
+      .map(([name, n]) => ({ name, n }));
+  }, [entries]);
 
   const lessons = useMemo(() => {
     if (!input) return [];
@@ -134,6 +166,25 @@ export function Workbench() {
     window.setTimeout(() => setToast(null), 2400);
   }, []);
 
+  const cycleTheme = useCallback(() => {
+    setTheme((cur) => {
+      const next = THEME_ORDER[(THEME_ORDER.indexOf(cur) + 1) % THEME_ORDER.length] ?? 'auto';
+      applyTheme(next);
+      return next;
+    });
+  }, []);
+
+  const commitTeacher = useCallback((name: string) => {
+    setTeacher(name);
+    setQueue([]);
+    setHovered(null);
+    try {
+      localStorage.setItem(TEACHER_KEY, name);
+    } catch {
+      /* 무시 */
+    }
+  }, []);
+
   const applyRaw = useCallback(
     (raw: string, source: Loaded['source']) => {
       try {
@@ -143,6 +194,8 @@ export function Workbench() {
         setEntries([]);
         saveEntries([]);
         setQueue([]);
+        setUnavail({});
+        saveUnavail({});
         setHovered(null);
         setView('teacher');
         const t = defaultTeacher(l.adapted.input);
@@ -188,7 +241,16 @@ export function Workbench() {
 
   const onToggleSlot = useCallback((s: number) => {
     setHovered(null);
-    setQueue((q) => (q.includes(s) ? q.filter((x) => x !== s) : [...q, s]));
+    setQueue((q) => {
+      const has = q.includes(s);
+      if (!has && typeof window !== 'undefined' && window.innerWidth < 900) {
+        // 좁은 화면에서는 추천 패널이 격자 아래에 있어 눈에 안 띈다. 골랐으면 데려간다.
+        window.setTimeout(() => {
+          sideRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 80);
+      }
+      return has ? q.filter((x) => x !== s) : [...q, s];
+    });
   }, []);
 
   const onToggleDay = useCallback(
@@ -207,6 +269,24 @@ export function Workbench() {
       });
     },
     [input, currentTeacher],
+  );
+
+  const onToggleLock = useCallback(
+    (s: number) => {
+      if (currentTeacher === null) return;
+      setHovered(null);
+      setUnavail((u) => {
+        const cur = new Set(u[currentTeacher] ?? []);
+        if (cur.has(s)) cur.delete(s);
+        else cur.add(s);
+        const next: Record<string, number[]> = { ...u };
+        if (cur.size === 0) delete next[currentTeacher];
+        else next[currentTeacher] = [...cur].sort((x, y) => x - y);
+        saveUnavail(next);
+        return next;
+      });
+    },
+    [currentTeacher],
   );
 
   const onSkip = useCallback(() => {
@@ -228,6 +308,17 @@ export function Workbench() {
     [input, show],
   );
 
+  const onCopyNotice = useCallback(async () => {
+    if (!input || !loaded || entries.length === 0) return;
+    const text = buildNotice(loaded.adapted.schoolName, entries, input.config);
+    try {
+      await navigator.clipboard.writeText(text);
+      show('변경 공지를 복사했습니다');
+    } catch {
+      show('복사하지 못했습니다. 브라우저 권한을 확인하십시오');
+    }
+  }, [input, loaded, entries, show]);
+
   const onApply = useCallback(
     (c: Candidate) => {
       if (!input) return;
@@ -248,6 +339,9 @@ export function Workbench() {
             ? `시간표에 반영했습니다. 남은 결강 ${rest.length}건`
             : '시간표에 반영하고 오늘의 변경에 기록했습니다',
         );
+        if (rest.length === 0 && typeof window !== 'undefined' && window.innerWidth < 900) {
+          window.setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 80);
+        }
         return rest;
       });
     },
@@ -264,6 +358,16 @@ export function Workbench() {
     show('마지막 변경을 되돌렸습니다');
   }, [entries, show]);
 
+  const onUndoAll = useCallback(() => {
+    if (entries.length === 0) return;
+    if (!window.confirm('오늘 반영한 변경을 모두 되돌립니까?')) return;
+    setEntries([]);
+    saveEntries([]);
+    setQueue([]);
+    setHovered(null);
+    show('반영한 변경을 모두 되돌렸습니다');
+  }, [entries, show]);
+
   const onPrint = useCallback(() => {
     window.print();
   }, []);
@@ -276,6 +380,7 @@ export function Workbench() {
     setKlass(null);
     setView('teacher');
     setQueue([]);
+    setUnavail({});
     setHovered(null);
   }, []);
 
@@ -320,28 +425,37 @@ export function Workbench() {
               </button>
             </div>
             {view === 'teacher' && currentTeacher !== null && (
-              <select
-                id="teacher-select"
-                className="select"
-                aria-label="교사 선택"
-                value={currentTeacher}
-                onChange={(e) => {
-                  setTeacher(e.target.value);
-                  setQueue([]);
-                  setHovered(null);
-                  try {
-                    localStorage.setItem(TEACHER_KEY, e.target.value);
-                  } catch {
-                    /* 무시 */
-                  }
-                }}
-              >
-                {teachers.map((t) => (
-                  <option key={t.name} value={t.name}>
-                    {t.name} ({t.n})
-                  </option>
-                ))}
-              </select>
+              <>
+                <input
+                  id="teacher-input"
+                  className="select combo"
+                  list="teacher-options"
+                  aria-label="교사 검색 선택"
+                  placeholder="교사 이름 검색"
+                  value={teacherInput}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setTeacherInput(v);
+                    if (teachers.some((t) => t.name === v)) commitTeacher(v);
+                  }}
+                  onBlur={() => setTeacherInput(currentTeacher ?? '')}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const m = teachers.find((t) => t.name === teacherInput.trim());
+                      if (m) commitTeacher(m.name);
+                      e.currentTarget.blur();
+                    }
+                  }}
+                />
+                <datalist id="teacher-options">
+                  {teachers.map((t) => (
+                    <option key={t.name} value={t.name}>
+                      {`주 ${t.n}시간`}
+                    </option>
+                  ))}
+                </datalist>
+              </>
             )}
             {view === 'klass' && currentKlass !== null && (
               <select
@@ -358,10 +472,15 @@ export function Workbench() {
                 ))}
               </select>
             )}
-            <button className="btn ghost" onClick={onReset}>
-              데이터 지우기
-            </button>
           </>
+        )}
+        <button className="btn ghost theme-btn" title="화면 테마 전환" onClick={cycleTheme}>
+          테마 {THEME_LABEL[theme]}
+        </button>
+        {loaded && input && (
+          <button className="btn ghost" onClick={onReset}>
+            데이터 지우기
+          </button>
         )}
       </header>
 
@@ -375,12 +494,14 @@ export function Workbench() {
             owner={(view === 'teacher' ? currentTeacher : currentKlass) ?? ''}
             lessons={lessons}
             absentSlots={queue}
+            lockedSlots={currentTeacher !== null ? (unavail[currentTeacher] ?? []) : []}
             todayIdx={todayIdx}
             preview={hovered}
             onToggleSlot={onToggleSlot}
             onToggleDay={onToggleDay}
+            onToggleLock={onToggleLock}
           />
-          <div className="side">
+          <div className="side" ref={sideRef}>
             <Panel
               cfg={input.config}
               result={result}
@@ -395,7 +516,10 @@ export function Workbench() {
             <Changes
               cfg={input.config}
               entries={entries}
+              helpers={helpers}
               onUndoLast={onUndoLast}
+              onUndoAll={onUndoAll}
+              onCopyNotice={onCopyNotice}
               onPrint={onPrint}
             />
           </div>

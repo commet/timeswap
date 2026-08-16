@@ -2,6 +2,7 @@ import {
   applyChanges,
   fromComcigan,
   genSchool,
+  slotName,
   type Candidate,
   type Change,
   type ComciganAdaptResult,
@@ -13,6 +14,38 @@ import {
 export const STORAGE_KEY = 'timeswap:v0:data';
 export const TEACHER_KEY = 'timeswap:v0:teacher';
 export const CHANGES_KEY = 'timeswap:v0:changes';
+export const UNAVAIL_KEY = 'timeswap:v0:unavail';
+export const THEME_KEY = 'timeswap:v0:theme';
+
+export type ThemeMode = 'auto' | 'light' | 'dark';
+
+export const THEME_ORDER: ThemeMode[] = ['auto', 'light', 'dark'];
+export const THEME_LABEL: Record<ThemeMode, string> = {
+  auto: '자동',
+  light: '밝음',
+  dark: '어둠',
+};
+
+/** html 루트에 테마 속성을 적용한다. 자동이면 속성을 없애 OS 설정을 따른다. */
+export function applyTheme(mode: ThemeMode): void {
+  const el = document.documentElement;
+  if (mode === 'auto') delete el.dataset.theme;
+  else el.dataset.theme = mode;
+  try {
+    localStorage.setItem(THEME_KEY, mode);
+  } catch {
+    /* 무시 */
+  }
+}
+
+export function loadTheme(): ThemeMode {
+  try {
+    const t = localStorage.getItem(THEME_KEY);
+    return t === 'light' || t === 'dark' ? t : 'auto';
+  } catch {
+    return 'auto';
+  }
+}
 
 /** 시간표에 반영한 교환 1건. 변경 장부와 교체 계획서의 원천이다. */
 export interface AppliedEntry {
@@ -46,6 +79,65 @@ export function applyAll(base: TimetableInput, entries: AppliedEntry[]): Timetab
   let cur = base;
   for (const e of entries) cur = applyChanges(cur, e.changes);
   return cur;
+}
+
+/** 교사별 근무 불가 슬롯 저장, 불러오기. */
+export function loadUnavail(): Record<string, number[]> {
+  try {
+    const raw = localStorage.getItem(UNAVAIL_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, number[]>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveUnavail(u: Record<string, number[]>): void {
+  try {
+    localStorage.setItem(UNAVAIL_KEY, JSON.stringify(u));
+  } catch {
+    /* 무시 */
+  }
+}
+
+/**
+ * 반영 장부에서 교사별 품앗이 횟수를 센다. 결강 당사자는 빼고,
+ * 자리를 내어 준 상대 교사만 센다. 추천 점수의 부담 균형 감점에 쓴다.
+ */
+export function deriveBurden(entries: AppliedEntry[]): Record<string, number> {
+  const burden: Record<string, number> = {};
+  for (const e of entries) {
+    const absent = e.changes[0]?.from.teacher;
+    const seen = new Set<string>();
+    for (const c of e.changes) {
+      const t = c.from.teacher;
+      if (t === absent || seen.has(t)) continue;
+      seen.add(t);
+      burden[t] = (burden[t] ?? 0) + 1;
+    }
+  }
+  return burden;
+}
+
+/** 교무실 단체 대화방에 붙일 변경 공지 문구를 만든다. */
+export function buildNotice(
+  schoolName: string,
+  entries: AppliedEntry[],
+  cfg: ScheduleConfig,
+): string {
+  const d = new Date();
+  const lines: string[] = [`[수업 변경 안내] ${schoolName} | ${d.getMonth() + 1}월 ${d.getDate()}일`];
+  entries.forEach((e, i) => {
+    lines.push(`${i + 1}. ${e.title}`);
+    for (const c of e.changes) {
+      lines.push(
+        `   ${c.from.klass} ${c.from.subject}(${c.from.teacher}): ${slotName(c.from.slot, cfg)}에서 ${slotName(c.toSlot, cfg)}로`,
+      );
+    }
+  });
+  lines.push('위와 같이 시간표가 바뀌었습니다. 수업 전에 확인해 주시기 바랍니다.');
+  return lines.join('\n');
 }
 
 /** 샘플 파일이 없는 배포 환경에서 쓰는 합성 샘플 표식 */
@@ -96,6 +188,7 @@ export function clearRaw(): void {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(TEACHER_KEY);
     localStorage.removeItem(CHANGES_KEY);
+    localStorage.removeItem(UNAVAIL_KEY);
   } catch {
     /* 무시 */
   }
