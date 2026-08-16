@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  coverCandidates,
+  dayOf,
   recommend,
   slotName,
   validate,
   type Candidate,
+  type CoverCandidate,
   type RecommendResult,
   type TimetableInput,
 } from '@timeswap/engine';
@@ -53,22 +56,26 @@ export function Workbench() {
   const [entries, setEntries] = useState<AppliedEntry[]>([]);
   const [view, setView] = useState<'teacher' | 'klass'>('teacher');
   const [klass, setKlass] = useState<string | null>(null);
-  const [absentSlot, setAbsentSlot] = useState<number | null>(null);
+  const [queue, setQueue] = useState<number[]>([]);
   const [hovered, setHovered] = useState<Candidate | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [todayIdx, setTodayIdx] = useState<number | null>(null);
 
   useEffect(() => {
     const raw = loadRaw();
-    if (!raw) return;
-    try {
-      const l = parseAndAdapt(raw, '업로드');
-      setLoaded(l);
-      setEntries(loadEntries());
-      const saved = localStorage.getItem(TEACHER_KEY);
-      setTeacher(saved ?? defaultTeacher(l.adapted.input));
-    } catch {
-      clearRaw();
+    if (raw) {
+      try {
+        const l = parseAndAdapt(raw, '업로드');
+        setLoaded(l);
+        setEntries(loadEntries());
+        const saved = localStorage.getItem(TEACHER_KEY);
+        setTeacher(saved ?? defaultTeacher(l.adapted.input));
+      } catch {
+        clearRaw();
+      }
     }
+    const wd = new Date().getDay(); // 일 0, 월 1
+    setTodayIdx(wd >= 1 && wd <= 5 ? wd - 1 : null);
   }, []);
 
   const base = loaded?.adapted.input ?? null;
@@ -106,14 +113,21 @@ export function Workbench() {
     return currentKlass !== null ? input.assignments.filter((a) => a.klass === currentKlass) : [];
   }, [input, view, currentTeacher, currentKlass]);
 
+  const activeSlot = queue[0] ?? null;
+
   const result: RecommendResult | null = useMemo(() => {
-    if (!input || view !== 'teacher' || currentTeacher === null || absentSlot === null) return null;
+    if (!input || view !== 'teacher' || currentTeacher === null || activeSlot === null) return null;
     try {
-      return recommend(input, { teacher: currentTeacher, slot: absentSlot }, { max: 12 });
+      return recommend(input, { teacher: currentTeacher, slot: activeSlot }, { max: 12 });
     } catch {
       return null;
     }
-  }, [input, view, currentTeacher, absentSlot]);
+  }, [input, view, currentTeacher, activeSlot]);
+
+  const cover: CoverCandidate[] | null = useMemo(() => {
+    if (!input || !result || result.candidates.length > 0) return null;
+    return coverCandidates(input, result.target.slot, result.target.subject);
+  }, [input, result]);
 
   const show = useCallback((msg: string) => {
     setToast(msg);
@@ -128,7 +142,7 @@ export function Workbench() {
         saveRaw(raw);
         setEntries([]);
         saveEntries([]);
-        setAbsentSlot(null);
+        setQueue([]);
         setHovered(null);
         setView('teacher');
         const t = defaultTeacher(l.adapted.input);
@@ -172,6 +186,34 @@ export function Workbench() {
     [applyRaw, show],
   );
 
+  const onToggleSlot = useCallback((s: number) => {
+    setHovered(null);
+    setQueue((q) => (q.includes(s) ? q.filter((x) => x !== s) : [...q, s]));
+  }, []);
+
+  const onToggleDay = useCallback(
+    (d: number) => {
+      if (!input || currentTeacher === null) return;
+      setHovered(null);
+      const daySlots = input.assignments
+        .filter((a) => a.teacher === currentTeacher && dayOf(a.slot, input.config) === d)
+        .map((a) => a.slot)
+        .sort((x, y) => x - y);
+      setQueue((q) => {
+        const allIn = daySlots.every((s) => q.includes(s));
+        if (allIn) return q.filter((s) => !daySlots.includes(s));
+        const add = daySlots.filter((s) => !q.includes(s));
+        return [...q, ...add];
+      });
+    },
+    [input, currentTeacher],
+  );
+
+  const onSkip = useCallback(() => {
+    setHovered(null);
+    setQueue((q) => (q.length > 1 ? [...q.slice(1), q[0]!] : []));
+  }, []);
+
   const onCopy = useCallback(
     async (c: Candidate) => {
       if (!input) return;
@@ -188,7 +230,7 @@ export function Workbench() {
 
   const onApply = useCallback(
     (c: Candidate) => {
-      if (!base || !input) return;
+      if (!input) return;
       const after = applyAll(input, [{ id: 0, type: c.type, title: c.title, changes: c.changes }]);
       if (validate(after).length > 0) {
         show('이 변경은 현재 시간표와 충돌합니다. 다른 방법을 고르십시오');
@@ -198,11 +240,18 @@ export function Workbench() {
       const next = [...entries, { id: nextId, type: c.type, title: c.title, changes: c.changes }];
       setEntries(next);
       saveEntries(next);
-      setAbsentSlot(null);
       setHovered(null);
-      show('시간표에 반영하고 오늘의 변경에 기록했습니다');
+      setQueue((q) => {
+        const rest = q.slice(1);
+        show(
+          rest.length > 0
+            ? `시간표에 반영했습니다. 남은 결강 ${rest.length}건`
+            : '시간표에 반영하고 오늘의 변경에 기록했습니다',
+        );
+        return rest;
+      });
     },
-    [base, input, entries, show],
+    [input, entries, show],
   );
 
   const onUndoLast = useCallback(() => {
@@ -210,7 +259,7 @@ export function Workbench() {
     const next = entries.slice(0, -1);
     setEntries(next);
     saveEntries(next);
-    setAbsentSlot(null);
+    setQueue([]);
     setHovered(null);
     show('마지막 변경을 되돌렸습니다');
   }, [entries, show]);
@@ -226,7 +275,7 @@ export function Workbench() {
     setEntries([]);
     setKlass(null);
     setView('teacher');
-    setAbsentSlot(null);
+    setQueue([]);
     setHovered(null);
   }, []);
 
@@ -264,7 +313,6 @@ export function Workbench() {
                 className={view === 'klass' ? 'on' : ''}
                 onClick={() => {
                   setView('klass');
-                  setAbsentSlot(null);
                   setHovered(null);
                 }}
               >
@@ -279,7 +327,7 @@ export function Workbench() {
                 value={currentTeacher}
                 onChange={(e) => {
                   setTeacher(e.target.value);
-                  setAbsentSlot(null);
+                  setQueue([]);
                   setHovered(null);
                   try {
                     localStorage.setItem(TEACHER_KEY, e.target.value);
@@ -326,21 +374,23 @@ export function Workbench() {
             mode={view}
             owner={(view === 'teacher' ? currentTeacher : currentKlass) ?? ''}
             lessons={lessons}
-            absentSlot={absentSlot}
+            absentSlots={queue}
+            todayIdx={todayIdx}
             preview={hovered}
-            onSelect={(s) => {
-              setAbsentSlot(s);
-              setHovered(null);
-            }}
+            onToggleSlot={onToggleSlot}
+            onToggleDay={onToggleDay}
           />
           <div className="side">
             <Panel
               cfg={input.config}
               result={result}
+              queueLen={queue.length}
+              cover={cover}
               hovered={hovered}
               onHover={setHovered}
               onCopy={onCopy}
               onApply={onApply}
+              onSkip={onSkip}
             />
             <Changes
               cfg={input.config}

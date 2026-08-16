@@ -5,3 +5,4 @@ export * from './score';
 export * from './search';
 export * from './synthetic';
 export * from './adapters/comcigan';
+export * from './cover';

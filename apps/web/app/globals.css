@@ -238,6 +238,55 @@ select, input { font: inherit; color: inherit; }
 .chg-undo { padding: 2px 8px; font-size: 12px; }
 .chg-foot { padding: 8px 14px 14px; }
 
+/* 결강 대기열과 요일 선택 */
+.tt-head.day-btn { border: none; background: transparent; border-radius: 6px; cursor: pointer; }
+.tt-head.day-btn:hover { background: var(--accent-soft); color: var(--accent); }
+.tt-head.today, .tt-head.day-btn.today { color: var(--accent); }
+.tt-head.today::after, .tt-head.day-btn.today::after { content: ''; display: block; width: 18px; height: 3px; border-radius: 2px; background: var(--accent); margin: 2px auto 0; }
+.cell.today-col { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 30%, transparent); }
+.cell.absent.queued { background: transparent; color: var(--warn); opacity: 0.85; }
+.badge-absent.queued { background: var(--surface); color: var(--warn); border: 1px solid var(--warn); }
+.head-skip { margin-left: auto; padding: 2px 10px; font-size: 12px; }
+.panel-empty .hint { display: inline-block; margin-top: 8px; font-size: 12px; }
+
+/* 추천 유형 필터 칩 */
+.chips { display: flex; gap: 6px; padding: 10px 14px 0; flex-wrap: wrap; }
+.chip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 3px 12px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.chip.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.cand.top { border-color: var(--accent); }
+.cand.top .cand-rank { color: var(--accent); }
+
+/* 보강 후보 */
+.cover { margin-top: 14px; text-align: left; }
+.cover-title { font-size: 12.5px; font-weight: 800; color: var(--ink); margin: 0 0 6px; }
+.cover-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.cover-list li { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.cover-name { font-weight: 700; color: var(--ink); }
+.cover-badge { font-size: 10.5px; font-weight: 800; border-radius: 999px; padding: 0 7px; background: var(--accent-soft); color: var(--accent); }
+.cover-load { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* 좁은 화면 정비 */
+.tt-period, .tt-head.corner { position: sticky; left: 0; z-index: 2; background: var(--surface); }
+@media (max-width: 640px) {
+  .topbar { flex-wrap: wrap; row-gap: 8px; padding: 10px 12px; }
+  .school-chip { display: none; }
+  .wordmark { font-size: 16px; }
+  .seg button { padding: 5px 11px; font-size: 13px; }
+  .select { max-width: 132px; }
+  .work { padding: 10px 10px 20px; gap: 12px; }
+  .grid-scroll { padding: 10px 8px 12px; }
+  .tt-grid { min-width: 500px; }
+  .cell { min-height: 46px; padding: 5px 7px; }
+  .cell .k, .cell .s { font-size: 11px; }
+  .card-head { padding: 12px 14px 0; flex-wrap: wrap; }
+  .cand-foot { flex-wrap: wrap; }
+  .cand-score { margin-left: 0; width: 100%; }
+  .toast { bottom: 14px; max-width: 92vw; text-align: center; }
+  .landing { padding: 32px 16px; }
+  .dropzone { padding: 20px 14px; }
+  .foot { font-size: 11.5px; gap: 8px; }
+}
+
 /* 인쇄용 수업 교체 계획서 */
 .sheet { display: none; }
 @media print {

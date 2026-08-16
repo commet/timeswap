@@ -99,3 +99,13 @@ describe('분반 묶음의 정직한 제외', () => {
     expect(notes.join(' ')).toContain('분반');
   });
 });
+
+describe('보강 후보: 비어 있는 교사 우선순위', () => {
+  it('결강 교시에 비어 있는 교사를 같은 과목, 적은 시수 순으로 돌려준다', async () => {
+    const { coverCandidates } = await import('../src/cover');
+    // 메인 골든 학교의 월요일 1교시(슬롯 0): A 는 결강 당사자(수업 중), B 는 2-4 수업 중
+    const list = coverCandidates(school, 0, '수학');
+    expect(list.map((c) => c.teacher)).toEqual(['C', 'D']);
+    expect(list[0]!.weeklyLessons).toBe(2);
+  });
+});

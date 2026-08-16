@@ -81,7 +81,35 @@ if (candCount > 0) {
   await page.waitForTimeout(300);
   const afterUndo = await page.locator('.chg-list li').count();
   console.log('되돌리기 후 장부 건수:', afterUndo);
+
+  // 5e. 결강 대기열: 수업 두 개를 걸면 대기 1건 표시
+  await page.locator('button.cell.lesson').nth(1).click();
+  await page.locator('button.cell.lesson').nth(3).click();
+  await page.waitForTimeout(300);
+  const queuedBadge = await page.locator('.badge-absent.queued').count();
+  const subText = await page.locator('.panel .card-head .sub').textContent();
+  console.log('대기열 배지:', queuedBadge, '| 패널 부제:', subText?.trim());
+  if (queuedBadge !== 1 || !subText?.includes('대기')) errors.push('대기열 표시 실패');
+  await page.getByRole('button', { name: '뒤로 미루기' }).click();
+  await page.waitForTimeout(200);
+  await page.locator('button.cell.lesson.absent').first().click();
+  await page.locator('button.cell.lesson.absent').first().click();
+  await page.waitForTimeout(200);
+
+  // 5f. 요일 전체 결강
+  await page.locator('button.tt-head.day-btn').first().click();
+  await page.waitForTimeout(300);
+  const dayQueued = await page.locator('.cell.absent').count();
+  console.log('요일 전체 결강 수:', dayQueued);
+  await page.locator('button.tt-head.day-btn').first().click();
+  await page.waitForTimeout(200);
 }
+
+// 6b. 모바일 작업 화면
+await page.setViewportSize({ width: 390, height: 844 });
+await page.waitForTimeout(400);
+await page.screenshot({ path: `${OUT}/shot-9-mobile-work.png` });
+await page.setViewportSize({ width: 1360, height: 860 });
 
 // 6. 교사 전환
 const select = page.locator('#teacher-select');
