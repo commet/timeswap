@@ -5,10 +5,16 @@
     "packages/*",
     "apps/*"
   ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "test": "npm run test -w @timeswap/engine",
+    "typecheck": "tsc -p packages/engine/tsconfig.json --noEmit",
     "build": "npm run build -w web",
-    "dev": "npm run dev -w web"
+    "dev": "npm run dev -w web",
+    "serve": "python3 -m http.server 3100 --directory apps/web/out",
+    "smoke": "node scripts/smoke.mjs"
   },
   "devDependencies": {
     "playwright": "^1.62.1"

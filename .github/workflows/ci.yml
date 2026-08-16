@@ -1,0 +1,68 @@
+name: 검증
+
+# 배포 전에 반드시 통과해야 하는 관문이다.
+# 엔진 시험, 타입 검사, 웹 빌드, 브라우저 전 과정 점검을 한 자리에서 돌린다.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: 시험과 빌드
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 알려진 취약점 확인
+        # 높음 이상이 새로 생기면 멈춘다. 낮은 등급은 알리기만 한다.
+        run: npm audit --audit-level=high
+
+      - name: 타입 검사
+        run: npm run typecheck
+
+      - name: 엔진 시험
+        run: npm test
+
+      - name: 웹 빌드
+        run: npm run build
+
+      - name: 정적 출력 확인
+        run: |
+          test -f apps/web/out/index.html || { echo "정적 출력이 없습니다"; exit 1; }
+          echo "정적 출력 확인: $(du -sh apps/web/out | cut -f1)"
+
+      - name: 브라우저 설치
+        run: npx playwright install --with-deps chromium
+
+      - name: 전 과정 점검
+        run: |
+          npm run serve &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3100/ >/dev/null && break
+            sleep 1
+          done
+          SHOT_DIR="${RUNNER_TEMP}" npm run smoke
+
+      - name: 화면 갈무리 보관
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 화면-갈무리
+          path: ${{ runner.temp }}/shot-*.png
+          if-no-files-found: ignore
+          retention-days: 7

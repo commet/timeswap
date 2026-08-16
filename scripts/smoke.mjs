@@ -1,10 +1,14 @@
+import { existsSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:3100';
 const OUT = process.env.SHOT_DIR ?? '.';
 const errors = [];
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+// 이 저장소를 여는 곳마다 브라우저 위치가 다르다.
+// 지정한 경로가 있으면 쓰고, 없으면 playwright 가 받아 둔 것을 쓴다.
+const exe = process.env.PW_CHROMIUM ?? '/opt/pw-browsers/chromium';
+const browser = await chromium.launch(existsSync(exe) ? { executablePath: exe } : {});
 const ctx = await browser.newContext({
   viewport: { width: 1360, height: 860 },
   permissions: ['clipboard-read', 'clipboard-write'],
@@ -204,6 +208,14 @@ await page.screenshot({ path: `${OUT}/shot-9-mobile-work.png` });
 await page.setViewportSize({ width: 1360, height: 860 });
 await page.waitForTimeout(300);
 
+// 8b. 파일로 저장: CSP 아래에서도 내려받기가 되는지
+const [download] = await Promise.all([
+  page.waitForEvent('download', { timeout: 15000 }).catch(() => null),
+  page.getByRole('button', { name: '파일로 저장' }).click(),
+]);
+console.log('파일로 저장:', download ? download.suggestedFilename() : '실패');
+if (!download) errors.push('시간표 파일 저장 실패');
+
 // 9. 모바일 랜딩
 const mob = await ctx.newPage();
 await mob.setViewportSize({ width: 390, height: 844 });
@@ -211,6 +223,11 @@ await mob.goto(BASE, { waitUntil: 'networkidle' });
 await mob.waitForTimeout(400);
 await mob.screenshot({ path: `${OUT}/shot-6-mobile.png` });
 
-console.log('리소스 경고:', warnings.length); console.log('페이지 오류:', errors.length === 0 ? '없음' : errors);
+// 보안 헤더를 씌우고 돌리면 막힌 자원이 여기에 남는다. CSP 를 손보기 전에 이걸 본다.
+console.log('리소스 경고:', warnings.length);
+for (const w of [...new Set(warnings)].slice(0, 8)) console.log('  ·', w.slice(0, 150));
+const blocked = warnings.filter((w) => /Content Security Policy|CSP/i.test(w));
+if (blocked.length > 0) errors.push(`CSP 가 자원 ${blocked.length}건을 막았습니다`);
+console.log('페이지 오류:', errors.length === 0 ? '없음' : errors);
 await browser.close();
 process.exit(errors.length > 0 ? 1 : 0);

@@ -1,0 +1,21 @@
+version: 2
+
+# 의존성은 손대지 않으면 조용히 낡는다.
+# 매주 한 번 묶어서 올리고, CI 가 통과한 것만 받는다.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      개발도구:
+        dependency-type: development
+      런타임:
+        dependency-type: production
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

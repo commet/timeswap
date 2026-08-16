@@ -44,17 +44,28 @@ apps/web          Next.js 정적 내보내기
 | [00-research.md](00-research.md) | 딥 리서치: 국내 현황, 해외 제품, 알고리즘 문헌, 시장과 구매 구조 |
 | 01-plan.md | 제품과 구현 계획 v1. 아직 [PR #1](https://github.com/commet/timeswap/pull/1) 초안이라 main 에 없다 |
 | [02-spike-record.md](02-spike-record.md) | 스파이크 기록. 데이터 경로 판단은 03 에서 뒤집혔다 |
-| [03-domain-and-data.md](03-domain-and-data.md) | 운영 실태, 나이스 개방 API 실측, 자료 취급 원칙 |
+| [03-domain-and-data.md](03-domain-and-data.md) | 운영 실태, 나이스 개방 API 실측, 자료 취급 원칙, 분반 교환 |
+| [04-operations.md](04-operations.md) | 배포 구조, 검증 관문, 의존성 정책, 데이터베이스 판단 |
 
 ## 개발
 
 ```bash
-npm install
-npm test            # 엔진 시험 34개
-npm run build       # 웹 정적 빌드
+npm ci              # 잠금 파일 그대로 설치
+npm run typecheck   # 타입 검사
+npm test            # 엔진 시험 49개
+npm run build       # 웹 정적 빌드 (결과는 apps/web/out)
 npm run demo        # 엔진 CLI 데모
-node scripts/smoke.mjs   # 브라우저 전 과정 점검 (앞서 웹 서버 필요)
 ```
+
+배포와 같은 조건으로 확인하려면 응답 헤더를 씌워 띄운다.
+
+```bash
+node scripts/serve-checked.mjs   # vercel.json 의 헤더를 그대로 적용
+npm run smoke                    # 다른 창에서 브라우저 전 과정 점검
+```
+
+푸시와 풀 리퀘스트마다 GitHub Actions 가 위 전부를 다시 돌린다.
+자세한 구성은 [04-operations.md](04-operations.md) 에 있다.
 
 ## 다음 단계
 
