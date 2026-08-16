@@ -9,6 +9,7 @@ import {
   type NeisReport,
   type DayClosure,
   type NeisRow,
+  type TeacherConflict,
   type ScheduleConfig,
   type TimetableInput,
 } from '@timeswap/engine';
@@ -21,6 +22,7 @@ export const CHANGES_KEY = 'timeswap:v0:changes';
 export const UNAVAIL_KEY = 'timeswap:v0:unavail';
 export const THEME_KEY = 'timeswap:v0:theme';
 export const REASON_KEY = 'timeswap:v0:reason';
+export const OFFDAY_KEY = 'timeswap:v0:offdays';
 export const NEIS_KEY_STORE = 'timeswap:v0:neiskey';
 
 export type ThemeMode = 'auto' | 'light' | 'dark';
@@ -313,6 +315,8 @@ export interface Loaded {
    * neis 안에 두지 않고 따로 두는 이유는 저장 파일에서 되살려야 하기 때문이다.
    */
   calendar?: Calendar;
+  /** 한 이름이 같은 교시에 다른 과목을 맡은 자리. 대개 동명이인이다 */
+  conflicts?: TeacherConflict[];
   /** 나이스에서 불러온 경우의 부가 정보 */
   neis?: {
     school: NeisSchool;
@@ -444,11 +448,15 @@ export function buildFromNeis(
   range?: { from: string; to: string },
 ): Loaded {
   const report = fromNeis(rows);
-  const input = neisToTimetable(report, (klass, subject) => map[mapKey(klass, subject)]);
+  const { conflicts, ...input } = neisToTimetable(
+    report,
+    (klass, subject) => map[mapKey(klass, subject)],
+  );
   return {
     schoolName: school.name,
     source: '나이스',
     input,
+    ...(conflicts.length > 0 ? { conflicts } : {}),
     ...(range ? { calendar: { from: range.from, to: range.to, events } } : {}),
     neis: { school, report, events },
   };
@@ -474,6 +482,30 @@ export function missingTeachers(report: NeisReport, map: TeacherMap): Array<[str
  * 실제로는 저장되지 않았다면, 선생님은 새로고침 한 번에 오늘 작업을 통째로 잃는다.
  * 그 사실을 그때 알게 하지 않고 미리 알린다.
  */
+/**
+ * 손으로 지정한 수업 없는 요일.
+ *
+ * 나이스 학사일정에 안 잡히는 날이 있다. 정기고사 기간, 학교 행사, 갑자기 정해진 재량휴업이다.
+ * 도구가 알 길이 없으므로 선생님이 눌러 알려 주신다. 학사일정에서 온 것과 함께 걸린다.
+ */
+export function loadOffDays(): number[] {
+  try {
+    const raw = localStorage.getItem(OFFDAY_KEY);
+    const v = raw ? (JSON.parse(raw) as unknown) : [];
+    return Array.isArray(v) ? v.filter((x): x is number => Number.isInteger(x)) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveOffDays(days: number[]): void {
+  try {
+    localStorage.setItem(OFFDAY_KEY, JSON.stringify(days));
+  } catch {
+    /* 저장 못 해도 이 화면에서는 그대로 쓴다 */
+  }
+}
+
 export function saveRaw(raw: string): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, raw);

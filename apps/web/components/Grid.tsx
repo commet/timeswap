@@ -29,6 +29,9 @@ interface Props {
   onToggleSlot: (slot: number) => void;
   onToggleDay: (day: number) => void;
   onToggleLock: (slot: number) => void;
+  /** 손으로 지정한 수업 없는 요일 */
+  offDays: number[];
+  onToggleOffDay: (day: number) => void;
 }
 
 export function Grid({
@@ -44,6 +47,8 @@ export function Grid({
   onToggleSlot,
   onToggleDay,
   onToggleLock,
+  offDays,
+  onToggleOffDay,
 }: Props) {
   // 학급별로 갈리는 휴업일도 있지만 머리글은 한 줄이라 학교 전체 휴업일만 표시한다.
   const closedDay = new Map<number, string>();
@@ -122,6 +127,23 @@ export function Grid({
           ))}
         </div>
       </div>
+      {teacherMode && (
+        <div className="offdays">
+          <span className="offdays-label">수업 없는 날</span>
+          {cfg.dayNames.map((d, di) => (
+            <button
+              key={d}
+              className={`offday${offDays.includes(di) ? ' on' : ''}`}
+              aria-pressed={offDays.includes(di)}
+              title="정기고사나 학교 행사처럼 그날 수업이 없으면 눌러 두십시오"
+              onClick={() => onToggleOffDay(di)}
+            >
+              {d}
+            </button>
+          ))}
+          <span className="offdays-hint">눌러 둔 요일로는 수업을 옮기지 않습니다</span>
+        </div>
+      )}
       {teacherMode && (
         <div className="grid-legend">
           <span>

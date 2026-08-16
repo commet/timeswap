@@ -221,7 +221,7 @@ export function fromNeis(rows: NeisRow[]): NeisReport {
 export function neisToTimetable(
   report: NeisReport,
   teacherOf: (klass: string, subject: string) => string | undefined,
-): TimetableInput {
+): TimetableInput & { conflicts: TeacherConflict[] } {
   const assignments: Assignment[] = [];
   for (const [key, subject] of report.base) {
     const [klass, dayStr, periodStr] = key.split('|');
@@ -241,6 +241,9 @@ export function neisToTimetable(
   // 그런 배정이 나왔다면 그 수업들은 실제로 한 몸이다. 합반이거나 이동수업이다.
   // 짐작이 아니라 물리적으로 그럴 수밖에 없는 경우라 여기서 묶어 준다.
   // 묶지 않으면 한 학급만 떼어 옮기는, 현실에서 불가능한 안이 추천에 오른다.
+  // 다만 과목까지 같을 때만 묶는다. 같은 이름이 같은 교시에 서로 다른 과목을 맡고 있다면
+  // 그건 합반이 아니라 동명이인이거나 배정이 잘못된 것이다. 묶어 버리면 두 사람의 수업이
+  // 한 몸으로 움직이는 엉뚱한 안이 나온다. 그런 자리는 묶지 않고 conflicts 로 넘겨 알린다.
   const bySlotTeacher = new Map<string, Assignment[]>();
   for (const a of assignments) {
     const k = `${a.teacher}|${a.slot}`;
@@ -248,12 +251,37 @@ export function neisToTimetable(
     if (list) list.push(a);
     else bySlotTeacher.set(k, [a]);
   }
+  const conflicts: TeacherConflict[] = [];
   for (const [k, list] of bySlotTeacher) {
     if (list.length < 2) continue;
-    for (const a of list) a.group = `동시:${k}`;
+    const subjects = [...new Set(list.map((a) => a.subject))];
+    if (subjects.length === 1) {
+      for (const a of list) a.group = `동시:${k}`;
+    } else {
+      conflicts.push({
+        teacher: list[0]!.teacher,
+        slot: list[0]!.slot,
+        subjects: subjects.sort((x, y) => x.localeCompare(y, 'ko')),
+        klasses: list.map((a) => a.klass).sort((x, y) => x.localeCompare(y, 'ko', { numeric: true })),
+      });
+    }
   }
 
-  return { config: report.config, assignments };
+  return { config: report.config, assignments, conflicts };
+}
+
+/**
+ * 한 이름이 같은 교시에 서로 다른 과목을 맡고 있는 자리.
+ *
+ * 대개 동명이인이다. 학교에 김영희 선생님이 두 분이면 교사 배정에서 같은 이름으로 들어오고,
+ * 도구는 한 사람이 같은 시간에 두 곳에 있는 시간표로 읽는다.
+ * 이름 말고는 사람을 가릴 열쇠가 없어 도구가 풀 수 없다. 알리고 구분을 부탁한다.
+ */
+export interface TeacherConflict {
+  teacher: string;
+  slot: number;
+  subjects: string[];
+  klasses: string[];
 }
 
 /**

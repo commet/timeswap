@@ -175,6 +175,35 @@ if (candCount > 0) {
   await page.waitForTimeout(200);
 }
 
+// 5g. 수업 없는 날 지정. 그 요일로 가는 안이 실제로 사라지는지까지 본다.
+await page.locator('button.cell.lesson').nth(2).click();
+await page.waitForTimeout(350);
+const dayLabels = await page.locator('.offday').allTextContents();
+// 추천 목록에 실제로 등장하는 요일을 하나 골라 그 요일을 막는다.
+// 후보 수만 세면 뜻이 없다. 목록이 12개로 잘려 있어 빈자리를 다른 안이 채우기 때문이다.
+const titlesBefore = await page.locator('.cand-title').allTextContents();
+const blockable = dayLabels.findIndex((d) => titlesBefore.some((t) => t.includes(`${d}요일`)));
+if (blockable < 0) errors.push('추천에 등장하는 요일을 찾지 못함');
+const blockedDay = dayLabels[blockable] ?? '';
+await page.locator('.offday').nth(blockable).click();
+await page.waitForTimeout(400);
+const titlesAfter = await page.locator('.cand-title').allTextContents();
+const leaked = titlesAfter.filter((t) => t.includes(`${blockedDay}요일`));
+const marked = await page.locator('.offday.on').count();
+console.log(
+  '수업 없는 날 지정:', dayLabels.join(''),
+  '| 막은 요일', blockedDay,
+  '| 그 요일 추천', titlesBefore.filter((t) => t.includes(`${blockedDay}요일`)).length, '→', leaked.length,
+  '| 표시', marked,
+);
+if (marked !== 1) errors.push('수업 없는 날 표시 실패');
+if (leaked.length > 0) errors.push(`막은 요일(${blockedDay})로 가는 추천이 남음`);
+await page.screenshot({ path: `${OUT}/shot-15-offday.png` });
+await page.locator('.offday').nth(blockable).click();
+await page.waitForTimeout(200);
+await page.locator('button.cell.lesson.absent').first().click();
+await page.waitForTimeout(200);
+
 // 6. 교사 검색 전환
 const names = await page.locator('#teacher-options option').evaluateAll((os) => os.map((o) => o.value));
 console.log('교사 수:', names.length);

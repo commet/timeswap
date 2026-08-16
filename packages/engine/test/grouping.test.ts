@@ -125,3 +125,57 @@ describe('묶이지 않은 같은 교시 같은 과목 알리기', () => {
     }
   });
 });
+
+describe('동명이인', () => {
+  /** 3학년 1반은 2교시에 국어, 2반은 2교시에 수학. 담당 이름이 둘 다 "김영희" 다. */
+  function twoSubjects(): NeisRow[] {
+    const out: NeisRow[] = [];
+    for (const date of ['20260601', '20260608', '20260615']) {
+      for (const k of ['1', '2']) {
+        for (let p = 1; p <= 4; p++) {
+          out.push({
+            ALL_TI_YMD: date,
+            GRADE: '3',
+            CLASS_NM: k,
+            PERIO: String(p),
+            ITRT_CNTNT: p === 2 ? (k === '1' ? '국어' : '수학') : `과목${k}${p}`,
+          });
+        }
+      }
+    }
+    return out;
+  }
+
+  const rep = fromNeis(twoSubjects());
+  const input = neisToTimetable(rep, (k, s2) =>
+    s2 === '국어' || s2 === '수학' ? '김영희' : `T${k}${s2}`,
+  );
+
+  it('과목이 다르면 묶지 않는다', () => {
+    // 묶어 버리면 두 사람의 수업이 한 몸으로 움직이는 엉뚱한 안이 나온다
+    const at = input.assignments.filter((a) => a.teacher === '김영희');
+    expect(at.length).toBe(2);
+    expect(at.every((a) => a.group === undefined)).toBe(true);
+  });
+
+  it('그 자리를 충돌로 알린다', () => {
+    expect(input.conflicts.length).toBe(1);
+    const c = input.conflicts[0]!;
+    expect(c.teacher).toBe('김영희');
+    expect(c.subjects).toEqual(['국어', '수학']);
+    expect(c.klasses).toEqual(['3-1', '3-2']);
+  });
+
+  it('과목이 같으면 충돌이 아니라 합반으로 묶는다', () => {
+    const same = neisToTimetable(fromNeis(rows('미적분')), (k, s2) =>
+      s2 === '미적분' ? '김미적' : `T${k}${s2}`,
+    );
+    expect(same.conflicts).toEqual([]);
+    expect(same.assignments.filter((a) => a.subject === '미적분').every((a) => a.group)).toBe(true);
+  });
+
+  it('겹치는 자리가 없으면 충돌도 없다', () => {
+    const clean = neisToTimetable(fromNeis(rows('미적분')), (k, s2) => `T${k}${s2}`);
+    expect(clean.conflicts).toEqual([]);
+  });
+});

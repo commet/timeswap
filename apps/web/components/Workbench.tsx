@@ -38,12 +38,14 @@ import {
   fromFile,
   loadEntries,
   loadNeisKey,
+  loadOffDays,
   loadRaw,
   loadTheme,
   loadUnavail,
   sampleSchool,
   saveEntries,
   saveNeisKey,
+  saveOffDays,
   saveRaw,
   saveUnavail,
   REASON_KEY,
@@ -92,6 +94,8 @@ export function Workbench() {
   const [klass, setKlass] = useState<string | null>(null);
   const [queue, setQueue] = useState<number[]>([]);
   const [unavail, setUnavail] = useState<Record<string, number[]>>({});
+  /** 손으로 지정한 수업 없는 요일. 학사일정에 안 잡히는 정기고사와 학교 행사를 위한 것이다 */
+  const [offDays, setOffDays] = useState<number[]>([]);
   const [hovered, setHovered] = useState<Candidate | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   /**
@@ -121,6 +125,7 @@ export function Workbench() {
       }
     }
     setNeisKey(loadNeisKey());
+    setOffDays(loadOffDays());
     setTheme(loadTheme());
     const wd = new Date().getDay(); // 일 0, 월 1
     setTodayIdx(wd >= 1 && wd <= 5 ? wd - 1 : null);
@@ -133,12 +138,13 @@ export function Workbench() {
    * 시간표는 되풀이되는 한 주지만 학사일정은 날짜라 이번 주에 걸리는 것만 요일로 옮긴다.
    */
   const closures = useMemo(() => {
+    const own = offDays.map((day) => ({ day, reason: '수업 없는 날로 지정됨' }));
     const cal = loaded?.calendar;
-    if (!cal || cal.events.length === 0 || !base) return [];
-    if (!calendarCoversThisWeek(cal)) return [];
+    if (!cal || cal.events.length === 0 || !base || !calendarCoversThisWeek(cal)) return own;
     const ks = [...new Set(base.assignments.map((a) => a.klass))];
-    return buildClosures(cal.events, ks);
-  }, [loaded, base]);
+    // 손으로 지정한 것이 학사일정보다 뒤에 온다. 앞의 것이 이기므로 학사일정 사유가 남는다.
+    return [...buildClosures(cal.events, ks), ...own];
+  }, [loaded, base, offDays]);
 
   /** 학사일정을 받아 두긴 했는데 그 기간이 이번 주를 지나쳤다. 다시 받아야 한다. */
   const staleCalendar =
@@ -466,6 +472,15 @@ export function Workbench() {
     [currentTeacher],
   );
 
+  const onToggleOffDay = useCallback((d: number) => {
+    setHovered(null);
+    setOffDays((cur) => {
+      const next = cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d].sort((a, b) => a - b);
+      saveOffDays(next);
+      return next;
+    });
+  }, []);
+
   const onSkip = useCallback(() => {
     setHovered(null);
     setQueue((q) => (q.length > 1 ? [...q.slice(1), q[0]!] : []));
@@ -749,6 +764,8 @@ export function Workbench() {
             onToggleSlot={onToggleSlot}
             onToggleDay={onToggleDay}
             onToggleLock={onToggleLock}
+            offDays={offDays}
+            onToggleOffDay={onToggleOffDay}
           />
           <div className="side" ref={sideRef}>
             <Panel
@@ -791,6 +808,21 @@ export function Workbench() {
           teacher={currentTeacher ?? ''}
           reason={reason}
         />
+      )}
+
+      {loaded?.conflicts && loaded.conflicts.length > 0 && !atHome && !needsPick && input && (
+        <div className="warn-bar" role="alert">
+          <b>같은 이름이 같은 교시에 두 과목을 맡고 있습니다.</b>{' '}
+          {loaded.conflicts
+            .slice(0, 3)
+            .map(
+              (c) =>
+                `${c.teacher} 선생님 ${slotName(c.slot, input.config)} (${c.subjects.join(', ')})`,
+            )
+            .join(', ')}
+          {loaded.conflicts.length > 3 ? ` 외 ${loaded.conflicts.length - 3}건` : ''}. 동명이인이라면
+          교사 배정에서 이름을 구분해 다시 불러오십시오. 그대로 두면 그 자리의 추천이 어긋납니다.
+        </div>
       )}
 
       {staleCalendar && !atHome && !needsPick && (
