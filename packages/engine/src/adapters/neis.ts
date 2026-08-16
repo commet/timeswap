@@ -40,9 +40,11 @@ export interface NeisCell {
   /** 0부터 세는 교시 */
   period: number;
   klass: string;
-  /** 보강이면 표기를 떼어 낸 실제 과목명 */
+  /** 보강과 전문교과 표기를 떼어 낸 실제 과목명 */
   subject: string;
   kind: NeisKind;
+  /** 과목명 앞에 별표가 붙어 있었는지. 전문교과 실습이다. */
+  pro: boolean;
 }
 
 /** 기준 시간표와 달랐던 칸 1개 */
@@ -76,11 +78,44 @@ export interface NeisReport {
   covers: NeisCell[];
   changes: NeisChange[];
   swaps: NeisSwap[];
-  /** `${klass}|${day}|${period}` 별 최빈 과목. 학기 기준 시간표로 본다. */
-  base: Map<string, string>;
+  /**
+   * `${klass}|${day}|${period}` 별 기준 과목. 학기 기준 시간표로 본다.
+   *
+   * 값이 배열인 이유는 한 칸에 과목이 둘 이상 오는 학교가 있기 때문이다.
+   * 예술 계열에서 전공 실기를 나누어 편성하면 같은 학급 같은 교시에 두 과목이 함께 온다.
+   * 실측에서 국립전통예술고 15%, 울산예술고 5% 였고 나머지 학교는 0% 였다.
+   * 많이 나온 하나만 남기면 그 학교 시간표가 절반만 담긴다.
+   */
+  base: Map<string, string[]>;
+  /** base 의 열쇠 가운데 전문교과 실습인 자리 */
+  proKeys: Set<string>;
+  /** 수업 칸 가운데 전문교과 표시가 붙은 비율. 0 이면 일반고로 봐도 된다. */
+  proRate: number;
 }
 
 const COVER_MARK = '[보강]';
+
+/**
+ * 전문교과 실습 표시.
+ *
+ * 나이스 자료의 실제 형태는 `* 도면해독(선반가공)` 이고, 보강까지 겹치면
+ * `[보강]* 실내건축설계 기획` 처럼 보강 표시가 앞에 온다. 그래서 떼는 순서가 정해져 있다.
+ *
+ * 이 표시를 과목명에 그대로 두면 두 가지가 어긋난다.
+ * 화면에 별표가 그대로 나오고, 교사 배정표가 과목명을 열쇠로 쓰므로
+ * 같은 과목이 표시 유무로 갈릴 수 있다. 떼어서 따로 들고 다닌다.
+ */
+const PRO_MARK = '*';
+
+/** 앞에 붙은 표시를 떼고 과목명과 표시 여부를 함께 돌려준다. */
+export function stripMarks(raw: string): { subject: string; cover: boolean; pro: boolean } {
+  let t = raw.trim();
+  const cover = t.startsWith(COVER_MARK);
+  if (cover) t = t.slice(COVER_MARK.length).trim();
+  const pro = t.startsWith(PRO_MARK);
+  if (pro) t = t.slice(PRO_MARK.length).trim();
+  return { subject: t, cover, pro };
+}
 
 export const baseKey = (klass: string, day: number, period: number): string =>
   `${klass}|${day}|${period}`;
@@ -126,52 +161,71 @@ export function fromNeis(rows: NeisRow[]): NeisReport {
 
   const cells: NeisCell[] = parsed.map((p) => {
     const isHoliday = holidaySet.has(`${p.klass}|${p.date}`);
-    const isCover = p.raw.startsWith(COVER_MARK);
+    const { subject, cover, pro } = stripMarks(p.raw);
     return {
       date: p.date,
       day: p.day,
       period: p.period,
       klass: p.klass,
-      subject: isCover ? p.raw.slice(COVER_MARK.length).trim() : p.raw,
-      kind: isHoliday ? '휴업' : isCover ? '보강' : '수업',
+      subject,
+      kind: isHoliday ? '휴업' : cover ? '보강' : '수업',
+      pro,
     };
   });
 
-  // 기준 시간표: 휴업과 보강을 뺀 칸의 최빈 과목
+  // 기준 시간표: 휴업과 보강을 뺀 칸의 과목별 관측 횟수
   const tally = new Map<string, Map<string, number>>();
+  const proKeys = new Set<string>();
   for (const c of cells) {
     if (c.kind !== '수업') continue;
     const k = baseKey(c.klass, c.day, c.period);
     const m = tally.get(k) ?? new Map<string, number>();
     m.set(c.subject, (m.get(c.subject) ?? 0) + 1);
     tally.set(k, m);
+    if (c.pro) proKeys.add(k);
   }
-  const base = new Map<string, string>();
+
+  /**
+   * 한 칸에 남길 과목을 고른다.
+   *
+   * 대개 한 과목이다. 둘 이상이면 둘 중 하나다. 학기 중에 시간표가 바뀌었거나,
+   * 원래 그 칸에 두 강좌가 나란히 도는 분반이다.
+   * 가르는 기준은 되풀이다. 바뀐 것이면 새 과목이 옛 과목을 밀어내 한쪽만 이어지고,
+   * 분반이면 관측한 날마다 둘이 나란히 나온다.
+   * 그래서 최빈의 절반 넘게 관측된 과목만 함께 남긴다. 한 번 스친 것은 변경으로 본다.
+   */
+  const base = new Map<string, string[]>();
   for (const [k, m] of tally) {
-    let best = '';
-    let bestN = -1;
-    for (const [subj, n] of m) {
-      if (n > bestN || (n === bestN && subj.localeCompare(best, 'ko') < 0)) {
-        best = subj;
-        bestN = n;
-      }
-    }
-    base.set(k, best);
+    const top = Math.max(...m.values());
+    const keep = [...m.entries()]
+      .filter(([, n]) => n * 2 > top)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'))
+      .map(([subj]) => subj);
+    base.set(k, keep);
   }
 
   const changes: NeisChange[] = [];
   for (const c of cells) {
     if (c.kind !== '수업') continue;
     const b = base.get(baseKey(c.klass, c.day, c.period));
-    if (b !== undefined && b !== c.subject) {
-      changes.push({ date: c.date, klass: c.klass, period: c.period, base: b, actual: c.subject });
+    if (b !== undefined && b.length > 0 && !b.includes(c.subject)) {
+      changes.push({
+        date: c.date,
+        klass: c.klass,
+        period: c.period,
+        base: b[0]!,
+        actual: c.subject,
+      });
     }
   }
 
   // 같은 날 같은 학급에서 두 칸이 서로의 기준 과목을 맞바꿔 가지고 있으면 맞교환이다.
+  // 기준 과목이 둘인 칸(분반)은 여기서 뺀다. 어느 쪽과 맞바꿨는지 자료로 가릴 수 없고,
+  // 잘못 짚은 교환 이력 한 줄이 그 학교의 이력 전체를 못 믿게 만든다.
   const swaps: NeisSwap[] = [];
   const byDay = new Map<string, NeisChange[]>();
   for (const ch of changes) {
+    if ((base.get(baseKey(ch.klass, dayOfYmd(ch.date), ch.period))?.length ?? 0) > 1) continue;
     const k = `${ch.klass}|${ch.date}`;
     byDay.set(k, [...(byDay.get(k) ?? []), ch]);
   }
@@ -215,6 +269,7 @@ export function fromNeis(rows: NeisRow[]): NeisReport {
       : {}),
   };
 
+  const lesson = cells.filter((c) => c.kind === '수업');
   return {
     schoolName: rows[0]?.SCHUL_NM ?? '이름 없는 학교',
     config,
@@ -224,6 +279,8 @@ export function fromNeis(rows: NeisRow[]): NeisReport {
     changes,
     swaps,
     base,
+    proKeys,
+    proRate: lesson.length === 0 ? 0 : lesson.filter((c) => c.pro).length / lesson.length,
   };
 }
 
@@ -237,17 +294,26 @@ export function neisToTimetable(
   teacherOf: (klass: string, subject: string) => string | undefined,
 ): TimetableInput & { conflicts: TeacherConflict[] } {
   const assignments: Assignment[] = [];
-  for (const [key, subject] of report.base) {
+  for (const [key, subjects] of report.base) {
     const [klass, dayStr, periodStr] = key.split('|');
     if (klass === undefined || dayStr === undefined || periodStr === undefined) continue;
-    const teacher = teacherOf(klass, subject);
-    if (!teacher) continue;
-    assignments.push({
-      teacher,
-      klass,
-      subject,
-      slot: slotOf(Number(dayStr), Number(periodStr), report.config),
-    });
+    const slot = slotOf(Number(dayStr), Number(periodStr), report.config);
+    const pro = report.proKeys.has(key);
+    for (const subject of subjects) {
+      const teacher = teacherOf(klass, subject);
+      if (!teacher) continue;
+      assignments.push({
+        teacher,
+        klass,
+        subject,
+        slot,
+        // 한 칸에 과목이 둘 이상이면 그 학급은 그 시간에 나뉘어 수업을 받는다.
+        // 나뉜 쪽은 따로 옮길 수 없다. 한쪽만 옮기면 남은 학생들이 갈 데가 없다.
+        // 학급 중복 배정 검사도 같은 묶음일 때만 통과하므로 묶는 것이 필수다.
+        ...(subjects.length > 1 ? { group: `분반:${key}` } : {}),
+        ...(pro ? { pro: true } : {}),
+      });
+    }
   }
   assignments.sort((a, b) => a.slot - b.slot || a.klass.localeCompare(b.klass, 'ko'));
 
@@ -269,6 +335,8 @@ export function neisToTimetable(
   for (const [k, list] of bySlotTeacher) {
     if (list.length < 2) continue;
     const subjects = [...new Set(list.map((a) => a.subject))];
+    // 이미 분반으로 묶인 수업은 그대로 둔다. 여기서 덮어쓰면 나뉜 짝이 흩어진다.
+    if (list.some((a) => a.group !== undefined)) continue;
     if (subjects.length === 1) {
       for (const a of list) a.group = `동시:${k}`;
     } else {
@@ -323,8 +391,19 @@ export interface GradeShape {
   subjects: number;
   /** 학급 수로 나눈 과목 종수 */
   ratio: number;
-  /** 선택과목 구간으로 볼 만한지 */
+  /** 그 가운데 전문교과 실습 과목 종수 */
+  proSubjects: number;
+  /** 교체 상대를 찾기 어려운 학년으로 볼 만한지 */
   elective: boolean;
+  /**
+   * 과목이 많은 까닭. 화면에 다른 문장이 나간다.
+   *
+   * 비율만 보고 모두 "선택과목"이라 하면 특성화고에서 틀린다.
+   * 특성화고 13곳 38개 학년 가운데 29개가 2.2를 넘는데, 그 학교의 과목이 많은 까닭은
+   * 고교학점제 선택과목이 아니라 학과별 전공 편성이다. 학급은 학과 안에서 그대로 함께 다닌다.
+   * 이유를 틀리게 말하면 그 뒤의 안내까지 못 믿게 된다.
+   */
+  kind: '보통' | '선택과목' | '전공실습';
 }
 
 /**
@@ -349,9 +428,34 @@ export interface GradeShape {
  */
 export const ELECTIVE_RATIO = 2.2;
 
+/**
+ * 학교 전체 과목 가운데 이 몫 넘게 전문교과이면 전공 편성으로 과목이 많은 학교로 본다.
+ *
+ * 학교 25곳을 재어 정했다. 학년별이 아니라 학교 전체로 재는 이유가 여기 있다.
+ *
+ * | 학년 | 표본 | 최소 | 중앙 | 최대 |
+ * |---|---|---|---|---|
+ * | 특성화고 1학년 | 13 | 0.00 | **0.00** | 0.20 |
+ * | 특성화고 2학년 | 13 | 0.20 | 0.47 | 0.78 |
+ * | 특성화고 3학년 | 12 | 0.46 | 0.73 | 0.86 |
+ *
+ * 특성화고라도 1학년에는 전문교과가 거의 없다. 학년만 보면 그 학년을 일반고로 읽는다.
+ * 학교 단위로 재면 두 무리가 겹치지 않고 갈린다.
+ *
+ * | 무리 | 학교 | 최소 | 중앙 | 최대 |
+ * |---|---|---|---|---|
+ * | 과학고, 외국어고, 예술고, 체육고 | 9 | 0.00 | 0.00 | 0.00 |
+ * | 특성화고와 마이스터고 | 16 | 0.31 | 0.54 | 0.67 |
+ *
+ * 0.00 과 0.31 사이에 놓인 학교가 하나도 없다. 그 사이 어디에 두어도 판정이 같아
+ * 가운데인 0.15 로 둔다. 값이 흔들려도 결과가 안 바뀌는 자리다.
+ */
+export const PRO_SHARE = 0.15;
+
 export function gradeShapes(input: TimetableInput): GradeShape[] {
   const klasses = new Map<number, Set<string>>();
   const subjects = new Map<number, Set<string>>();
+  const proSubjects = new Map<number, Set<string>>();
   for (const a of input.assignments) {
     const m = /\d+/.exec(a.klass);
     if (!m) continue;
@@ -359,12 +463,32 @@ export function gradeShapes(input: TimetableInput): GradeShape[] {
     if (!Number.isFinite(g) || g < 1 || g > 12) continue;
     (klasses.get(g) ?? klasses.set(g, new Set()).get(g)!).add(a.klass);
     (subjects.get(g) ?? subjects.set(g, new Set()).get(g)!).add(a.subject);
+    if (a.pro) (proSubjects.get(g) ?? proSubjects.set(g, new Set()).get(g)!).add(a.subject);
   }
+  // 학교 전체의 전문교과 몫. 학년마다 센 것을 더해 나눈다.
+  let allSubjects = 0;
+  let allPro = 0;
+  for (const [g, ss] of subjects) {
+    allSubjects += ss.size;
+    allPro += proSubjects.get(g)?.size ?? 0;
+  }
+  const vocational = allSubjects > 0 && allPro / allSubjects >= PRO_SHARE;
+
   const out: GradeShape[] = [];
   for (const [g, ks] of klasses) {
     const ss = subjects.get(g)?.size ?? 0;
+    const ps = proSubjects.get(g)?.size ?? 0;
     const ratio = ks.size === 0 ? 0 : ss / ks.size;
-    out.push({ grade: g, klasses: ks.size, subjects: ss, ratio, elective: ratio >= ELECTIVE_RATIO });
+    const elective = ratio >= ELECTIVE_RATIO;
+    out.push({
+      grade: g,
+      klasses: ks.size,
+      subjects: ss,
+      ratio,
+      proSubjects: ps,
+      elective,
+      kind: !elective ? '보통' : vocational ? '전공실습' : '선택과목',
+    });
   }
   return out.sort((a, b) => a.grade - b.grade);
 }

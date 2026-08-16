@@ -99,9 +99,9 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
   const pairs = useMemo(() => {
     if (!report) return [] as Array<{ klass: string; subject: string }>;
     const set = new Set<string>();
-    for (const [key, subject] of report.base) {
+    for (const [key, subjects] of report.base) {
       const klass = key.split('|')[0];
-      if (klass) set.add(mapKey(klass, subject));
+      if (klass) for (const subject of subjects) set.add(mapKey(klass, subject));
     }
     return [...set]
       .map((k) => {

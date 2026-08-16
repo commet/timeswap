@@ -547,9 +547,9 @@ export function sameGradeSubject(
 /** 교사 표에서 아직 안 채운 (학급, 과목) 목록을 뽑는다. */
 export function missingTeachers(report: NeisReport, map: TeacherMap): Array<[string, string]> {
   const pairs = new Set<string>();
-  for (const [key, subject] of report.base) {
+  for (const [key, subjects] of report.base) {
     const klass = key.split('|')[0];
-    if (klass) pairs.add(mapKey(klass, subject));
+    if (klass) for (const subject of subjects) pairs.add(mapKey(klass, subject));
   }
   return [...pairs]
     .filter((k) => !map[k])
