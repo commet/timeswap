@@ -144,19 +144,58 @@ export function fromNeis(rows: NeisRow[]): NeisReport {
       raw: r.ITRT_CNTNT.trim(),
     }));
 
-  // 하루의 모든 관측 칸이 같은 값이면 휴업일로 본다. 사유 문구 목록에 기대지 않는 판별이다.
-  const perDay = new Map<string, Set<string>>();
+  /*
+   * 휴업일을 가른다. 사유 문구 목록에 기대지 않는 판별이다.
+   *
+   * 하루의 관측 칸이 모두 같은 값이면 휴업일로 보았다. 실제 특성화고 자료에서 이 규칙이
+   * 크게 어긋났다. 전공 실습을 하루 종일 편성하는 학급이 흔해서, 학교 한 곳에서
+   * 41개 학급일이 휴업으로 잡혔다. 관측 칸의 18%가 수업이 아닌 것으로 버려졌다.
+   *
+   * 가르는 것은 몇 학급에 걸쳐 있는가다. 그 자료에서 하루가 한 값이던 41건은
+   * 모두 한 학급짜리였다. 휴업일과 학년 행사는 학년이나 학교 전체를 덮는다.
+   *
+   * 그래서 셋을 본다.
+   * 1. 그 학급 그날의 관측 칸이 모두 같은 값이고 둘 이상이다
+   * 2. 그 값에 전문교과 표시가 붙어 있지 않다. 붙어 있으면 실습이다
+   * 3. 그날 관측된 그 학년의 학급이 모두 같은 값이다
+   *
+   * 3번을 비율이 아니라 "관측된 학급 전부"로 두는 이유가 있다. 한 학급만 받아 온
+   * 자료도 다뤄야 하기 때문이다. 그때는 1/1 이라 통과한다. 학교 전체를 받아 오면
+   * 한 학급짜리 실습은 걸러진다. 자료가 두꺼울수록 정확해지고 얇아도 쓸 수 있다.
+   */
+  const gradeOfKlass = (klass: string): string => klass.split('-')[0] ?? klass;
+  const perDay = new Map<string, { vals: Set<string>; n: number; pro: boolean }>();
   for (const p of parsed) {
     const k = `${p.klass}|${p.date}`;
-    const s = perDay.get(k) ?? new Set<string>();
-    s.add(p.raw);
-    perDay.set(k, s);
+    const cur = perDay.get(k) ?? { vals: new Set<string>(), n: 0, pro: false };
+    const { subject, pro } = stripMarks(p.raw);
+    cur.vals.add(subject);
+    cur.n += 1;
+    cur.pro ||= pro;
+    perDay.set(k, cur);
+  }
+  // (날짜, 학년)마다 관측된 학급과, 그 가운데 하루가 한 값이던 학급을 값별로 모은다
+  const seenInGrade = new Map<string, Set<string>>();
+  const uniformInGrade = new Map<string, Set<string>>();
+  for (const [k, info] of perDay) {
+    const [klass, date] = k.split('|');
+    if (klass === undefined || date === undefined) continue;
+    const gk = `${date}|${gradeOfKlass(klass)}`;
+    (seenInGrade.get(gk) ?? seenInGrade.set(gk, new Set()).get(gk)!).add(klass);
+    if (info.n >= 2 && info.vals.size === 1 && !info.pro) {
+      const vk = `${gk}|${[...info.vals][0]}`;
+      (uniformInGrade.get(vk) ?? uniformInGrade.set(vk, new Set()).get(vk)!).add(klass);
+    }
   }
   const holidaySet = new Set<string>();
-  for (const [k, vals] of perDay) {
-    const [, date] = k.split('|');
-    const count = parsed.filter((p) => `${p.klass}|${p.date}` === k).length;
-    if (count >= 2 && vals.size === 1 && date !== undefined) holidaySet.add(k);
+  for (const [k, info] of perDay) {
+    const [klass, date] = k.split('|');
+    if (klass === undefined || date === undefined) continue;
+    if (info.n < 2 || info.vals.size !== 1 || info.pro) continue;
+    const gk = `${date}|${gradeOfKlass(klass)}`;
+    const whole = seenInGrade.get(gk)?.size ?? 0;
+    const same = uniformInGrade.get(`${gk}|${[...info.vals][0]}`)?.size ?? 0;
+    if (whole > 0 && same === whole) holidaySet.add(k);
   }
 
   const cells: NeisCell[] = parsed.map((p) => {
@@ -302,51 +341,96 @@ export function neisToTimetable(
     for (const subject of subjects) {
       const teacher = teacherOf(klass, subject);
       if (!teacher) continue;
-      assignments.push({
-        teacher,
-        klass,
-        subject,
-        slot,
-        // 한 칸에 과목이 둘 이상이면 그 학급은 그 시간에 나뉘어 수업을 받는다.
-        // 나뉜 쪽은 따로 옮길 수 없다. 한쪽만 옮기면 남은 학생들이 갈 데가 없다.
-        // 학급 중복 배정 검사도 같은 묶음일 때만 통과하므로 묶는 것이 필수다.
-        ...(subjects.length > 1 ? { group: `분반:${key}` } : {}),
-        ...(pro ? { pro: true } : {}),
-      });
+      // 한 칸에 과목이 둘 이상이면 그 학급은 그 시간에 나뉘어 수업을 받는다.
+      // 나뉜 쪽은 따로 옮길 수 없고, 학급 중복 배정 검사도 같은 묶음일 때만 통과한다.
+      // 묶는 일은 아래 한곳에서 한꺼번에 한다. 여기서 미리 묶으면 두 갈래가 어긋난다.
+      assignments.push({ teacher, klass, subject, slot, ...(pro ? { pro: true } : {}) });
     }
   }
   assignments.sort((a, b) => a.slot - b.slot || a.klass.localeCompare(b.klass, 'ko'));
 
-  // 한 사람이 같은 교시에 두 학급에 들어갈 수는 없다.
-  // 그런 배정이 나왔다면 그 수업들은 실제로 한 몸이다. 합반이거나 이동수업이다.
-  // 짐작이 아니라 물리적으로 그럴 수밖에 없는 경우라 여기서 묶어 준다.
-  // 묶지 않으면 한 학급만 떼어 옮기는, 현실에서 불가능한 안이 추천에 오른다.
-  // 다만 과목까지 같을 때만 묶는다. 같은 이름이 같은 교시에 서로 다른 과목을 맡고 있다면
-  // 그건 합반이 아니라 동명이인이거나 배정이 잘못된 것이다. 묶어 버리면 두 사람의 수업이
-  // 한 몸으로 움직이는 엉뚱한 안이 나온다. 그런 자리는 묶지 않고 conflicts 로 넘겨 알린다.
-  const bySlotTeacher = new Map<string, Assignment[]>();
-  for (const a of assignments) {
-    const k = `${a.teacher}|${a.slot}`;
-    const list = bySlotTeacher.get(k);
-    if (list) list.push(a);
-    else bySlotTeacher.set(k, [a]);
-  }
-  const conflicts: TeacherConflict[] = [];
-  for (const [k, list] of bySlotTeacher) {
-    if (list.length < 2) continue;
-    const subjects = [...new Set(list.map((a) => a.subject))];
-    // 이미 분반으로 묶인 수업은 그대로 둔다. 여기서 덮어쓰면 나뉜 짝이 흩어진다.
-    if (list.some((a) => a.group !== undefined)) continue;
-    if (subjects.length === 1) {
-      for (const a of list) a.group = `동시:${k}`;
-    } else {
-      conflicts.push({
-        teacher: list[0]!.teacher,
-        slot: list[0]!.slot,
-        subjects: subjects.sort((x, y) => x.localeCompare(y, 'ko')),
-        klasses: list.map((a) => a.klass).sort((x, y) => x.localeCompare(y, 'ko', { numeric: true })),
-      });
+  /*
+   * 같은 교시의 수업들을 물리적으로 한 몸인 것끼리 묶는다.
+   *
+   * 한 몸이 되는 길이 둘이다.
+   * 하나, 같은 학급 같은 교시에 과목이 둘이면 그 학급이 나뉘어 듣는 것이다.
+   * 둘, 한 사람이 같은 교시에 두 학급을 맡고 있으면 실제로는 한 자리에 모인 것이다.
+   *     합반이거나 이동수업이다. 몸이 하나뿐이라 그럴 수밖에 없다.
+   *
+   * 둘을 따로 처리하면 안 된다. 실제 특성화고 자료에서 두 길이 한 자리에서 만났다.
+   * 3-6 이 건축설계와 실내건축설계로 나뉘는데, 그 건축설계를 맡는 분이 같은 교시에
+   * 3-5 도 맡고 있었다. 셋이 한 덩어리인데 따로 묶으면 두 조각으로 갈리고,
+   * 그러면 학급 중복과 교사 중복 검사에 걸려 시간표 자체가 성립하지 않는다.
+   * 그래서 이어지는 것을 끝까지 따라가 한 덩어리로 묶는다.
+   *
+   * 다만 과목까지 같을 때만 교사로 잇는다. 같은 이름이 같은 교시에 서로 다른 과목을
+   * 맡고 있다면 그건 합반이 아니라 동명이인이거나 배정이 잘못된 것이다.
+   * 묶어 버리면 두 사람의 수업이 한 몸으로 움직이는 엉뚱한 안이 나온다.
+   * 그런 자리는 묶지 않고 conflicts 로 넘겨 알린다.
+   */
+  const parent = assignments.map((_, i) => i);
+  const find = (i: number): number => {
+    let r = i;
+    while (parent[r] !== r) r = parent[r]!;
+    for (let c = i; parent[c] !== r; ) {
+      const next = parent[c]!;
+      parent[c] = r;
+      c = next;
     }
+    return r;
+  };
+  const union = (a: number, b: number): void => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[rb] = ra;
+  };
+
+  const firstOfCell = new Map<string, number>();
+  const firstOfLesson = new Map<string, number>();
+  const bySlotTeacher = new Map<string, number[]>();
+  assignments.forEach((a, i) => {
+    const cell = `${a.klass}|${a.slot}`;
+    const seenCell = firstOfCell.get(cell);
+    if (seenCell === undefined) firstOfCell.set(cell, i);
+    else union(seenCell, i);
+
+    const lesson = `${a.teacher}|${a.subject}|${a.slot}`;
+    const seenLesson = firstOfLesson.get(lesson);
+    if (seenLesson === undefined) firstOfLesson.set(lesson, i);
+    else union(seenLesson, i);
+
+    const ts = `${a.teacher}|${a.slot}`;
+    const list = bySlotTeacher.get(ts);
+    if (list) list.push(i);
+    else bySlotTeacher.set(ts, [i]);
+  });
+
+  const members = new Map<number, number[]>();
+  assignments.forEach((_, i) => {
+    const r = find(i);
+    const list = members.get(r);
+    if (list) list.push(i);
+    else members.set(r, [i]);
+  });
+  for (const [r, list] of members) {
+    if (list.length < 2) continue;
+    const a = assignments[r]!;
+    for (const i of list) assignments[i]!.group = `동시:${a.klass}|${a.slot}`;
+  }
+
+  // 한 사람이 같은 교시에 두 곳에 있는데 그 둘이 한 덩어리로 이어지지 않으면 동명이인이다.
+  const conflicts: TeacherConflict[] = [];
+  for (const list of bySlotTeacher.values()) {
+    if (list.length < 2) continue;
+    const roots = new Set(list.map((i) => find(i)));
+    if (roots.size < 2) continue;
+    const rows = list.map((i) => assignments[i]!);
+    conflicts.push({
+      teacher: rows[0]!.teacher,
+      slot: rows[0]!.slot,
+      subjects: [...new Set(rows.map((x) => x.subject))].sort((x, y) => x.localeCompare(y, 'ko')),
+      klasses: rows.map((x) => x.klass).sort((x, y) => x.localeCompare(y, 'ko', { numeric: true })),
+    });
   }
 
   return { config: report.config, assignments, conflicts };

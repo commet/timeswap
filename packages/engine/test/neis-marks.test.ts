@@ -121,6 +121,29 @@ describe('한 칸에 과목이 둘인 학교', () => {
     }
   });
 
+  it('분반과 합반이 한 자리에서 만나도 한 덩어리로 묶는다', () => {
+    // 실제 특성화고 자료에서 나온 모양이다.
+    // 3-6 이 두 강좌로 나뉘는데, 그중 한 강좌를 맡는 분이 같은 교시에 3-5 도 맡고 있었다.
+    // 따로 묶으면 두 조각으로 갈리고 학급 중복과 교사 중복 검사에 걸린다.
+    const rows = YMD.flatMap((d) => [
+      row(d, '3', '6', 1, '건축설계 도서작성'),
+      row(d, '3', '6', 1, '실내건축설계 기획'),
+      row(d, '3', '5', 1, '건축설계 도서작성'),
+      row(d, '3', '5', 2, '문학'),
+      row(d, '3', '6', 2, '문학'),
+    ]);
+    const input = neisToTimetable(fromNeis(rows), (_k, s) =>
+      s === '실내건축설계 기획' ? '실샘' : s === '건축설계 도서작성' ? '건샘' : '문샘',
+    );
+    const first = input.assignments.filter((a) => a.slot === 0);
+    expect(first).toHaveLength(3);
+    expect(new Set(first.map((a) => a.group)).size).toBe(1);
+    expect(first[0]!.group).toBeDefined();
+    expect(validate(input)).toEqual([]);
+    // 한 사람이 두 자리에 있지만 한 덩어리라 동명이인이 아니다
+    expect(input.conflicts).toEqual([]);
+  });
+
   it('한 번 스친 과목은 분반이 아니라 변경으로 본다', () => {
     // 세 주 가운데 한 주만 다른 과목이 왔다. 시간표가 그날 바뀐 것이다.
     const rows = [
