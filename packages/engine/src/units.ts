@@ -164,6 +164,21 @@ export function checkMoves(
     }
   }
 
+  // 요일마다 교시 수가 다른 학교가 많다. 수요일 단축수업, 금요일 6교시 없음이 그렇다.
+  // 격자는 네모라 없는 시간도 빈 칸으로 보인다. 학교가 알려 준 경우에만 막는다.
+  // 짐작하지 않는 이유는 작은 학교에서 그저 비어 있는 칸과 가릴 수 없기 때문이다.
+  const perDay = cfg.periodsPerDay;
+  if (perDay) {
+    for (const m of moves) {
+      const d = dayOf(m.toSlot, cfg);
+      const p = m.toSlot - d * cfg.periods;
+      const limit = perDay[d];
+      if (limit !== undefined && p >= limit) {
+        return { ok: false, reason: `${cfg.dayNames[d]}요일은 ${limit}교시까지입니다` };
+      }
+    }
+  }
+
   // 학사일정에 쉬는 날로 잡힌 요일에는 수업을 넣지 않는다.
   // 휴업일 목요일로 옮기라는 추천이 한 번 나오면 나머지 추천까지 못 믿게 된다.
   for (const m of moves) {

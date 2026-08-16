@@ -195,10 +195,24 @@ export function fromNeis(rows: NeisRow[]): NeisReport {
   }
 
   const maxPeriod = cells.reduce((m, c) => Math.max(m, c.period + 1), 0);
+
+  // 요일별 교시 수. 여러 주, 모든 학급을 훑어 그 요일에 실제로 쓰인 마지막 교시를 잡는다.
+  // 학급 수십 개를 몇 주에 걸쳐 본 결과라 "아무도 안 쓴 교시"는 그 요일에 없는 교시로 봐도 된다.
+  // 학급 한둘짜리 자료였다면 그저 비어 있는 칸과 가릴 수 없지만, 학교 전체 자료라 가릴 수 있다.
+  const lastPeriodOfDay = new Array<number>(5).fill(0);
+  for (const c of cells) {
+    if (c.kind !== '수업') continue;
+    if (c.day < 0 || c.day >= 5) continue;
+    if (c.period + 1 > (lastPeriodOfDay[c.day] ?? 0)) lastPeriodOfDay[c.day] = c.period + 1;
+  }
   const config: ScheduleConfig = {
     days: 5,
     periods: Math.max(maxPeriod, 1),
     dayNames: ['월', '화', '수', '목', '금'],
+    // 요일마다 다를 때만 넣는다. 다 같으면 굳이 실어 보낼 값이 아니다.
+    ...(new Set(lastPeriodOfDay).size > 1 && lastPeriodOfDay.every((n) => n > 0)
+      ? { periodsPerDay: lastPeriodOfDay }
+      : {}),
   };
 
   return {
