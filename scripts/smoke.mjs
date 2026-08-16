@@ -24,8 +24,25 @@ await page.screenshot({ path: `${OUT}/shot-1-landing.png` });
 console.log('제목:', await page.title());
 console.log('사용 3단계:', await page.locator('.steps li').count(), '| 일러스트:', await page.locator('.hero-art').count());
 
+// 1b. 나이스 불러오기: 브라우저에서 공식 개방 API 가 실제로 붙는지 확인
+await page.getByRole('button', { name: '나이스에서 불러오기' }).click();
+await page.waitForSelector('.neis', { timeout: 10000 });
+await page.getByPlaceholder('예: 수지고등학교').fill('수지고등학교');
+await page.getByRole('button', { name: '찾기' }).click();
+await page.waitForSelector('.neis-hits li, .neis-error', { timeout: 30000 });
+const hitCount = await page.locator('.neis-hits li').count();
+const neisMsg = (await page.locator('.neis-error').textContent().catch(() => '')) ?? '';
+// 이 컨테이너는 브라우저의 바깥 통신이 막혀 있어 검색이 실패할 수 있다.
+// 화면이 오류를 제대로 알려 주는지까지가 여기서 볼 수 있는 범위다.
+if (hitCount > 0) console.log('나이스 학교 검색 결과:', hitCount, '건');
+else if (neisMsg) console.log('나이스 검색 불가(환경 제약), 안내 문구 출력됨:', neisMsg.slice(0, 40));
+else errors.push('나이스 검색이 실패했는데 안내도 없음');
+await page.screenshot({ path: `${OUT}/shot-12-neis.png` });
+await page.getByRole('button', { name: '닫기' }).click();
+await page.waitForTimeout(300);
+
 // 2. 샘플 로드
-await page.getByRole('button', { name: '샘플 학교로 체험' }).click();
+await page.getByRole('button', { name: '샘플로 둘러보기' }).click();
 await page.waitForSelector('.tt-grid', { timeout: 15000 });
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${OUT}/shot-2-grid.png` });
@@ -80,6 +97,15 @@ if (candCount > 0) {
   const helpers = await page.locator('.chg-helpers').textContent();
   console.log('품앗이 기록:', helpers?.trim());
   if (!helpers?.includes('품앗이')) errors.push('품앗이 기록 표시 실패');
+
+  // 5b-3. 나이스 입력용 목록
+  await page.getByRole('button', { name: '나이스 입력용 목록' }).click();
+  await page.waitForTimeout(300);
+  const neisList = await page.evaluate(() => navigator.clipboard.readText());
+  console.log('--- 나이스 입력용 목록 ---');
+  console.log(neisList.split('\n').slice(0, 6).join('\n'));
+  console.log('--------------------------');
+  if (!neisList.includes('나이스 입력용')) errors.push('나이스 목록 출력 실패');
 
   // 5c. 학급 뷰 전환
   await page.getByRole('tab', { name: '학급' }).click();

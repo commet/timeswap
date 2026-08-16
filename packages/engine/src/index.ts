@@ -4,5 +4,5 @@ export * from './timetable';
 export * from './score';
 export * from './search';
 export * from './synthetic';
-export * from './adapters/comcigan';
+export * from './adapters/neis';
 export * from './cover';

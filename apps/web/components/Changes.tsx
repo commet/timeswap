@@ -15,6 +15,7 @@ export function Changes({
   onUndoLast,
   onUndoAll,
   onCopyNotice,
+  onCopyNeisList,
   onPrint,
 }: {
   cfg: ScheduleConfig;
@@ -24,6 +25,7 @@ export function Changes({
   onUndoLast: () => void;
   onUndoAll: () => void;
   onCopyNotice: () => void;
+  onCopyNeisList: () => void;
   onPrint: () => void;
 }) {
   return (
@@ -63,6 +65,9 @@ export function Changes({
           <div className="chg-foot">
             <button className="btn" onClick={onCopyNotice}>
               변경 공지 복사
+            </button>
+            <button className="btn" onClick={onCopyNeisList}>
+              나이스 입력용 목록
             </button>
             <button className="btn" onClick={onPrint}>
               수업 교체 계획서 인쇄

@@ -9,6 +9,7 @@ import {
   validate,
   type Candidate,
   type CoverCandidate,
+  type NeisRow,
   type RecommendResult,
   type TimetableInput,
 } from '@timeswap/engine';
@@ -17,27 +18,35 @@ import { Grid } from './Grid';
 import { Panel } from './Panel';
 import { Changes } from './Changes';
 import { Sheet } from './Sheet';
+import { NeisLoader } from './NeisLoader';
+import type { NeisEvent, NeisSchool } from '../lib/neis';
 import {
   applyAll,
   applyTheme,
+  buildFromNeis,
+  buildNeisList,
   buildNotice,
   buildPhrase,
   clearRaw,
   deriveBurden,
+  fromFile,
   loadEntries,
+  loadNeisKey,
   loadRaw,
   loadTheme,
   loadUnavail,
-  parseAndAdapt,
+  sampleSchool,
   saveEntries,
+  saveNeisKey,
   saveRaw,
   saveUnavail,
-  SYNTH_MARK,
   TEACHER_KEY,
   THEME_LABEL,
   THEME_ORDER,
+  toFile,
   type AppliedEntry,
   type Loaded,
+  type TeacherMap,
   type ThemeMode,
 } from '../lib/app';
 
@@ -60,6 +69,8 @@ function defaultTeacher(input: TimetableInput): string | null {
 
 export function Workbench() {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  const [showNeis, setShowNeis] = useState(false);
+  const [neisKey, setNeisKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [teacher, setTeacher] = useState<string | null>(null);
   const [teacherInput, setTeacherInput] = useState('');
@@ -78,22 +89,23 @@ export function Workbench() {
     const raw = loadRaw();
     if (raw) {
       try {
-        const l = parseAndAdapt(raw, '업로드');
+        const l = fromFile(raw);
         setLoaded(l);
         setEntries(loadEntries());
         setUnavail(loadUnavail());
         const saved = localStorage.getItem(TEACHER_KEY);
-        setTeacher(saved ?? defaultTeacher(l.adapted.input));
+        setTeacher(saved ?? defaultTeacher(l.input));
       } catch {
         clearRaw();
       }
     }
+    setNeisKey(loadNeisKey());
     setTheme(loadTheme());
     const wd = new Date().getDay(); // 일 0, 월 1
     setTodayIdx(wd >= 1 && wd <= 5 ? wd - 1 : null);
   }, []);
 
-  const base = loaded?.adapted.input ?? null;
+  const base = loaded?.input ?? null;
   const input = useMemo(() => {
     if (!base) return null;
     const applied = applyAll(base, entries);
@@ -163,8 +175,20 @@ export function Workbench() {
 
   const show = useCallback((msg: string) => {
     setToast(msg);
-    window.setTimeout(() => setToast(null), 2400);
+    window.setTimeout(() => setToast(null), 2600);
   }, []);
+
+  const copy = useCallback(
+    async (text: string, done: string) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        show(done);
+      } catch {
+        show('복사하지 못했습니다. 브라우저 권한을 확인하십시오');
+      }
+    },
+    [show],
+  );
 
   const cycleTheme = useCallback(() => {
     setTheme((cur) => {
@@ -185,59 +209,81 @@ export function Workbench() {
     }
   }, []);
 
-  const applyRaw = useCallback(
-    (raw: string, source: Loaded['source']) => {
-      try {
-        const l = parseAndAdapt(raw, source);
-        setLoaded(l);
-        saveRaw(raw);
-        setEntries([]);
-        saveEntries([]);
-        setQueue([]);
-        setUnavail({});
-        saveUnavail({});
-        setHovered(null);
-        setView('teacher');
-        const t = defaultTeacher(l.adapted.input);
-        setTeacher(t);
-        if (t !== null) {
-          try {
-            localStorage.setItem(TEACHER_KEY, t);
-          } catch {
-            /* 무시 */
-          }
+  /** 새 시간표를 받으면 화면과 저장소를 함께 초기화한다. */
+  const install = useCallback(
+    (l: Loaded) => {
+      setLoaded(l);
+      saveRaw(toFile(l));
+      setEntries([]);
+      saveEntries([]);
+      setQueue([]);
+      setUnavail({});
+      saveUnavail({});
+      setHovered(null);
+      setView('teacher');
+      const t = defaultTeacher(l.input);
+      setTeacher(t);
+      if (t !== null) {
+        try {
+          localStorage.setItem(TEACHER_KEY, t);
+        } catch {
+          /* 무시 */
         }
-        show(`${l.adapted.schoolName} 시간표를 불러왔습니다`);
-      } catch (e) {
-        show(e instanceof Error ? e.message : '불러오기에 실패했습니다');
       }
+      show(`${l.schoolName} 시간표를 불러왔습니다`);
     },
     [show],
   );
 
-  const onSample = useCallback(async () => {
+  const onSample = useCallback(() => {
     setBusy(true);
     try {
-      const r = await fetch('/sample.json');
-      if (!r.ok) throw new Error('no sample file');
-      applyRaw(await r.text(), '샘플');
-    } catch {
-      // 샘플 파일이 없는 배포 환경에서는 합성 시범 학교로 대신한다
-      applyRaw(SYNTH_MARK, '샘플');
+      install(sampleSchool());
     } finally {
       setBusy(false);
     }
-  }, [applyRaw]);
+  }, [install]);
 
   const onFile = useCallback(
     (f: File) => {
       const reader = new FileReader();
-      reader.onload = () => applyRaw(String(reader.result), '업로드');
+      reader.onload = () => {
+        try {
+          install(fromFile(String(reader.result)));
+        } catch (e) {
+          show(e instanceof Error ? e.message : '불러오기에 실패했습니다');
+        }
+      };
       reader.onerror = () => show('파일을 읽지 못했습니다');
       reader.readAsText(f);
     },
-    [applyRaw, show],
+    [install, show],
   );
+
+  const onNeisDone = useCallback(
+    (school: NeisSchool, rows: NeisRow[], events: NeisEvent[], map: TeacherMap) => {
+      const l = buildFromNeis(school, rows, events, map);
+      if (l.input.assignments.length === 0) {
+        show('교사를 한 명도 배정하지 않아 시간표를 만들 수 없습니다');
+        return;
+      }
+      setShowNeis(false);
+      install(l);
+    },
+    [install, show],
+  );
+
+  const onSaveFile = useCallback(() => {
+    if (!loaded) return;
+    const blob = new Blob([toFile(loaded)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${loaded.schoolName} 시간표.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    show('시간표를 파일로 저장했습니다');
+  }, [loaded, show]);
 
   const onToggleSlot = useCallback((s: number) => {
     setHovered(null);
@@ -295,29 +341,25 @@ export function Workbench() {
   }, []);
 
   const onCopy = useCallback(
-    async (c: Candidate) => {
+    (c: Candidate) => {
       if (!input) return;
-      const text = buildPhrase(c, input.config, slotName);
-      try {
-        await navigator.clipboard.writeText(text);
-        show('요청 문구를 복사했습니다');
-      } catch {
-        show('복사하지 못했습니다. 브라우저 권한을 확인하십시오');
-      }
+      void copy(buildPhrase(c, input.config, slotName), '요청 문구를 복사했습니다');
     },
-    [input, show],
+    [input, copy],
   );
 
-  const onCopyNotice = useCallback(async () => {
+  const onCopyNotice = useCallback(() => {
     if (!input || !loaded || entries.length === 0) return;
-    const text = buildNotice(loaded.adapted.schoolName, entries, input.config);
-    try {
-      await navigator.clipboard.writeText(text);
-      show('변경 공지를 복사했습니다');
-    } catch {
-      show('복사하지 못했습니다. 브라우저 권한을 확인하십시오');
-    }
-  }, [input, loaded, entries, show]);
+    void copy(buildNotice(loaded.schoolName, entries, input.config), '변경 공지를 복사했습니다');
+  }, [input, loaded, entries, copy]);
+
+  const onCopyNeisList = useCallback(() => {
+    if (!input || !loaded || entries.length === 0) return;
+    void copy(
+      buildNeisList(loaded.schoolName, entries, input.config),
+      '나이스 입력용 목록을 복사했습니다',
+    );
+  }, [input, loaded, entries, copy]);
 
   const onApply = useCallback(
     (c: Candidate) => {
@@ -394,7 +436,7 @@ export function Workbench() {
         </span>
         {loaded && (
           <span className="school-chip">
-            {loaded.adapted.schoolName} | {loaded.source}
+            {loaded.schoolName} | {loaded.source}
           </span>
         )}
         <span className="spacer" />
@@ -478,14 +520,38 @@ export function Workbench() {
           테마 {THEME_LABEL[theme]}
         </button>
         {loaded && input && (
-          <button className="btn ghost" onClick={onReset}>
-            데이터 지우기
-          </button>
+          <>
+            <button className="btn ghost" onClick={onSaveFile}>
+              파일로 저장
+            </button>
+            <button className="btn ghost" onClick={onReset}>
+              데이터 지우기
+            </button>
+          </>
         )}
       </header>
 
-      {!loaded || !input ? (
-        <Landing onSample={onSample} onFile={onFile} busy={busy} />
+      {showNeis ? (
+        <main className="work single">
+          <section className="card">
+            <NeisLoader
+              neisKey={neisKey}
+              onKeyChange={(k) => {
+                setNeisKey(k);
+                saveNeisKey(k);
+              }}
+              onDone={onNeisDone}
+              onCancel={() => setShowNeis(false)}
+            />
+          </section>
+        </main>
+      ) : !loaded || !input ? (
+        <Landing
+          onNeis={() => setShowNeis(true)}
+          onSample={onSample}
+          onFile={onFile}
+          busy={busy}
+        />
       ) : (
         <main className="work">
           <Grid
@@ -520,6 +586,7 @@ export function Workbench() {
               onUndoLast={onUndoLast}
               onUndoAll={onUndoAll}
               onCopyNotice={onCopyNotice}
+              onCopyNeisList={onCopyNeisList}
               onPrint={onPrint}
             />
           </div>
@@ -527,7 +594,7 @@ export function Workbench() {
       )}
 
       {loaded && input && (
-        <Sheet schoolName={loaded.adapted.schoolName} cfg={input.config} entries={entries} />
+        <Sheet schoolName={loaded.schoolName} cfg={input.config} entries={entries} />
       )}
 
       <footer className="foot">

@@ -73,10 +73,12 @@ function HeroArt() {
 }
 
 export function Landing({
+  onNeis,
   onSample,
   onFile,
   busy,
 }: {
+  onNeis: () => void;
   onSample: () => void;
   onFile: (file: File) => void;
   busy: boolean;
@@ -95,12 +97,13 @@ export function Landing({
               경우의 수는 <em>수업품앗이</em>가 셉니다
             </h1>
             <p className="lede">
-              시간표를 불러온 다음, 바꿔야 할 수업을 누르십시오. 맞바꾸기, 연쇄 교환,
-              빈 시간 옮기기까지 되는 방법을 전부 찾아 이유를 함께 답니다.
+              결강이 생긴 수업을 누르면 맞바꾸기, 연쇄 교환, 빈 시간 옮기기까지 성립하는 방법을
+              전부 찾아 이유와 함께 보여 드립니다. 되는지 안 되는지 눈으로 훑지 않아도 됩니다.
             </p>
           </div>
           <HeroArt />
         </div>
+
         <div
           className={`dropzone${over ? ' on' : ''}`}
           onDragOver={(e) => {
@@ -115,13 +118,16 @@ export function Landing({
             if (f) onFile(f);
           }}
         >
-          <p>컴시간 뷰어 JSON 파일을 끌어다 놓거나, 샘플 학교로 바로 체험하십시오.</p>
+          <p>학교 시간표를 불러오는 방법은 세 가지입니다.</p>
           <div className="actions">
-            <button className="btn primary" onClick={onSample} disabled={busy}>
-              {busy ? '불러오는 중' : '샘플 학교로 체험'}
+            <button className="btn primary" onClick={onNeis} disabled={busy}>
+              나이스에서 불러오기
             </button>
             <button className="btn" onClick={() => inputRef.current?.click()} disabled={busy}>
-              JSON 파일 선택
+              저장한 파일 열기
+            </button>
+            <button className="btn" onClick={onSample} disabled={busy}>
+              {busy ? '불러오는 중' : '샘플로 둘러보기'}
             </button>
             <input
               ref={inputRef}
@@ -136,10 +142,11 @@ export function Landing({
             />
           </div>
         </div>
+
         <ol className="steps">
           <li>
             <b>시간표 불러오기</b>
-            <span>컴시간 뷰어 JSON 파일 또는 샘플 학교</span>
+            <span>나이스 공개 자료에서 학교를 찾거나, 저장한 파일을 엽니다</span>
           </li>
           <li>
             <b>결강 수업 선택</b>
@@ -147,11 +154,12 @@ export function Landing({
           </li>
           <li>
             <b>추천 확인과 반영</b>
-            <span>근거를 읽고 한 번에 반영, 공지와 계획서까지</span>
+            <span>근거를 읽고 한 번에 반영, 요청 문구와 계획서까지</span>
           </li>
         </ol>
+
         <p className="privacy">
-          시간표는 이 브라우저 안에만 저장됩니다. 서버로 보내지 않습니다.
+          시간표는 이 브라우저 안에만 저장됩니다. 우리 서버는 없고, 나이스 자료는 브라우저가 직접 받아 옵니다.
         </p>
       </div>
     </div>

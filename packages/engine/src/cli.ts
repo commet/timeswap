@@ -1,38 +1,47 @@
 /**
  * 엔진 데모 CLI.
  * 사용: npm run demo -- [--seed 42] [--classes 12] [--teacher 수학1] [--slot 9]
- *       npm run demo -- --fixture test/fixtures/comcigan-demo.json [--teacher 이수*]
- * 합성 학교(또는 컴시간 뷰어 JSON)에서 결강 1건에 대한 교환 추천을 출력한다.
+ *       npm run demo -- --neis test/fixtures/neis-himetable.json
+ * 합성 학교에서 결강 1건에 대한 교환 추천을 출력한다.
+ * --neis 를 주면 나이스 교육정보 개방 포털 응답을 읽어 변경 이력을 요약한다.
  */
 import { readFileSync } from 'node:fs';
 import { genSchool } from './synthetic';
-import { fromComcigan, type ComciganData } from './adapters/comcigan';
+import { fromNeis, type NeisRow } from './adapters/neis';
 import { recommend } from './search';
 import { validate } from './timetable';
 import { slotName } from './slots';
-import type { TimetableInput } from './types';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
+const neisFile = arg('neis');
+if (neisFile) {
+  const parsed = JSON.parse(readFileSync(neisFile, 'utf8')) as { rows?: NeisRow[] } | NeisRow[];
+  const rows = Array.isArray(parsed) ? parsed : (parsed.rows ?? []);
+  const report = fromNeis(rows);
+  console.log(`나이스 개방 자료: ${report.schoolName}`);
+  console.log(`  관측 칸 ${report.cells.length}개, 휴업일 ${report.holidays.length}일`);
+  console.log(`  보강 ${report.covers.length}건, 기준과 다른 칸 ${report.changes.length}개`);
+  console.log(`  맞교환으로 보이는 사례 ${report.swaps.length}건`);
+  for (const s of report.swaps) {
+    console.log(
+      `    ${s.date} ${s.klass}: ${s.periodA + 1}교시(${s.subjectA}) <-> ${s.periodB + 1}교시(${s.subjectB})`,
+    );
+  }
+  for (const c of report.covers) {
+    console.log(`    보강 ${c.date} ${c.klass} ${c.period + 1}교시 ${c.subject}`);
+  }
+  process.exit(0);
+}
+
 const seed = Number(arg('seed') ?? 42);
 const classes = Number(arg('classes') ?? 12);
-const fixture = arg('fixture');
 
 const t0 = performance.now();
-let school: TimetableInput;
-if (fixture) {
-  const data = JSON.parse(readFileSync(fixture, 'utf8')) as ComciganData;
-  const adapted = fromComcigan(data);
-  school = adapted.input;
-  console.log(
-    `픽스처 학교: ${adapted.schoolName}, 변경 반영 ${adapted.changedLessons}건, 동시수업 묶음 ${adapted.groupedLessons}건`,
-  );
-} else {
-  school = genSchool({ classes, seed });
-}
+const school = genSchool({ classes, seed });
 const t1 = performance.now();
 
 const errors = validate(school);
@@ -43,8 +52,7 @@ if (errors.length > 0) {
 
 const teachers = new Set(school.assignments.map((a) => a.teacher));
 const klassCount = new Set(school.assignments.map((a) => a.klass)).size;
-const fallback = school.assignments.find((a) => !a.group);
-const teacher = arg('teacher') ?? (fixture ? fallback?.teacher : '수학1') ?? '수학1';
+const teacher = arg('teacher') ?? '수학1';
 const firstLesson = school.assignments.find((a) => a.teacher === teacher && !a.group);
 if (!firstLesson) {
   console.error(`${teacher} 선생님의 수업이 없습니다`);

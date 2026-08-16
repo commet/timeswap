@@ -1,21 +1,24 @@
 import {
   applyChanges,
-  fromComcigan,
+  fromNeis,
   genSchool,
+  neisToTimetable,
   slotName,
   type Candidate,
   type Change,
-  type ComciganAdaptResult,
-  type ComciganData,
+  type NeisReport,
+  type NeisRow,
   type ScheduleConfig,
   type TimetableInput,
 } from '@timeswap/engine';
+import type { NeisEvent, NeisSchool } from './neis';
 
 export const STORAGE_KEY = 'timeswap:v0:data';
 export const TEACHER_KEY = 'timeswap:v0:teacher';
 export const CHANGES_KEY = 'timeswap:v0:changes';
 export const UNAVAIL_KEY = 'timeswap:v0:unavail';
 export const THEME_KEY = 'timeswap:v0:theme';
+export const NEIS_KEY_STORE = 'timeswap:v0:neiskey';
 
 export type ThemeMode = 'auto' | 'light' | 'dark';
 
@@ -101,6 +104,23 @@ export function saveUnavail(u: Record<string, number[]>): void {
   }
 }
 
+export function loadNeisKey(): string {
+  try {
+    return localStorage.getItem(NEIS_KEY_STORE) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function saveNeisKey(key: string): void {
+  try {
+    if (key) localStorage.setItem(NEIS_KEY_STORE, key);
+    else localStorage.removeItem(NEIS_KEY_STORE);
+  } catch {
+    /* 무시 */
+  }
+}
+
 /**
  * 반영 장부에서 교사별 품앗이 횟수를 센다. 결강 당사자는 빼고,
  * 자리를 내어 준 상대 교사만 센다. 추천 점수의 부담 균형 감점에 쓴다.
@@ -140,31 +160,140 @@ export function buildNotice(
   return lines.join('\n');
 }
 
-/** 샘플 파일이 없는 배포 환경에서 쓰는 합성 샘플 표식 */
-export const SYNTH_MARK = 'timeswap:synthetic:v1';
-
-export interface Loaded {
-  adapted: ComciganAdaptResult;
-  source: '샘플' | '업로드';
+/**
+ * 나이스에 입력할 변경 목록을 만든다.
+ * 일과 담당이 나이스 기초시간표에 손으로 옮겨 적는 자리라 한 줄에 하나씩 또박또박 적는다.
+ */
+export function buildNeisList(
+  schoolName: string,
+  entries: AppliedEntry[],
+  cfg: ScheduleConfig,
+): string {
+  const d = new Date();
+  const lines = [
+    `나이스 입력용 수업 변경 목록`,
+    `${schoolName} | 작성 ${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+    '',
+    '순번\t학급\t과목\t교사\t변경 전\t변경 후',
+  ];
+  let n = 0;
+  for (const e of entries) {
+    for (const c of e.changes) {
+      n += 1;
+      lines.push(
+        [
+          n,
+          c.from.klass,
+          c.from.subject,
+          c.from.teacher,
+          slotName(c.from.slot, cfg),
+          slotName(c.toSlot, cfg),
+        ].join('\t'),
+      );
+    }
+  }
+  return lines.join('\n');
 }
 
-export function parseAndAdapt(raw: string, source: Loaded['source']): Loaded {
-  if (raw === SYNTH_MARK) {
-    return {
-      adapted: {
-        input: genSchool({ classes: 12, seed: 42 }),
-        schoolName: '수업품앗이 시범 학교',
-        changedLessons: 0,
-        groupedLessons: 0,
-      },
-      source,
-    };
+/** 샘플 학교 표식. 파일 없이 바로 체험할 때 쓴다. */
+export const SYNTH_MARK = 'pumasi:sample:v1';
+
+export type SourceKind = '샘플' | '나이스' | '파일';
+
+export interface Loaded {
+  schoolName: string;
+  input: TimetableInput;
+  source: SourceKind;
+  /** 나이스에서 불러온 경우의 부가 정보 */
+  neis?: {
+    school: NeisSchool;
+    report: NeisReport;
+    events: NeisEvent[];
+  };
+}
+
+/** 우리 저장 형식. 다른 도구에 매이지 않도록 필요한 것만 담는다. */
+export interface PumasiFile {
+  format: 'pumasi.timetable';
+  version: 1;
+  school: string;
+  config: ScheduleConfig;
+  lessons: Array<{ teacher: string; klass: string; subject: string; slot: number; group?: string }>;
+}
+
+export function toFile(loaded: Loaded): string {
+  const doc: PumasiFile = {
+    format: 'pumasi.timetable',
+    version: 1,
+    school: loaded.schoolName,
+    config: loaded.input.config,
+    lessons: loaded.input.assignments.map((a) => ({
+      teacher: a.teacher,
+      klass: a.klass,
+      subject: a.subject,
+      slot: a.slot,
+      ...(a.group ? { group: a.group } : {}),
+    })),
+  };
+  return JSON.stringify(doc, null, 1);
+}
+
+export function fromFile(raw: string): Loaded {
+  const doc = JSON.parse(raw) as PumasiFile;
+  if (!doc || doc.format !== 'pumasi.timetable' || !Array.isArray(doc.lessons)) {
+    throw new Error('수업품앗이 시간표 파일이 아닙니다. 내려받은 파일을 그대로 올려 주십시오.');
   }
-  const json = JSON.parse(raw) as ComciganData;
-  if (!json || typeof json !== 'object' || !json.timetable) {
-    throw new Error('시간표 형식이 맞지 않습니다. 컴시간 뷰어 JSON 파일을 올려 주십시오.');
+  return {
+    schoolName: doc.school || '이름 없는 학교',
+    source: '파일',
+    input: { config: doc.config, assignments: doc.lessons },
+  };
+}
+
+export function sampleSchool(): Loaded {
+  return {
+    schoolName: '수업품앗이 시범 학교',
+    source: '샘플',
+    input: genSchool({ classes: 12, seed: 42 }),
+  };
+}
+
+/** `${klass}|${subject}` 를 교사 이름으로 옮기는 표 */
+export type TeacherMap = Record<string, string>;
+
+export const mapKey = (klass: string, subject: string): string => `${klass}|${subject}`;
+
+/**
+ * 나이스 응답과 교사 표를 합쳐 작업할 시간표를 만든다.
+ * 개방 자료에는 교사가 없으므로 표가 비면 수업도 비고, 채운 만큼만 탐색에 쓴다.
+ */
+export function buildFromNeis(
+  school: NeisSchool,
+  rows: NeisRow[],
+  events: NeisEvent[],
+  map: TeacherMap,
+): Loaded {
+  const report = fromNeis(rows);
+  const input = neisToTimetable(report, (klass, subject) => map[mapKey(klass, subject)]);
+  return {
+    schoolName: school.name,
+    source: '나이스',
+    input,
+    neis: { school, report, events },
+  };
+}
+
+/** 교사 표에서 아직 안 채운 (학급, 과목) 목록을 뽑는다. */
+export function missingTeachers(report: NeisReport, map: TeacherMap): Array<[string, string]> {
+  const pairs = new Set<string>();
+  for (const [key, subject] of report.base) {
+    const klass = key.split('|')[0];
+    if (klass) pairs.add(mapKey(klass, subject));
   }
-  return { adapted: fromComcigan(json), source };
+  return [...pairs]
+    .filter((k) => !map[k])
+    .map((k) => k.split('|') as [string, string])
+    .sort((a, b) => a[0].localeCompare(b[0], 'ko', { numeric: true }) || a[1].localeCompare(b[1], 'ko'));
 }
 
 export function saveRaw(raw: string): void {
@@ -204,14 +333,18 @@ export function subjectHue(subject: string): number {
 }
 
 /** 상대 교사에게 보낼 합쇼체 요청 문구를 만든다. */
-export function buildPhrase(cand: Candidate, cfg: ScheduleConfig, slotName: (s: number, c: ScheduleConfig) => string): string {
+export function buildPhrase(
+  cand: Candidate,
+  cfg: ScheduleConfig,
+  name: (s: number, c: ScheduleConfig) => string,
+): string {
   const mine = cand.changes[0];
   if (!mine) return '';
-  const from = slotName(mine.from.slot, cfg);
+  const from = name(mine.from.slot, cfg);
   if (cand.type === 'swap2') {
     const theirs = cand.changes[1];
     if (!theirs) return '';
-    const to = slotName(theirs.from.slot, cfg);
+    const to = name(theirs.from.slot, cfg);
     return [
       `${theirs.from.teacher} 선생님, 안녕하십니까.`,
       `${from} ${mine.from.klass} ${mine.from.subject} 수업에 부득이한 사정이 생겨 연락드립니다.`,
@@ -220,9 +353,12 @@ export function buildPhrase(cand: Candidate, cfg: ScheduleConfig, slotName: (s: 
     ].join('\n');
   }
   if (cand.type === 'cycle3') {
-    const names = cand.changes.map((c) => `${c.from.teacher} 선생님`).slice(1).join(', ');
+    const names = cand.changes
+      .map((c) => `${c.from.teacher} 선생님`)
+      .slice(1)
+      .join(', ');
     const lines = cand.changes
-      .map((c) => `${slotName(c.from.slot, cfg)} ${c.from.subject}(${c.from.teacher}) → ${slotName(c.toSlot, cfg)}`)
+      .map((c) => `${name(c.from.slot, cfg)} ${c.from.subject}(${c.from.teacher}) → ${name(c.toSlot, cfg)}`)
       .join('\n');
     return [
       `${names}, 안녕하십니까.`,
@@ -231,7 +367,7 @@ export function buildPhrase(cand: Candidate, cfg: ScheduleConfig, slotName: (s: 
       `동의해 주시면 제가 시간 변경원을 올리겠습니다. 감사합니다.`,
     ].join('\n');
   }
-  const to = slotName(mine.toSlot, cfg);
+  const to = name(mine.toSlot, cfg);
   return [
     `일과 담당 선생님, 안녕하십니까.`,
     `${from} ${mine.from.klass} ${mine.from.subject} 수업에 부득이한 사정이 생겨,`,

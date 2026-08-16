@@ -356,6 +356,47 @@ button.cell.empty:hover { border-color: var(--muted); }
   .foot { font-size: 11.5px; gap: 8px; }
 }
 
+/* 나이스 불러오기 */
+.work.single { display: block; max-width: 900px; margin: 0 auto; width: 100%; }
+.neis { padding: 16px 20px 20px; }
+.neis-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.neis-head h2 { font-size: 17px; font-weight: 800; margin: 0; flex: 1; }
+.neis-lede { color: var(--muted); font-size: 13.5px; margin: 0 0 18px; text-wrap: pretty; }
+.neis-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.neis-field > span { font-size: 13px; font-weight: 700; display: flex; align-items: baseline; gap: 8px; }
+.neis-link { font-size: 12px; font-weight: 600; color: var(--accent); }
+.neis-hint { font-size: 12px; color: var(--muted); font-weight: 400; }
+.neis-row { display: flex; gap: 8px; }
+.neis-row .input { flex: 1; }
+.input {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 8px;
+  padding: 8px 12px; font-size: 14px; width: 100%;
+}
+.input:focus { border-color: var(--accent); outline: none; }
+.neis-busy { font-size: 13.5px; color: var(--accent); font-weight: 700; }
+.neis-error { font-size: 13.5px; color: var(--warn); font-weight: 600; text-wrap: pretty; }
+.neis-hits { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.neis-hits button {
+  width: 100%; text-align: left; border: 1px solid var(--line); background: var(--surface);
+  border-radius: 9px; padding: 10px 14px; display: flex; align-items: baseline; gap: 10px;
+}
+.neis-hits button:hover { border-color: var(--accent); }
+.hit-name { font-weight: 800; font-size: 14px; }
+.hit-meta { font-size: 12.5px; color: var(--muted); }
+.neis-progress { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.neis-progress .bar { flex: 1; height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.neis-progress .bar span { display: block; height: 100%; background: var(--accent); transition: width 0.2s ease; }
+.neis-count { font-size: 12.5px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.neis-facts { font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+.neis-filter { margin-bottom: 12px; }
+.neis-map { max-height: 46dvh; overflow-y: auto; border: 1px solid var(--line); border-radius: 9px; padding: 4px 12px 12px; }
+.neis-map section { padding-top: 10px; }
+.neis-map h3 { font-size: 13px; font-weight: 800; margin: 0 0 6px; color: var(--accent); }
+.map-row { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
+.map-subject { flex: 0 0 116px; font-size: 13px; }
+.map-row .input { padding: 5px 10px; font-size: 13px; }
+.neis-foot { display: flex; gap: 8px; margin-top: 16px; }
+
 /* 인쇄용 수업 교체 계획서 */
 .sheet { display: none; }
 @media print {
