@@ -1,5 +1,6 @@
 import {
   fromComcigan,
+  genSchool,
   type Candidate,
   type ComciganAdaptResult,
   type ComciganData,
@@ -9,12 +10,26 @@ import {
 export const STORAGE_KEY = 'timeswap:v0:data';
 export const TEACHER_KEY = 'timeswap:v0:teacher';
 
+/** 샘플 파일이 없는 배포 환경에서 쓰는 합성 샘플 표식 */
+export const SYNTH_MARK = 'timeswap:synthetic:v1';
+
 export interface Loaded {
   adapted: ComciganAdaptResult;
   source: '샘플' | '업로드';
 }
 
 export function parseAndAdapt(raw: string, source: Loaded['source']): Loaded {
+  if (raw === SYNTH_MARK) {
+    return {
+      adapted: {
+        input: genSchool({ classes: 12, seed: 42 }),
+        schoolName: '타임스왑 시범 학교',
+        changedLessons: 0,
+        groupedLessons: 0,
+      },
+      source,
+    };
+  }
   const json = JSON.parse(raw) as ComciganData;
   if (!json || typeof json !== 'object' || !json.timetable) {
     throw new Error('시간표 형식이 맞지 않습니다. 컴시간 뷰어 JSON 파일을 올려 주십시오.');

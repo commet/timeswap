@@ -17,6 +17,7 @@ import {
   loadRaw,
   parseAndAdapt,
   saveRaw,
+  SYNTH_MARK,
   TEACHER_KEY,
   type Loaded,
 } from '../lib/app';
@@ -126,10 +127,11 @@ export function Workbench() {
     setBusy(true);
     try {
       const r = await fetch('/sample.json');
-      if (!r.ok) throw new Error('샘플을 불러오지 못했습니다');
+      if (!r.ok) throw new Error('no sample file');
       applyRaw(await r.text(), '샘플');
     } catch {
-      show('샘플을 불러오지 못했습니다');
+      // 샘플 파일이 없는 배포 환경에서는 합성 시범 학교로 대신한다
+      applyRaw(SYNTH_MARK, '샘플');
     } finally {
       setBusy(false);
     }
