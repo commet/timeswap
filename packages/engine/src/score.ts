@@ -40,7 +40,7 @@ export function scoreCandidate(idx: Indexes, input: TimetableInput, cand: Candid
       cand.trace.push({
         kind: '감점',
         points: WEIGHTS.subjectTwiceADay,
-        text: `${c.from.klass}의 ${cfg.dayNames[toDay]}요일에 ${c.from.subject} 수업이 두 번이 됩니다`,
+        text: `${c.from.klass} ${cfg.dayNames[toDay]}요일에 ${c.from.subject} 수업이 두 번 들어갑니다`,
       });
     }
   }
@@ -61,7 +61,7 @@ export function scoreCandidate(idx: Indexes, input: TimetableInput, cand: Candid
       cand.trace.push({
         kind: '감점',
         points: pts,
-        text: `${t} 선생님의 수업 흐름이 조각납니다`,
+        text: `${t} 선생님의 연속 수업이 끊어집니다`,
       });
     }
   }
@@ -73,7 +73,7 @@ export function scoreCandidate(idx: Indexes, input: TimetableInput, cand: Candid
     cand.trace.push({
       kind: '가점',
       points: WEIGHTS.sameDayBonus,
-      text: '결강 당일 안에서 해결됩니다',
+      text: '같은 날 안에서 해결됩니다',
     });
   }
 
@@ -91,7 +91,7 @@ export function scoreCandidate(idx: Indexes, input: TimetableInput, cand: Candid
       cand.trace.push({
         kind: '감점',
         points: pts,
-        text: `${t} 선생님은 최근 보강과 교환 부담이 ${burden}회 있었습니다`,
+        text: `${t} 선생님은 최근에 보강과 교환을 ${burden}번 맡았습니다`,
       });
     }
   }

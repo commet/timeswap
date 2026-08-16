@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: '타임스왑',
+  title: '바꿈표',
   description:
     '학기 중 수업 교환 추천 도구. 결강이 생겼을 때 성립하는 교환안을 근거와 함께 제시합니다. 시간표는 브라우저 안에만 저장됩니다.',
 };

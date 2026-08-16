@@ -3,9 +3,9 @@
 import { slotName, type Candidate, type RecommendResult, type ScheduleConfig } from '@timeswap/engine';
 
 const TYPE_LABEL: Record<Candidate['type'], string> = {
-  move: '빈 교시 이동',
-  swap2: '맞교환',
-  cycle3: '3자 순환',
+  move: '빈 시간 옮기기',
+  swap2: '맞바꾸기',
+  cycle3: '연쇄 교환',
 };
 
 export function Panel({
@@ -33,15 +33,15 @@ export function Panel({
       </div>
       {!result ? (
         <div className="panel-empty">
-          격자에서 <b>못 들어가는 수업 칸</b>을 누르면
+          시간표에서 <b>바꿔야 할 수업</b>을 누르면
           <br />
-          성립하는 교환안을 이 자리에서 제시합니다.
+          되는 방법을 여기에 정리합니다.
         </div>
       ) : result.candidates.length === 0 ? (
         <div className="panel-empty">
-          <b>성립하는 교환안이 없습니다.</b>
+          <b>바꿀 방법을 찾지 못했습니다.</b>
           <br />
-          {result.notes.length > 0 ? result.notes.join(' ') : '보강 배정을 검토하십시오.'}
+          {result.notes.length > 0 ? result.notes.join(' ') : '보강으로 처리해야 할 수 있습니다.'}
         </div>
       ) : (
         <div className="panel-body" onMouseLeave={() => onHover(null)}>

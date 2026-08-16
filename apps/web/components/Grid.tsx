@@ -30,8 +30,8 @@ export function Grid({ cfg, teacher, lessons, absentSlot, preview, onSelect }: P
         <h2>{teacher} 선생님의 한 주</h2>
         <span className="sub">
           {absentSlot === null
-            ? '못 들어가는 수업 칸을 누르십시오'
-            : `${slotName(absentSlot, cfg)} 결강을 살피는 중`}
+            ? '바꿔야 할 수업을 누르십시오'
+            : `${slotName(absentSlot, cfg)} 수업을 바꿀 방법을 찾는 중`}
         </span>
       </div>
       <div className="grid-scroll">

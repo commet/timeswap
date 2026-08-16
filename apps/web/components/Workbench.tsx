@@ -174,8 +174,8 @@ export function Workbench() {
       <header className="topbar">
         <span className="wordmark">
           <span className="tick" aria-hidden />
-          타임스왑
-          <span className="beta">v0 알파</span>
+          바꿈표
+          <span className="beta">베타</span>
         </span>
         {loaded && (
           <span className="school-chip">

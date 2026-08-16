@@ -23,7 +23,7 @@ export function parseAndAdapt(raw: string, source: Loaded['source']): Loaded {
     return {
       adapted: {
         input: genSchool({ classes: 12, seed: 42 }),
-        schoolName: '타임스왑 시범 학교',
+        schoolName: '바꿈표 시범 학교',
         changedLessons: 0,
         groupedLessons: 0,
       },

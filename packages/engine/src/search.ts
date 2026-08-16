@@ -38,7 +38,7 @@ export function recommend(
   const notes: string[] = [];
   if (a.group) {
     notes.push(
-      `${slotName(a.slot, cfg)} 수업은 분반, 동시수업 묶음(${a.group})이라 v0 엔진이 자동 추천을 하지 않습니다`,
+      `${slotName(a.slot, cfg)} 수업은 분반 동시수업이라, 지금은 자동으로 바꿀 방법을 찾지 않습니다`,
     );
     return { target: a, candidates: [], notes };
   }
@@ -74,7 +74,7 @@ export function recommend(
       const fills = dayHoles(km, d, cfg) > dayHoles(newMask, d, cfg);
       candidates.push({
         type: 'move',
-        title: `${slotName(e, cfg)}로 이동`,
+        title: `${slotName(e, cfg)}로 옮기기`,
         changes: [{ from: a, toSlot: e }],
         score: 0,
         trace: [
@@ -82,8 +82,8 @@ export function recommend(
           {
             kind: '조건',
             text: fills
-              ? '학급의 기존 빈 교시를 메우는 이동입니다'
-              : '학급 하루 수업에 빈틈이 생기지 않습니다',
+              ? '학급의 비어 있던 교시를 채우는 이동입니다'
+              : '학급 시간표에 빈 시간이 생기지 않습니다',
           },
         ],
       });
@@ -97,7 +97,7 @@ export function recommend(
     if (!freeAt(a.teacher, b.slot, a.slot)) continue;
     candidates.push({
       type: 'swap2',
-      title: `${b.teacher} 선생님과 맞교환 (${slotName(a.slot, cfg)} ↔ ${slotName(b.slot, cfg)})`,
+      title: `${b.teacher} 선생님과 맞바꾸기 (${slotName(a.slot, cfg)} ↔ ${slotName(b.slot, cfg)})`,
       changes: [
         { from: a, toSlot: b.slot },
         { from: b, toSlot: a.slot },
@@ -119,7 +119,7 @@ export function recommend(
         if (!freeAt(c.teacher, a.slot, c.slot)) continue;
         candidates.push({
           type: 'cycle3',
-          title: `${a.teacher}, ${b.teacher}, ${c.teacher} 선생님의 자리 순환`,
+          title: `${b.teacher}, ${c.teacher} 선생님을 거치는 연쇄 교환`,
           changes: [
             { from: a, toSlot: b.slot },
             { from: b, toSlot: c.slot },
@@ -144,7 +144,7 @@ export function recommend(
       x.title.localeCompare(y.title, 'ko'),
   );
   if (candidates.length === 0) {
-    notes.push('성립하는 교환안이 없습니다. 보강 배정이 필요합니다');
+    notes.push('바꿀 방법을 찾지 못했습니다. 보강으로 처리해야 할 수 있습니다');
   }
   return { target: a, candidates: candidates.slice(0, opts.max ?? 20), notes };
 }
