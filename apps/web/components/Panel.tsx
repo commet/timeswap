@@ -38,6 +38,7 @@ export function Panel({
   onHover,
   onCopy,
   onCopyCover,
+  onApplyCover,
   onApply,
   onSkip,
 }: {
@@ -57,6 +58,7 @@ export function Panel({
   onHover: (c: Candidate | null) => void;
   onCopy: (c: Candidate) => void;
   onCopyCover: (teacher: string) => void;
+  onApplyCover: (teacher: string) => void;
   onApply: (c: Candidate) => void;
   onSkip: () => void;
 }) {
@@ -133,9 +135,14 @@ export function Panel({
                         <li key={j}>{n}</li>
                       ))}
                     </ul>
-                    <button className="btn cover-copy" onClick={() => onCopyCover(c.teacher)}>
-                      보강 요청 문구 복사
-                    </button>
+                    <div className="cover-foot">
+                      <button className="btn primary cover-apply" onClick={() => onApplyCover(c.teacher)}>
+                        이 분으로 보강 반영
+                      </button>
+                      <button className="btn cover-copy" onClick={() => onCopyCover(c.teacher)}>
+                        요청 문구 복사
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -171,9 +178,14 @@ export function Panel({
                         {c.sameSubject && <span className="cover-badge">같은 과목</span>}
                         <span className="cover-load">주 {c.weeklyLessons}시간</span>
                       </div>
-                      <button className="btn cover-copy" onClick={() => onCopyCover(c.teacher)}>
-                        보강 요청 문구 복사
-                      </button>
+                      <div className="cover-foot">
+                        <button className="btn primary cover-apply" onClick={() => onApplyCover(c.teacher)}>
+                          이 분으로 보강 반영
+                        </button>
+                        <button className="btn cover-copy" onClick={() => onCopyCover(c.teacher)}>
+                          요청 문구 복사
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>

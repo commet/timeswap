@@ -8,6 +8,7 @@ const TYPE_LABEL: Record<AppliedEntry['type'], string> = {
   move: '빈 시간으로 이동',
   swap2: '맞바꾸기',
   cycle3: '연쇄 교체',
+  보강: '보강',
 };
 
 /**
@@ -42,12 +43,31 @@ export function Sheet({
   // 자리를 내어 준 교사. 결강 당사자는 뺀다.
   const helpers = [
     ...new Set(
-      entries.flatMap((e) => e.changes.map((c) => c.from.teacher)).filter((t) => t !== teacher),
+      [
+        ...entries.flatMap((e) => e.changes.map((c) => c.from.teacher)),
+        ...entries.flatMap((e) => (e.cover ? [e.cover.teacher] : [])),
+      ].filter((t) => t !== teacher),
     ),
   ].sort((a, b) => a.localeCompare(b, 'ko'));
 
-  const rows = entries.flatMap((e, i) =>
-    e.changes.map((c, j) => ({
+  const rows = entries.flatMap((e, i) => {
+    // 보강은 자리가 아니라 사람이 바뀐다. 변경 전후 칸에 그 사실을 그대로 적는다.
+    if (e.cover) {
+      return [
+        {
+          key: `${e.id}-c`,
+          no: String(i + 1),
+          kind: TYPE_LABEL[e.type],
+          klass: e.cover.klass,
+          subject: e.cover.subject,
+          teacher: e.cover.absent,
+          before: `${slotName(e.cover.slot, cfg)} (${e.cover.absent})`,
+          after: `${slotName(e.cover.slot, cfg)} (${e.cover.teacher})`,
+          first: true,
+        },
+      ];
+    }
+    return e.changes.map((c, j) => ({
       key: `${e.id}-${j}`,
       no: j === 0 ? String(i + 1) : '',
       kind: j === 0 ? TYPE_LABEL[e.type] : '',
@@ -57,8 +77,8 @@ export function Sheet({
       before: slotName(c.from.slot, cfg),
       after: slotName(c.toSlot, cfg),
       first: j === 0,
-    })),
-  );
+    }));
+  });
 
   return (
     <div className="sheet" aria-hidden>

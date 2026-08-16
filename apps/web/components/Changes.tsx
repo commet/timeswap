@@ -7,6 +7,7 @@ const TYPE_LABEL: Record<AppliedEntry['type'], string> = {
   move: '빈 시간으로 이동',
   swap2: '맞바꾸기',
   cycle3: '연쇄 교체',
+  보강: '보강',
 };
 
 export function Changes({
@@ -51,7 +52,7 @@ export function Changes({
             {entries.map((e, i) => (
               <li key={e.id}>
                 <span className="chg-no">{i + 1}</span>
-                <span className="chg-type">{TYPE_LABEL[e.type]}</span>
+                <span className={`chg-type${e.cover ? ' cover' : ''}`}>{TYPE_LABEL[e.type]}</span>
                 <span className="chg-title">{e.title}</span>
                 {i === entries.length - 1 && (
                   <button className="btn ghost chg-undo" onClick={onUndoLast}>

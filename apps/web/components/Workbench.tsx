@@ -605,6 +605,44 @@ export function Workbench() {
     [input, result, copy],
   );
 
+  /**
+   * 보강을 시간표에 반영한다.
+   *
+   * 자리를 옮기는 것이 아니라 담당 교사만 바뀐다. 고교학점제로 선택과목이 강좌 단위로
+   * 열리면서 교체 자체가 성립하지 않는 자리가 늘었고, 그런 자리에서 실제로 벌어지는
+   * 일이 이것이다. 결재와 나이스 입력이 따르는 정식 변경이라 장부에 남겨야 한다.
+   */
+  const onApplyCover = useCallback(
+    (name: string) => {
+      if (!input || !result || currentTeacher === null) return;
+      const { slot, klass, subject } = result.target;
+      const nextId = (entries[entries.length - 1]?.id ?? 0) + 1;
+      const next: AppliedEntry[] = [
+        ...entries,
+        {
+          id: nextId,
+          type: '보강',
+          title: `${name} 선생님 보강 (${slotName(slot, input.config)} ${klass} ${subject})`,
+          changes: [],
+          cover: { teacher: name, slot, klass, subject, absent: currentTeacher },
+        },
+      ];
+      setEntries(next);
+      if (!saveEntries(next)) setNoSave(true);
+      setHovered(null);
+      setQueue((q) => {
+        const rest = q.slice(1);
+        show(
+          rest.length > 0
+            ? `${name} 선생님 보강으로 반영했습니다. 남은 결강 ${rest.length}건`
+            : `${name} 선생님 보강으로 반영했습니다`,
+        );
+        return rest;
+      });
+    },
+    [input, result, currentTeacher, entries, show],
+  );
+
   const onCopyNotice = useCallback(() => {
     if (!input || !loaded || entries.length === 0) return;
     void copy(buildNotice(loaded.schoolName, entries, input.config), '변경 공지를 복사했습니다');
@@ -876,6 +914,7 @@ export function Workbench() {
               onHover={setHovered}
               onCopy={onCopy}
               onCopyCover={onCopyCover}
+              onApplyCover={onApplyCover}
               onApply={onApply}
               onSkip={onSkip}
             />
