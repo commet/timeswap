@@ -42,7 +42,7 @@ apps/web          Next.js 정적 내보내기
 | 문서 | 내용 |
 |---|---|
 | [00-research.md](00-research.md) | 딥 리서치: 국내 현황, 해외 제품, 알고리즘 문헌, 시장과 구매 구조 |
-| [01-plan.md](01-plan.md) | 제품과 구현 계획 v1 |
+| 01-plan.md | 제품과 구현 계획 v1. 아직 [PR #1](https://github.com/commet/timeswap/pull/1) 초안이라 main 에 없다 |
 | [02-spike-record.md](02-spike-record.md) | 스파이크 기록. 데이터 경로 판단은 03 에서 뒤집혔다 |
 | [03-domain-and-data.md](03-domain-and-data.md) | 운영 실태, 나이스 개방 API 실측, 자료 취급 원칙 |
 
