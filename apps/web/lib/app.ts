@@ -7,6 +7,7 @@ import {
   type Candidate,
   type Change,
   type NeisReport,
+  type DayClosure,
   type NeisRow,
   type ScheduleConfig,
   type TimetableInput,
@@ -19,6 +20,7 @@ export const TEACHER_KEY = 'timeswap:v0:teacher';
 export const CHANGES_KEY = 'timeswap:v0:changes';
 export const UNAVAIL_KEY = 'timeswap:v0:unavail';
 export const THEME_KEY = 'timeswap:v0:theme';
+export const REASON_KEY = 'timeswap:v0:reason';
 export const NEIS_KEY_STORE = 'timeswap:v0:neiskey';
 
 export type ThemeMode = 'auto' | 'light' | 'dark';
@@ -70,11 +72,13 @@ export function loadEntries(): AppliedEntry[] {
   }
 }
 
-export function saveEntries(entries: AppliedEntry[]): void {
+/** 반영한 변경을 이 브라우저에 둔다. 실패하면 알려야 하므로 성공 여부를 돌려준다. */
+export function saveEntries(entries: AppliedEntry[]): boolean {
   try {
     localStorage.setItem(CHANGES_KEY, JSON.stringify(entries));
+    return true;
   } catch {
-    /* 무시 */
+    return false;
   }
 }
 
@@ -120,6 +124,67 @@ export function saveNeisKey(key: string): void {
   } catch {
     /* 무시 */
   }
+}
+
+/**
+ * 지금 다루는 주의 월요일을 찾는다.
+ * 주말에 열면 다음 주를 본다. 토요일 오후에 여는 사람은 다음 주 결강을 준비하는 것이다.
+ */
+export function weekMondayOf(today = new Date()): Date {
+  const d = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const wd = d.getDay(); // 일 0, 월 1
+  if (wd === 0) d.setDate(d.getDate() + 1);
+  else if (wd === 6) d.setDate(d.getDate() + 2);
+  else d.setDate(d.getDate() - (wd - 1));
+  return d;
+}
+
+const ymd = (d: Date): string =>
+  `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+
+/**
+ * 학사일정을 지금 다루는 주의 요일 단위로 바꾼다.
+ *
+ * 시간표는 한 주가 되풀이되는 표인데 학사일정은 날짜로 온다.
+ * 그래서 이번 주에 걸리는 것만 골라 요일로 옮긴다.
+ *
+ * 쉬는 날로 보는 것은 휴업일과 공휴일뿐이다. 학년 행사는 수업을 하는 날이 대부분이라
+ * 여기서 막으면 멀쩡한 교체안까지 사라진다. 행사는 화면에 알리기만 한다.
+ */
+export function buildClosures(
+  events: NeisEvent[],
+  klasses: string[],
+  monday: Date = weekMondayOf(),
+  days = 5,
+): DayClosure[] {
+  const dateOfDay = new Map<string, number>();
+  for (let i = 0; i < days; i++) {
+    const d = new Date(monday);
+    d.setDate(d.getDate() + i);
+    dateOfDay.set(ymd(d), i);
+  }
+  const found = new Map<number, { reason: string; grades: Set<number> | null }>();
+  for (const e of events) {
+    if (!e.isHoliday) continue;
+    const day = dateOfDay.get(e.date);
+    if (day === undefined) continue;
+    // 학년별 표시가 전부 켜져 있거나 전부 꺼져 있으면 학교 전체로 본다.
+    const on = e.grades.filter(Boolean).length;
+    const partial = on > 0 && on < e.grades.length;
+    const prev = found.get(day);
+    const grades = partial ? new Set(e.grades.flatMap((v, i) => (v ? [i + 1] : []))) : null;
+    if (!prev) found.set(day, { reason: e.name || e.kind, grades });
+    else if (prev.grades !== null && grades === null) found.set(day, { reason: e.name || e.kind, grades: null });
+  }
+  const out: DayClosure[] = [];
+  for (const [day, { reason, grades }] of found) {
+    if (grades === null) out.push({ day, reason });
+    else {
+      const hit = klasses.filter((k) => grades.has(Number(k.split('-')[0])));
+      if (hit.length > 0) out.push({ day, reason, klasses: hit });
+    }
+  }
+  return out.sort((a, b) => a.day - b.day);
 }
 
 /**
@@ -201,10 +266,23 @@ export const SYNTH_MARK = 'pumasi:sample:v1';
 
 export type SourceKind = '샘플' | '나이스' | '파일';
 
+/** 받아 둔 학사일정과 그 기간. 저장 파일에도 남겨 새로고침해도 살아남는다. */
+export interface Calendar {
+  /** "20260713" */
+  from: string;
+  to: string;
+  events: NeisEvent[];
+}
+
 export interface Loaded {
   schoolName: string;
   input: TimetableInput;
   source: SourceKind;
+  /**
+   * 학사일정. 휴업일을 탐색에서 빼는 데 쓴다.
+   * neis 안에 두지 않고 따로 두는 이유는 저장 파일에서 되살려야 하기 때문이다.
+   */
+  calendar?: Calendar;
   /** 나이스에서 불러온 경우의 부가 정보 */
   neis?: {
     school: NeisSchool;
@@ -213,19 +291,25 @@ export interface Loaded {
   };
 }
 
-/** 우리 저장 형식. 다른 도구에 매이지 않도록 필요한 것만 담는다. */
+/**
+ * 우리 저장 형식. 다른 도구에 매이지 않도록 필요한 것만 담는다.
+ *
+ * 판 2에서 학사일정을 넣었다. 넣기 전에는 새로고침 한 번에 휴업일이 사라져
+ * 쉬는 날로 옮기라는 추천이 조용히 되살아났다. 판 1 파일도 그대로 열린다.
+ */
 export interface PumasiFile {
   format: 'pumasi.timetable';
-  version: 1;
+  version: 1 | 2;
   school: string;
   config: ScheduleConfig;
   lessons: Array<{ teacher: string; klass: string; subject: string; slot: number; group?: string }>;
+  calendar?: Calendar;
 }
 
 export function toFile(loaded: Loaded): string {
   const doc: PumasiFile = {
     format: 'pumasi.timetable',
-    version: 1,
+    version: 2,
     school: loaded.schoolName,
     config: loaded.input.config,
     lessons: loaded.input.assignments.map((a) => ({
@@ -235,6 +319,7 @@ export function toFile(loaded: Loaded): string {
       slot: a.slot,
       ...(a.group ? { group: a.group } : {}),
     })),
+    ...(loaded.calendar ? { calendar: loaded.calendar } : {}),
   };
   return JSON.stringify(doc, null, 1);
 }
@@ -248,7 +333,22 @@ export function fromFile(raw: string): Loaded {
     schoolName: doc.school || '이름 없는 학교',
     source: '파일',
     input: { config: doc.config, assignments: doc.lessons },
+    ...(doc.calendar ? { calendar: doc.calendar } : {}),
   };
+}
+
+/**
+ * 받아 둔 학사일정이 지금 다루는 주를 덮는지 본다.
+ *
+ * 나이스에서 5주치를 받아 두는데, 몇 주 뒤에 다시 열면 그 기간이 이번 주를 지나쳐 있다.
+ * 그러면 휴업일이 없어서 안 걸리는 것인지 자료가 낡아서 안 걸리는 것인지 구분이 안 된다.
+ * 화면에서 다시 불러오라고 말해 주려고 이 판정을 둔다.
+ */
+export function calendarCoversThisWeek(cal: Calendar | undefined, monday = weekMondayOf()): boolean {
+  if (!cal) return false;
+  const friday = new Date(monday);
+  friday.setDate(friday.getDate() + 4);
+  return cal.from <= ymd(monday) && ymd(friday) <= cal.to;
 }
 
 export function sampleSchool(): Loaded {
@@ -273,6 +373,7 @@ export function buildFromNeis(
   rows: NeisRow[],
   events: NeisEvent[],
   map: TeacherMap,
+  range?: { from: string; to: string },
 ): Loaded {
   const report = fromNeis(rows);
   const input = neisToTimetable(report, (klass, subject) => map[mapKey(klass, subject)]);
@@ -280,6 +381,7 @@ export function buildFromNeis(
     schoolName: school.name,
     source: '나이스',
     input,
+    ...(range ? { calendar: { from: range.from, to: range.to, events } } : {}),
     neis: { school, report, events },
   };
 }
@@ -297,11 +399,19 @@ export function missingTeachers(report: NeisReport, map: TeacherMap): Array<[str
     .sort((a, b) => a[0].localeCompare(b[0], 'ko', { numeric: true }) || a[1].localeCompare(b[1], 'ko'));
 }
 
-export function saveRaw(raw: string): void {
+/**
+ * 시간표를 이 브라우저에 둔다. 성공 여부를 돌려준다.
+ *
+ * 조용히 삼키면 안 되는 실패다. 화면은 "이 기기에 저장합니다"라고 말하는데
+ * 실제로는 저장되지 않았다면, 선생님은 새로고침 한 번에 오늘 작업을 통째로 잃는다.
+ * 그 사실을 그때 알게 하지 않고 미리 알린다.
+ */
+export function saveRaw(raw: string): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, raw);
+    return true;
   } catch {
-    // 저장 실패(용량 초과 등)는 치명적이지 않다. 세션 안에서는 계속 쓸 수 있다.
+    return false;
   }
 }
 
@@ -331,6 +441,24 @@ export function subjectHue(subject: string): number {
   let h = 0;
   for (let i = 0; i < subject.length; i++) h = (h * 31 + subject.charCodeAt(i)) >>> 0;
   return HUES[h % HUES.length] ?? 152;
+}
+
+/** 보강을 부탁드리는 문구. 교체가 없을 때 쓴다. */
+export function buildCoverPhrase(
+  teacher: string,
+  slot: number,
+  klass: string,
+  subject: string,
+  cfg: ScheduleConfig,
+  name: (s: number, c: ScheduleConfig) => string,
+): string {
+  return [
+    `${teacher} 선생님, 안녕하십니까.`,
+    `${name(slot, cfg)} ${klass} ${subject} 수업에 부득이한 사정이 생겼습니다.`,
+    `자리를 맞바꿀 수업을 찾지 못해 보강을 여쭙습니다.`,
+    `선생님께서는 그 시간에 수업이 없으신 것으로 확인하였습니다.`,
+    `가능하시면 제가 보강 계획을 올리겠습니다. 감사합니다.`,
+  ].join('\n');
 }
 
 /** 상대 교사에게 보낼 합쇼체 요청 문구를 만든다. */

@@ -18,7 +18,13 @@ type Stage = '검색' | '배정';
 interface Props {
   neisKey: string;
   onKeyChange: (key: string) => void;
-  onDone: (school: NeisSchool, rows: NeisRow[], events: NeisEvent[], map: TeacherMap) => void;
+  onDone: (
+    school: NeisSchool,
+    rows: NeisRow[],
+    events: NeisEvent[],
+    map: TeacherMap,
+    range: { from: string; to: string },
+  ) => void;
   onCancel: () => void;
 }
 
@@ -32,6 +38,7 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
   const [school, setSchool] = useState<NeisSchool | null>(null);
   const [rows, setRows] = useState<NeisRow[]>([]);
   const [events, setEvents] = useState<NeisEvent[]>([]);
+  const [range, setRange] = useState<{ from: string; to: string } | null>(null);
   const [report, setReport] = useState<NeisReport | null>(null);
   const [map, setMap] = useState<TeacherMap>({});
   const [filter, setFilter] = useState('');
@@ -70,6 +77,7 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
         setSchool(picked);
         setRows(tt.rows);
         setEvents(sch);
+        setRange(range);
         setReport(rep);
         setStage('배정');
         if (tt.truncated) {
@@ -271,8 +279,8 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
       <div className="neis-foot">
         <button
           className="btn primary"
-          disabled={filled === 0 || !school}
-          onClick={() => school && onDone(school, rows, events, map)}
+          disabled={filled === 0 || !school || !range}
+          onClick={() => school && range && onDone(school, rows, events, map, range)}
         >
           이 시간표로 시작하기
         </button>

@@ -19,6 +19,26 @@ export interface Assignment {
   group?: string;
 }
 
+/**
+ * 그날 수업을 하지 않는 날.
+ *
+ * 시간표는 한 주가 되풀이되는 표지만 학사일정은 날짜로 온다.
+ * 그래서 지금 다루는 주에 맞춰 요일로 바꿔 넣는다.
+ * 휴업일인 목요일로 수업을 옮기라는 추천이 한 번이라도 나오면
+ * 그 뒤로 어떤 추천도 믿기 어려워진다.
+ */
+export interface DayClosure {
+  /** 요일. 0 이 월요일이다 */
+  day: number;
+  /** 왜 쉬는지. 화면과 근거 문장에 그대로 쓴다 */
+  reason: string;
+  /**
+   * 해당 학급. 비우면 학교 전체다.
+   * 특정 학년만 행사로 빠지는 경우에 쓴다.
+   */
+  klasses?: string[];
+}
+
 export interface TimetableInput {
   config: ScheduleConfig;
   assignments: Assignment[];
@@ -26,6 +46,8 @@ export interface TimetableInput {
   unavailable?: Record<string, number[]>;
   /** 교사별 최근 보강, 교환 부담 횟수. 추천 시 부담 균형 감점에 쓴다. */
   recentBurden?: Record<string, number>;
+  /** 학사일정에서 온 휴업일과 학년 행사. 그 요일로는 옮기지 않는다. */
+  closures?: DayClosure[];
 }
 
 export type CandidateType = 'move' | 'swap2' | 'cycle3';

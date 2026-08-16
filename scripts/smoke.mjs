@@ -45,13 +45,28 @@ await page.screenshot({ path: `${OUT}/shot-12-neis.png` });
 await page.getByRole('button', { name: '닫기' }).click();
 await page.waitForTimeout(300);
 
-// 2. 샘플 로드
+// 2. 샘플 로드 후 본인 성함 고르기
 await page.getByRole('button', { name: '예시로 살펴보기' }).click();
+await page.waitForSelector('.pick-list', { timeout: 15000 });
+const pickCount = await page.locator('.pick-list li').count();
+console.log('성함 고르기 후보:', pickCount);
+if (pickCount === 0) errors.push('성함 고르기 목록이 비어 있음');
+await page.screenshot({ path: `${OUT}/shot-13-pick.png` });
+// 검색으로 좁혀지는지도 함께 본다
+await page.getByPlaceholder('성함으로 찾기').fill('사회');
+await page.waitForTimeout(200);
+const narrowed = await page.locator('.pick-list li').count();
+console.log('검색 후 후보:', narrowed);
+if (narrowed === 0 || narrowed >= pickCount) errors.push('성함 검색이 좁혀지지 않음');
+const myName = (await page.locator('.pick-list .pick-name').first().textContent())?.trim() ?? '';
+await page.locator('.pick-list button').first().click();
 await page.waitForSelector('.tt-grid', { timeout: 15000 });
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${OUT}/shot-2-grid.png` });
 const school = await page.locator('.school-chip').textContent();
-console.log('학교 칩:', school?.trim());
+console.log('학교 칩:', school?.trim(), '| 고른 교사:', myName);
+const openedFor = await page.locator('.grid-wrap h2').textContent();
+if (!openedFor?.includes(myName)) errors.push('고른 교사의 시간표가 열리지 않음');
 
 // 3. 결강 지정: 수업이 있는 셀 중 세 번째를 클릭
 const cells = page.locator('button.cell.lesson');
@@ -89,6 +104,17 @@ if (candCount > 0) {
   if (applied !== 1 || absentLeft !== 0) errors.push('반영 흐름 실패');
   const printBtn = await page.getByRole('button', { name: '교체 계획서 인쇄' }).count();
   console.log('계획서 인쇄 버튼:', printBtn);
+
+  // 5b-1. 결재 문서에 들어갈 사유. 인쇄 서식이 값을 그대로 받는지까지 본다.
+  const reasonBox = page.locator('.chg-reason .input');
+  await reasonBox.fill('학년 협의회 출장');
+  await page.waitForTimeout(200);
+  const sheetReason = await page.locator('.sheet-head td').nth(3).textContent();
+  const sheetTeacher = await page.locator('.sheet-head td').nth(2).textContent();
+  const signNames = await page.locator('.sheet-sign-name').count();
+  console.log('계획서 신청 교사:', sheetTeacher?.trim(), '| 사유:', sheetReason?.trim(), '| 협조 확인란:', signNames);
+  if (sheetReason?.trim() !== '학년 협의회 출장') errors.push('계획서 사유 반영 실패');
+  if (signNames < 1) errors.push('협조 교사 확인란 없음');
 
   // 5b-2. 변경 공지 복사와 협조 기록
   await page.getByRole('button', { name: '변경 공지 복사' }).click();
@@ -226,6 +252,29 @@ await mob.setViewportSize({ width: 390, height: 844 });
 await mob.goto(BASE, { waitUntil: 'networkidle' });
 await mob.waitForTimeout(400);
 await mob.screenshot({ path: `${OUT}/shot-6-mobile.png` });
+
+// 10. 저장이 막힌 브라우저. 사생활 보호 모드나 저장 공간 부족을 흉내 낸다.
+// 조용히 넘기면 새로고침 한 번에 작업이 사라지므로 알림이 반드시 떠야 한다.
+const noSavePage = await ctx.newPage();
+await noSavePage.addInitScript(() => {
+  const die = () => {
+    throw new DOMException('가득 참', 'QuotaExceededError');
+  };
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: { getItem: () => null, setItem: die, removeItem: () => {}, clear: () => {} },
+  });
+});
+await noSavePage.goto(BASE, { waitUntil: 'networkidle' });
+await noSavePage.getByRole('button', { name: '예시로 살펴보기' }).click();
+await noSavePage.waitForSelector('.pick-list', { timeout: 15000 });
+await noSavePage.locator('.pick-list button').first().click();
+await noSavePage.waitForTimeout(500);
+const warned = await noSavePage.locator('.warn-bar').count();
+console.log('저장 막힌 브라우저 알림:', warned === 1 ? '표시됨' : '없음');
+if (warned !== 1) errors.push('저장 실패 알림이 뜨지 않음');
+await noSavePage.screenshot({ path: `${OUT}/shot-14-nosave.png` });
+await noSavePage.close();
 
 // 보안 헤더를 씌우고 돌리면 막힌 자원이 여기에 남는다. CSP 를 손보기 전에 이걸 본다.
 console.log('리소스 경고:', warnings.length);

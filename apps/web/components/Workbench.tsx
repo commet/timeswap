@@ -18,12 +18,16 @@ import { Grid } from './Grid';
 import { Panel } from './Panel';
 import { Changes } from './Changes';
 import { Sheet } from './Sheet';
+import { TeacherPick } from './TeacherPick';
 import { NeisLoader } from './NeisLoader';
 import type { NeisEvent, NeisSchool } from '../lib/neis';
 import { BRAND } from '../lib/brand';
 import {
   applyAll,
   applyTheme,
+  buildClosures,
+  buildCoverPhrase,
+  calendarCoversThisWeek,
   buildFromNeis,
   buildNeisList,
   buildNotice,
@@ -41,6 +45,7 @@ import {
   saveNeisKey,
   saveRaw,
   saveUnavail,
+  REASON_KEY,
   TEACHER_KEY,
   THEME_LABEL,
   THEME_ORDER,
@@ -77,6 +82,10 @@ export function Workbench() {
   const [busy, setBusy] = useState(false);
   const [teacher, setTeacher] = useState<string | null>(null);
   const [teacherInput, setTeacherInput] = useState('');
+  /** 아직 본인 성함을 고르지 않았다. 처음 불러온 직후에만 참이다. */
+  const [needsPick, setNeedsPick] = useState(false);
+  /** 결재 문서에 들어갈 결강 사유 */
+  const [reason, setReason] = useState('출장');
   const [entries, setEntries] = useState<AppliedEntry[]>([]);
   const [view, setView] = useState<'teacher' | 'klass'>('teacher');
   const [klass, setKlass] = useState<string | null>(null);
@@ -84,6 +93,12 @@ export function Workbench() {
   const [unavail, setUnavail] = useState<Record<string, number[]>>({});
   const [hovered, setHovered] = useState<Candidate | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  /**
+   * 이 브라우저에 저장하지 못한 상태.
+   * 사생활 보호 모드나 저장 공간 부족에서 생긴다. 새로고침 한 번에 오늘 작업이
+   * 통째로 사라지는 상황이라 조용히 넘길 수 없다.
+   */
+  const [noSave, setNoSave] = useState(false);
   const [todayIdx, setTodayIdx] = useState<number | null>(null);
   const [theme, setTheme] = useState<ThemeMode>('auto');
   const sideRef = useRef<HTMLDivElement>(null);
@@ -98,6 +113,8 @@ export function Workbench() {
         setUnavail(loadUnavail());
         const saved = localStorage.getItem(TEACHER_KEY);
         setTeacher(saved ?? defaultTeacher(l.input));
+        if (saved === null) setNeedsPick(true);
+        setReason(localStorage.getItem(REASON_KEY) ?? '출장');
       } catch {
         clearRaw();
       }
@@ -109,12 +126,34 @@ export function Workbench() {
   }, []);
 
   const base = loaded?.input ?? null;
+
+  /**
+   * 이번 주 휴업일. 나이스 학사일정에서 온다.
+   * 시간표는 되풀이되는 한 주지만 학사일정은 날짜라 이번 주에 걸리는 것만 요일로 옮긴다.
+   */
+  const closures = useMemo(() => {
+    const cal = loaded?.calendar;
+    if (!cal || cal.events.length === 0 || !base) return [];
+    if (!calendarCoversThisWeek(cal)) return [];
+    const ks = [...new Set(base.assignments.map((a) => a.klass))];
+    return buildClosures(cal.events, ks);
+  }, [loaded, base]);
+
+  /** 학사일정을 받아 두긴 했는데 그 기간이 이번 주를 지나쳤다. 다시 받아야 한다. */
+  const staleCalendar =
+    loaded?.calendar !== undefined && !calendarCoversThisWeek(loaded.calendar);
+
   const input = useMemo(() => {
     if (!base) return null;
     const applied = applyAll(base, entries);
     // 근무 불가와 협조 부담은 저장된 상태에서 매번 다시 만든다.
-    return { ...applied, unavailable: unavail, recentBurden: deriveBurden(entries) };
-  }, [base, entries, unavail]);
+    return {
+      ...applied,
+      unavailable: unavail,
+      recentBurden: deriveBurden(entries),
+      ...(closures.length > 0 ? { closures } : {}),
+    };
+  }, [base, entries, unavail, closures]);
 
   const teachers = useMemo(() => {
     if (!input) return [] as Array<{ name: string; n: number }>;
@@ -173,8 +212,8 @@ export function Workbench() {
 
   const cover: CoverCandidate[] | null = useMemo(() => {
     if (!input || !result || result.candidates.length > 0) return null;
-    return coverCandidates(input, result.target.slot, result.target.subject);
-  }, [input, result]);
+    return coverCandidates(input, result.target.slot, result.target.subject, 8, currentTeacher ?? undefined);
+  }, [input, result, currentTeacher]);
 
   const show = useCallback((msg: string) => {
     setToast(msg);
@@ -203,6 +242,7 @@ export function Workbench() {
 
   const commitTeacher = useCallback((name: string) => {
     setTeacher(name);
+    setNeedsPick(false);
     setQueue([]);
     setHovered(null);
     try {
@@ -216,7 +256,8 @@ export function Workbench() {
   const install = useCallback(
     (l: Loaded) => {
       setLoaded(l);
-      saveRaw(toFile(l));
+      const stored = saveRaw(toFile(l));
+      setNoSave(!stored);
       setEntries([]);
       saveEntries([]);
       setQueue([]);
@@ -225,14 +266,13 @@ export function Workbench() {
       setHovered(null);
       setView('teacher');
       setAtHome(false);
-      const t = defaultTeacher(l.input);
-      setTeacher(t);
-      if (t !== null) {
-        try {
-          localStorage.setItem(TEACHER_KEY, t);
-        } catch {
-          /* 무시 */
-        }
+      // 학교가 바뀌면 이전에 고른 성함은 뜻이 없다. 처음부터 다시 묻는다.
+      setTeacher(defaultTeacher(l.input));
+      setNeedsPick(true);
+      try {
+        localStorage.removeItem(TEACHER_KEY);
+      } catch {
+        /* 무시 */
       }
       show(`${l.schoolName} 시간표를 불러왔습니다`);
     },
@@ -265,8 +305,14 @@ export function Workbench() {
   );
 
   const onNeisDone = useCallback(
-    (school: NeisSchool, rows: NeisRow[], events: NeisEvent[], map: TeacherMap) => {
-      const l = buildFromNeis(school, rows, events, map);
+    (
+      school: NeisSchool,
+      rows: NeisRow[],
+      events: NeisEvent[],
+      map: TeacherMap,
+      range: { from: string; to: string },
+    ) => {
+      const l = buildFromNeis(school, rows, events, map, range);
       if (l.input.assignments.length === 0) {
         show('담당 교사를 한 명 이상 입력해야 시간표를 만들 수 있습니다');
         return;
@@ -356,6 +402,24 @@ export function Workbench() {
     [input, copy],
   );
 
+  const onCopyCover = useCallback(
+    (name: string) => {
+      if (!input || !result) return;
+      void copy(
+        buildCoverPhrase(
+          name,
+          result.target.slot,
+          result.target.klass,
+          result.target.subject,
+          input.config,
+          slotName,
+        ),
+        '보강 요청 문구를 복사했습니다',
+      );
+    },
+    [input, result, copy],
+  );
+
   const onCopyNotice = useCallback(() => {
     if (!input || !loaded || entries.length === 0) return;
     void copy(buildNotice(loaded.schoolName, entries, input.config), '변경 공지를 복사했습니다');
@@ -380,7 +444,7 @@ export function Workbench() {
       const nextId = (entries[entries.length - 1]?.id ?? 0) + 1;
       const next = [...entries, { id: nextId, type: c.type, title: c.title, changes: c.changes }];
       setEntries(next);
-      saveEntries(next);
+      if (!saveEntries(next)) setNoSave(true);
       setHovered(null);
       setQueue((q) => {
         const rest = q.slice(1);
@@ -418,6 +482,15 @@ export function Workbench() {
     show('변경을 모두 되돌렸습니다');
   }, [entries, show]);
 
+  const onReason = useCallback((v: string) => {
+    setReason(v);
+    try {
+      localStorage.setItem(REASON_KEY, v);
+    } catch {
+      /* 무시 */
+    }
+  }, []);
+
   const onPrint = useCallback(() => {
     window.print();
   }, []);
@@ -432,6 +505,12 @@ export function Workbench() {
     setQueue([]);
     setUnavail({});
     setHovered(null);
+    setNeedsPick(false);
+    try {
+      localStorage.removeItem(TEACHER_KEY);
+    } catch {
+      /* 무시 */
+    }
   }, []);
 
   return (
@@ -451,13 +530,13 @@ export function Workbench() {
           {BRAND}
           <span className="beta">베타</span>
         </button>
-        {loaded && !atHome && (
+        {loaded && !atHome && !needsPick && (
           <span className="school-chip">
             {loaded.schoolName} | {loaded.source}
           </span>
         )}
         <span className="spacer" />
-        {loaded && input && !atHome && (
+        {loaded && input && !atHome && !needsPick && (
           <>
             <div className="seg" role="tablist" aria-label="보기 전환">
               <button
@@ -536,7 +615,7 @@ export function Workbench() {
         <button className="btn ghost theme-btn" title="화면 테마 전환" onClick={cycleTheme}>
           테마 {THEME_LABEL[theme]}
         </button>
-        {loaded && input && !atHome && (
+        {loaded && input && !atHome && !needsPick && (
           <>
             <button className="btn ghost" onClick={onSaveFile}>
               파일로 저장
@@ -572,6 +651,12 @@ export function Workbench() {
           savedName={loaded?.schoolName ?? ''}
           busy={busy}
         />
+      ) : needsPick ? (
+        <TeacherPick
+          schoolName={loaded.schoolName}
+          teachers={teachers}
+          onPick={commitTeacher}
+        />
       ) : (
         <main className="work">
           <Grid
@@ -582,6 +667,7 @@ export function Workbench() {
             absentSlots={queue}
             lockedSlots={currentTeacher !== null ? (unavail[currentTeacher] ?? []) : []}
             todayIdx={todayIdx}
+            closures={closures}
             preview={hovered}
             onToggleSlot={onToggleSlot}
             onToggleDay={onToggleDay}
@@ -596,6 +682,7 @@ export function Workbench() {
               hovered={hovered}
               onHover={setHovered}
               onCopy={onCopy}
+              onCopyCover={onCopyCover}
               onApply={onApply}
               onSkip={onSkip}
             />
@@ -608,13 +695,36 @@ export function Workbench() {
               onCopyNotice={onCopyNotice}
               onCopyNeisList={onCopyNeisList}
               onPrint={onPrint}
+              reason={reason}
+              onReason={onReason}
             />
           </div>
         </main>
       )}
 
       {loaded && input && (
-        <Sheet schoolName={loaded.schoolName} cfg={input.config} entries={entries} />
+        <Sheet
+          schoolName={loaded.schoolName}
+          cfg={input.config}
+          entries={entries}
+          teacher={currentTeacher ?? ''}
+          reason={reason}
+        />
+      )}
+
+      {staleCalendar && !atHome && !needsPick && (
+        <div className="warn-bar soft" role="status">
+          받아 둔 학사일정이 이번 주를 지나쳤습니다. 휴업일을 걸러 내려면 나이스에서 시간표를 다시
+          불러오십시오.
+        </div>
+      )}
+
+      {noSave && (
+        <div className="warn-bar" role="alert">
+          <b>이 브라우저에 저장하지 못했습니다.</b> 새로고침하면 지금까지 하신 작업이 사라집니다.
+          위쪽 파일로 저장을 눌러 파일로 남겨 두십시오. 사생활 보호 모드이거나 저장 공간이 가득
+          찼을 때 생깁니다.
+        </div>
       )}
 
       <footer className="foot">
