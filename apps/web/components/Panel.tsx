@@ -206,6 +206,8 @@ export function Panel({
                         {c.sameSubject && <span className="cover-badge">같은 과목</span>}
                         <span className="cover-load">주 {c.weeklyLessons}시간</span>
                       </div>
+                      {/* 접힌 목록이라 근거를 한 줄만 싣는다. 없는 것보다 훨씬 낫다 */}
+                      {c.notes[0] && <p className="cover-why-one">{c.notes[0]}</p>}
                       <div className="cover-foot">
                         <button className="btn primary cover-apply" onClick={() => onApplyCover(c.teacher)}>
                           이 분으로 보강 반영
