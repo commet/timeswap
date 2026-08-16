@@ -3,6 +3,7 @@ export * from './slots';
 export * from './timetable';
 export * from './score';
 export * from './search';
+export * from './units';
 export * from './synthetic';
 export * from './adapters/neis';
 export * from './cover';

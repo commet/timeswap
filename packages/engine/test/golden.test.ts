@@ -84,19 +84,153 @@ describe('골든: 빈 교시 이동이 최선인 학교', () => {
   });
 });
 
-describe('분반 묶음의 정직한 제외', () => {
-  const grouped: TimetableInput = {
+describe('분반 이동수업: 묶음 통째 교환', () => {
+  // 1학년 세 반이 수학과 과학에서 수준별로 갈라져 세 교사가 동시에 들어간다.
+  // 국어와 영어는 반별 수업이라 묶이지 않는다.
+  const moving: TimetableInput = {
     config: cfg,
     assignments: [
-      { teacher: 'A', klass: '1-1', subject: '체육', slot: 0, group: 'PE-1' },
-      { teacher: 'B', klass: '1-1', subject: '수학', slot: 1 },
+      // 월1: 수학 이동수업 묶음
+      { teacher: 'M1', klass: '1-1', subject: '수학', slot: 0, group: '수학이동' },
+      { teacher: 'M2', klass: '1-2', subject: '수학', slot: 0, group: '수학이동' },
+      { teacher: 'M3', klass: '1-3', subject: '수학', slot: 0, group: '수학이동' },
+      // 월2, 월3: 반별 수업
+      { teacher: 'K1', klass: '1-1', subject: '국어', slot: 1 },
+      { teacher: 'K2', klass: '1-2', subject: '국어', slot: 1 },
+      { teacher: 'K3', klass: '1-3', subject: '국어', slot: 1 },
+      { teacher: 'E1', klass: '1-1', subject: '영어', slot: 2 },
+      { teacher: 'E2', klass: '1-2', subject: '영어', slot: 2 },
+      { teacher: 'E3', klass: '1-3', subject: '영어', slot: 2 },
+      // 화1: 과학 이동수업 묶음
+      { teacher: 'S1', klass: '1-1', subject: '과학', slot: 3, group: '과학이동' },
+      { teacher: 'S2', klass: '1-2', subject: '과학', slot: 3, group: '과학이동' },
+      { teacher: 'S3', klass: '1-3', subject: '과학', slot: 3, group: '과학이동' },
+      // 화2, 화3: 교사를 돌려 반별 수업
+      { teacher: 'K3', klass: '1-1', subject: '국어', slot: 4 },
+      { teacher: 'K1', klass: '1-2', subject: '국어', slot: 4 },
+      { teacher: 'K2', klass: '1-3', subject: '국어', slot: 4 },
+      { teacher: 'E3', klass: '1-1', subject: '영어', slot: 5 },
+      { teacher: 'E1', klass: '1-2', subject: '영어', slot: 5 },
+      { teacher: 'E2', klass: '1-3', subject: '영어', slot: 5 },
     ],
   };
 
-  it('묶음 수업은 자동 추천을 하지 않고 사유를 남긴다', () => {
-    const { candidates, notes } = recommend(grouped, { teacher: 'A', slot: 0 });
-    expect(candidates).toEqual([]);
-    expect(notes.join(' ')).toContain('분반');
+  it('입력 자체가 불변식을 지킨다', () => {
+    expect(validate(moving)).toEqual([]);
+  });
+
+  it('같은 교시 같은 묶음이 하나의 단위로 묶인다', async () => {
+    const { buildUnits, unitKey } = await import('../src/units');
+    const units = buildUnits(moving);
+    const u = units.get(unitKey(moving.assignments[0]!))!;
+    expect(u.grouped).toBe(true);
+    expect(u.teachers.sort()).toEqual(['M1', 'M2', 'M3']);
+    expect(u.klasses.sort()).toEqual(['1-1', '1-2', '1-3']);
+    expect(u.assignments).toHaveLength(3);
+  });
+
+  it('이동수업 결강에도 교환안을 찾는다', () => {
+    const { candidates, notes } = recommend(moving, { teacher: 'M1', slot: 0 });
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(notes.join(' ')).toContain('통째로');
+  });
+
+  it('묶음은 절대 쪼개지지 않는다', () => {
+    const { candidates } = recommend(moving, { teacher: 'M1', slot: 0 });
+    for (const cand of candidates) {
+      const byGroup = new Map<string, Set<number>>();
+      for (const c of cand.changes) {
+        if (!c.from.group) continue;
+        const key = `${c.from.group}|${c.from.slot}`;
+        byGroup.set(key, (byGroup.get(key) ?? new Set()).add(c.toSlot));
+      }
+      for (const [key, slots] of byGroup) {
+        expect(`${key}:${slots.size}`).toBe(`${key}:1`);
+      }
+    }
+  });
+
+  it('묶음끼리 자리를 통째로 맞바꾼다', () => {
+    const { candidates } = recommend(moving, { teacher: 'M1', slot: 0 });
+    const both = candidates.find(
+      (c) => c.type === 'swap2' && c.changes.some((x) => x.from.group === '과학이동'),
+    );
+    expect(both).toBeDefined();
+    // 묶음 두 개가 움직이므로 결정은 2건, 실제 수업은 6개가 자리를 옮긴다
+    expect(both!.unitCount).toBe(2);
+    expect(both!.changes).toHaveLength(6);
+    expect(both!.title).toContain('이동수업');
+  });
+
+  it('학급 하나짜리 수업과는 맞바꾸지 않는다', () => {
+    // 수학 이동수업을 1-1 국어 한 칸과 바꾸면 1-2 와 1-3 이 그 시간에 빈다
+    const { candidates } = recommend(moving, { teacher: 'M1', slot: 0 });
+    const bad = candidates.find(
+      (c) =>
+        c.type === 'swap2' &&
+        c.changes.filter((x) => x.from.group === undefined).length > 0 &&
+        c.changes.filter((x) => x.from.group === undefined).length < 3,
+    );
+    expect(bad).toBeUndefined();
+  });
+
+  it('모든 후보가 적용 후에도 불변식을 지킨다', () => {
+    const { candidates } = recommend(moving, { teacher: 'M1', slot: 0 });
+    for (const cand of candidates) {
+      const applied = applyChanges(moving, cand.changes);
+      expect(validate(applied)).toEqual([]);
+      // 결강 교사는 원래 교시에서 빠져야 한다
+      expect(buildIndexes(applied).byTeacherSlot.get(tsKey('M1', 0))).toBeUndefined();
+    }
+  });
+
+  it('함께 끌려가는 교사를 근거에 밝힌다', () => {
+    const { candidates } = recommend(moving, { teacher: 'M1', slot: 0 });
+    const withDrag = candidates.find((c) =>
+      c.trace.some((t) => t.text.includes('함께 움직입니다')),
+    );
+    expect(withDrag).toBeDefined();
+    expect(withDrag!.trace.find((t) => t.text.includes('함께 움직입니다'))!.text).toContain('M2');
+  });
+});
+
+describe('묶음의 다른 형태: 복수교사와 합반', () => {
+  it('한 학급에 두 교사가 드는 복수교사 수업도 함께 움직인다', async () => {
+    const { buildUnits, unitKey } = await import('../src/units');
+    const team: TimetableInput = {
+      config: cfg,
+      assignments: [
+        { teacher: 'T1', klass: '1-1', subject: '과학', slot: 0, group: '팀티칭' },
+        { teacher: 'T2', klass: '1-1', subject: '과학', slot: 0, group: '팀티칭' },
+        { teacher: 'X', klass: '1-1', subject: '국어', slot: 1 },
+      ],
+    };
+    expect(validate(team)).toEqual([]);
+    const u = buildUnits(team).get(unitKey(team.assignments[0]!))!;
+    expect(u.teachers.sort()).toEqual(['T1', 'T2']);
+    expect(u.klasses).toEqual(['1-1']);
+
+    const { candidates } = recommend(team, { teacher: 'T1', slot: 0 });
+    for (const c of candidates) {
+      const moved = c.changes.filter((x) => x.from.group === '팀티칭');
+      // 둘 다 가거나 둘 다 남는다
+      expect(moved.length === 0 || moved.length === 2).toBe(true);
+    }
+  });
+
+  it('한 교사가 두 학급을 함께 맡는 합반 수업은 교사를 한 번만 센다', async () => {
+    const { buildUnits, unitKey } = await import('../src/units');
+    const merged: TimetableInput = {
+      config: cfg,
+      assignments: [
+        { teacher: 'P', klass: '1-1', subject: '체육', slot: 0, group: '합반' },
+        { teacher: 'P', klass: '1-2', subject: '체육', slot: 0, group: '합반' },
+      ],
+    };
+    expect(validate(merged)).toEqual([]);
+    const u = buildUnits(merged).get(unitKey(merged.assignments[0]!))!;
+    expect(u.teachers).toEqual(['P']);
+    expect(u.klasses.sort()).toEqual(['1-1', '1-2']);
   });
 });
 

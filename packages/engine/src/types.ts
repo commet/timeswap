@@ -41,6 +41,11 @@ export interface Candidate {
   type: CandidateType;
   title: string;
   changes: Change[];
+  /**
+   * 자리를 옮기는 묶음의 수. 분반과 이동수업은 여러 수업이 한 몸으로 움직이므로
+   * changes 의 길이와 다르다. 사람이 내리는 결정의 수는 이쪽이다.
+   */
+  unitCount?: number;
   score: number;
   trace: TraceEntry[];
 }

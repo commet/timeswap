@@ -10,6 +10,8 @@ export const WEIGHTS = {
   sameDayBonus: 5,
   burdenPerPoint: -1,
   burdenCap: 3,
+  /** 묶음이 딸려 움직일 때 결강 당사자 말고 함께 끌려가는 교사 1명당 */
+  groupDragPerTeacher: -3,
 } as const;
 
 /**
@@ -20,14 +22,35 @@ export function scoreCandidate(idx: Indexes, input: TimetableInput, cand: Candid
   const cfg = input.config;
   let score = 0;
 
-  const n = cand.changes.length;
-  const changePts = WEIGHTS.perChange * n;
+  // 사람이 내리는 결정의 수는 옮기는 묶음의 수다.
+  // 이동수업은 수업 여러 개가 한 몸으로 움직이므로 수업 개수로 세면 과하게 깎인다.
+  const units = cand.unitCount ?? cand.changes.length;
+  const changePts = WEIGHTS.perChange * units;
   score += changePts;
   cand.trace.push({
     kind: '감점',
     points: changePts,
-    text: `움직이는 수업이 ${n}개입니다`,
+    text:
+      cand.changes.length === units
+        ? `움직이는 수업이 ${units}개입니다`
+        : `자리를 옮기는 묶음이 ${units}개입니다 (수업 ${cand.changes.length}개)`,
   });
+
+  // 묶음에 딸려 함께 움직이는 교사가 있으면 그만큼 남에게 부담이 간다.
+  const absentTeacher = cand.changes[0]?.from.teacher;
+  const dragged = new Set<string>();
+  for (const c of cand.changes) {
+    if (c.from.group && c.from.teacher !== absentTeacher) dragged.add(c.from.teacher);
+  }
+  if (dragged.size > 0) {
+    const pts = WEIGHTS.groupDragPerTeacher * dragged.size;
+    score += pts;
+    cand.trace.push({
+      kind: '감점',
+      points: pts,
+      text: `묶음이라 ${[...dragged].join(', ')} 선생님 수업도 함께 움직입니다`,
+    });
+  }
 
   // 같은 과목이 하루 두 번이 되는지 (이동 도착지 기준)
   for (const c of cand.changes) {

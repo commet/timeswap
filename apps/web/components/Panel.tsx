@@ -146,7 +146,11 @@ export function Panel({
                   <button className="btn" onClick={() => onCopy(c)}>
                     요청 문구 복사
                   </button>
-                  <span className="cand-score">수업 {c.changes.length}개 이동</span>
+                  <span className="cand-score">
+                    {c.unitCount !== undefined && c.unitCount !== c.changes.length
+                      ? `묶음 ${c.unitCount}개 이동, 수업 ${c.changes.length}개`
+                      : `수업 ${c.changes.length}개 이동`}
+                  </span>
                 </div>
               </div>
             ))}

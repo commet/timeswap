@@ -69,19 +69,23 @@ export function validate(input: TimetableInput): string[] {
     unavail.set(t, new Set(slots));
   }
   const teacherAt = new Map<string, Assignment>();
+  const klassAt = new Map<string, Assignment>();
   for (const a of input.assignments) {
+    // 같은 묶음(분반, 이동수업, 복수교사, 합반)이면 한 몸으로 보고 겹침을 허용한다.
+    // 교사 쪽은 합반이 여기 걸리고, 학급 쪽은 복수교사가 여기 걸린다.
     const tk = tsKey(a.teacher, a.slot);
-    const prev = teacherAt.get(tk);
-    if (prev && !(prev.group !== undefined && prev.group === a.group)) {
-      // 같은 group(분반, 동시수업 묶음)이면 한 몸으로 보고 허용한다
+    const prevT = teacherAt.get(tk);
+    if (prevT && !(prevT.group !== undefined && prevT.group === a.group)) {
       errors.push(`교사 중복 배정: ${a.teacher}, ${slotName(a.slot, cfg)}`);
     }
     teacherAt.set(tk, a);
     teacherSeen.add(tk);
     const kk = ksKey(a.klass, a.slot);
-    if (klassSeen.has(kk)) {
+    const prevK = klassAt.get(kk);
+    if (prevK && !(prevK.group !== undefined && prevK.group === a.group)) {
       errors.push(`학급 중복 배정: ${a.klass}, ${slotName(a.slot, cfg)}`);
     }
+    klassAt.set(kk, a);
     klassSeen.add(kk);
     if (unavail.get(a.teacher)?.has(a.slot)) {
       errors.push(`근무 불가 슬롯 배정: ${a.teacher}, ${slotName(a.slot, cfg)}`);
