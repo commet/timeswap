@@ -32,12 +32,14 @@ export function Panel({
   cover,
   hovered,
   peers,
+  electiveGrade,
   grouped,
   onGroup,
   onUngroup,
   onHover,
   onCopy,
   onCopyCover,
+  onApplyCover,
   onApply,
   onSkip,
 }: {
@@ -50,6 +52,8 @@ export function Panel({
   hovered: Candidate | null;
   /** 같은 교시에 같은 과목을 듣는 다른 학급. 이동수업일 수 있다 */
   peers: Assignment[];
+  /** 선택과목이 많은 학년이면 그 모양. 아니면 null */
+  electiveGrade: { grade: number; klasses: number; subjects: number } | null;
   /** 손으로 묶어 둔 자리인지. 자동으로 묶인 것은 풀 수 없다 */
   grouped: boolean;
   onGroup: () => void;
@@ -57,6 +61,7 @@ export function Panel({
   onHover: (c: Candidate | null) => void;
   onCopy: (c: Candidate) => void;
   onCopyCover: (teacher: string) => void;
+  onApplyCover: (teacher: string) => void;
   onApply: (c: Candidate) => void;
   onSkip: () => void;
 }) {
@@ -84,6 +89,16 @@ export function Panel({
           </button>
         )}
       </div>
+      {result && electiveGrade && (
+        <div className="peers elective" role="status">
+          <p>
+            {electiveGrade.grade}학년은 학급 {electiveGrade.klasses}개에 과목{' '}
+            {electiveGrade.subjects}종이 열립니다. <b>선택과목 구간</b>이라 수강 학생이 여러
+            학급에 흩어져 있고, 그런 수업은 통째로 옮길 자리를 찾기 어렵습니다. 교체가 안 되면
+            아래 보강을 보십시오.
+          </p>
+        </div>
+      )}
       {result && peers.length > 0 && (
         <div className="peers" role="status">
           <p>
@@ -133,9 +148,14 @@ export function Panel({
                         <li key={j}>{n}</li>
                       ))}
                     </ul>
-                    <button className="btn cover-copy" onClick={() => onCopyCover(c.teacher)}>
-                      보강 요청 문구 복사
-                    </button>
+                    <div className="cover-foot">
+                      <button className="btn primary cover-apply" onClick={() => onApplyCover(c.teacher)}>
+                        이 분으로 보강 반영
+                      </button>
+                      <button className="btn cover-copy" onClick={() => onCopyCover(c.teacher)}>
+                        요청 문구 복사
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -158,6 +178,31 @@ export function Panel({
           <div className="panel-body" onMouseLeave={() => onHover(null)}>
             {list.length === 0 && (
               <div className="panel-empty small-empty">이 방식으로는 가능한 교체가 없습니다.</div>
+            )}
+            {cover && cover.length > 0 && (
+              <div className="cover inline">
+                <p className="cover-title">교체가 어려운 자리입니다. 보강도 함께 살펴보십시오</p>
+                <ul className="cover-list">
+                  {cover.slice(0, 3).map((c, i) => (
+                    <li key={c.teacher}>
+                      <div className="cover-head">
+                        <span className="cover-rank">{i + 1}</span>
+                        <span className="cover-name">{c.teacher}</span>
+                        {c.sameSubject && <span className="cover-badge">같은 과목</span>}
+                        <span className="cover-load">주 {c.weeklyLessons}시간</span>
+                      </div>
+                      <div className="cover-foot">
+                        <button className="btn primary cover-apply" onClick={() => onApplyCover(c.teacher)}>
+                          이 분으로 보강 반영
+                        </button>
+                        <button className="btn cover-copy" onClick={() => onCopyCover(c.teacher)}>
+                          요청 문구 복사
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
             {list.map((c, i) => {
               const best = i === 0 && filter === 'all';

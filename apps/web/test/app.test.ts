@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyAll,
   buildClosures,
+  buildNeisList,
+  deriveBurden,
   calendarCoversThisWeek,
   fromFile,
   gradeOf,
@@ -8,6 +11,7 @@ import {
   sameGradeSubject,
   toFile,
   weekMondayOf,
+  type AppliedEntry,
   type Calendar,
   type Loaded,
 } from '../lib/app';
@@ -279,5 +283,47 @@ describe('교사 배정 일괄 채우기', () => {
   it('학년을 못 읽으면 아무것도 고르지 않는다', () => {
     const got = sameGradeSubject([{ klass: '과학중점', subject: '국어' }], {}, '과학중점', '국어');
     expect(got).toEqual([]);
+  });
+});
+
+describe('보강 반영', () => {
+  const school = {
+    config: cfg,
+    assignments: [
+      { teacher: '김결강', klass: '2-1', subject: '미적분', slot: 3 },
+      { teacher: '이한가', klass: '2-2', subject: '국어', slot: 0 },
+    ],
+  };
+  const entry: AppliedEntry = {
+    id: 1,
+    type: '보강',
+    title: '이한가 선생님 보강',
+    changes: [],
+    cover: { teacher: '이한가', slot: 3, klass: '2-1', subject: '미적분', absent: '김결강' },
+  };
+
+  it('자리는 그대로 두고 담당 교사만 바꾼다', () => {
+    // 고교학점제에서 강좌는 옮길 수 없다. 실제로 바뀌는 것은 사람이다.
+    const after = applyAll(school, [entry]);
+    const lesson = after.assignments.find((a) => a.subject === '미적분');
+    expect(lesson?.slot).toBe(3);
+    expect(lesson?.teacher).toBe('이한가');
+  });
+
+  it('다음 탐색이 보강 교사를 그 시간에 수업 중으로 본다', () => {
+    // 이렇게 해야 같은 분께 같은 시간을 두 번 부탁하는 안이 안 나온다
+    const after = applyAll(school, [entry]);
+    const busy = after.assignments.filter((a) => a.teacher === '이한가' && a.slot === 3);
+    expect(busy.length).toBe(1);
+  });
+
+  it('보강은 교체보다 무겁게 세어 다음 추천에서 뒤로 민다', () => {
+    expect(deriveBurden([entry])['이한가']).toBe(2);
+  });
+
+  it('나이스 입력 목록에 사람이 바뀌었다고 적는다', () => {
+    const list = buildNeisList('보기 학교', [entry], cfg);
+    expect(list).toContain('김결강 → 이한가');
+    expect(list).toContain('보강(교사 변경)');
   });
 });

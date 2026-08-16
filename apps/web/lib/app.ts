@@ -56,11 +56,29 @@ export function loadTheme(): ThemeMode {
 }
 
 /** 시간표에 반영한 교환 1건. 변경 장부와 교체 계획서의 원천이다. */
+/**
+ * 장부에 남는 한 건.
+ *
+ * 교체만 담다가 보강을 함께 담게 넓혔다. 고교학점제로 선택과목이 강좌 단위로
+ * 열리면서 수업을 다른 교시로 옮기는 일 자체가 성립하지 않는 자리가 늘었다.
+ * 그런 자리에서 실제로 벌어지는 일은 담당 교사를 바꾸는 것이고,
+ * 그것도 결재와 나이스 입력이 따르는 정식 변경이다. 장부가 그것을 담아야 한다.
+ */
 export interface AppliedEntry {
   id: number;
-  type: Candidate['type'];
+  type: Candidate['type'] | '보강';
   title: string;
+  /** 교체면 옮기는 계획, 보강이면 비어 있다 */
   changes: Change[];
+  /** 보강일 때만. 누가 어느 자리를 대신 맡는지 */
+  cover?: {
+    teacher: string;
+    slot: number;
+    klass: string;
+    subject: string;
+    /** 결강 당사자 */
+    absent: string;
+  };
 }
 
 export function loadEntries(): AppliedEntry[] {
@@ -85,9 +103,30 @@ export function saveEntries(entries: AppliedEntry[]): boolean {
 }
 
 /** 원본 시간표에 장부의 변경을 순서대로 적용한 현재 시간표를 만든다. */
+/**
+ * 장부를 시간표에 얹는다.
+ *
+ * 보강은 자리를 옮기지 않고 담당 교사만 바뀐다. 그래서 그 수업의 교사 이름을 갈아 끼운다.
+ * 이렇게 해야 다음 탐색이 보강 교사를 그 시간에 수업 중인 사람으로 보고,
+ * 같은 사람에게 두 번 겹쳐 부탁하는 안을 내지 않는다.
+ */
 export function applyAll(base: TimetableInput, entries: AppliedEntry[]): TimetableInput {
   let cur = base;
-  for (const e of entries) cur = applyChanges(cur, e.changes);
+  for (const e of entries) {
+    if (e.cover) {
+      const { slot, klass, absent, teacher } = e.cover;
+      cur = {
+        ...cur,
+        assignments: cur.assignments.map((a) =>
+          a.slot === slot && a.klass === klass && a.teacher === absent
+            ? { ...a, teacher }
+            : a,
+        ),
+      };
+      continue;
+    }
+    cur = applyChanges(cur, e.changes);
+  }
   return cur;
 }
 
@@ -226,6 +265,11 @@ export function buildClosures(
 export function deriveBurden(entries: AppliedEntry[]): Record<string, number> {
   const burden: Record<string, number> = {};
   for (const e of entries) {
+    if (e.cover) {
+      // 보강은 한 시간을 그냥 더 맡는 일이라 교체보다 무거운 부탁이다. 두 번으로 센다.
+      burden[e.cover.teacher] = (burden[e.cover.teacher] ?? 0) + 2;
+      continue;
+    }
     const absent = e.changes[0]?.from.teacher;
     const seen = new Set<string>();
     for (const c of e.changes) {
@@ -276,6 +320,20 @@ export function buildNeisList(
   ];
   let n = 0;
   for (const e of entries) {
+    if (e.cover) {
+      n += 1;
+      lines.push(
+        [
+          n,
+          e.cover.klass,
+          e.cover.subject,
+          `${e.cover.absent} → ${e.cover.teacher}`,
+          slotName(e.cover.slot, cfg),
+          '보강(교사 변경)',
+        ].join('\t'),
+      );
+      continue;
+    }
     for (const c of e.changes) {
       n += 1;
       lines.push(
