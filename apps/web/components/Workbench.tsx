@@ -262,15 +262,26 @@ export function Workbench() {
    * 표시는 저장 파일에도 남아 다음에 열 때까지 이어진다.
    */
   const onGroup = useCallback(() => {
-    if (!loaded || !result) return;
+    if (!loaded || !input || !result) return;
     const { slot, subject } = result.target;
     const id = `이동:${subject}:${slot}`;
+    // 교시로 찾되 지금 화면(반영이 얹힌 시간표)에서 찾는다.
+    // 저장하는 곳은 원본이고, 이미 반영한 변경 때문에 두 곳의 교시가 다를 수 있다.
+    // 그래서 화면에서 고른 수업을 교사, 학급, 과목으로 원본에서 다시 찾는다.
+    const picked = new Set(
+      input.assignments
+        .filter((a) => a.slot === slot && a.subject === subject && a.group === undefined)
+        .map((a) => `${a.teacher}|${a.klass}|${a.subject}`),
+    );
+    if (picked.size === 0) return;
     const next: Loaded = {
       ...loaded,
       input: {
         ...loaded.input,
         assignments: loaded.input.assignments.map((a) =>
-          a.slot === slot && a.subject === subject && a.group === undefined ? { ...a, group: id } : a,
+          picked.has(`${a.teacher}|${a.klass}|${a.subject}`) && a.group === undefined
+            ? { ...a, group: id }
+            : a,
         ),
       },
     };
@@ -279,7 +290,7 @@ export function Workbench() {
     setHovered(null);
     const n = next.input.assignments.filter((a) => a.group === id).length;
     show(`${subject} 수업 ${n}개를 한 묶음으로 표시했습니다. 이제 함께 움직입니다`);
-  }, [loaded, result, show]);
+  }, [loaded, input, result, show]);
 
   /** 손으로 묶어 둔 자리인지. "동시:" 로 시작하는 자동 묶음은 물리적으로 필요해 풀 수 없다. */
   const grouped = useMemo(() => {
@@ -291,11 +302,12 @@ export function Workbench() {
   }, [input, result]);
 
   const onUngroup = useCallback(() => {
-    if (!loaded || !result) return;
-    const target = loaded.input.assignments.find(
+    if (!loaded || !input || !result) return;
+    // 묶음 이름은 화면에서 읽는다. 원본과 교시가 다를 수 있기 때문이다.
+    const shown = input.assignments.find(
       (a) => a.slot === result.target.slot && a.klass === result.target.klass,
     );
-    const id = target?.group;
+    const id = shown?.group;
     if (id === undefined || !id.startsWith('이동:')) return;
     const next: Loaded = {
       ...loaded,
@@ -313,7 +325,7 @@ export function Workbench() {
     if (!saveRaw(toFile(next))) setNoSave(true);
     setHovered(null);
     show('묶음을 해제했습니다. 이제 따로 움직입니다');
-  }, [loaded, result, show]);
+  }, [loaded, input, result, show]);
 
   const cycleTheme = useCallback(() => {
     setTheme((cur) => {

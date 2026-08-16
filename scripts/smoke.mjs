@@ -175,6 +175,38 @@ if (candCount > 0) {
   await page.waitForTimeout(200);
 }
 
+// 5f-2. 반영을 한 건 얹은 상태에서 묶기가 엉뚱한 수업을 잡지 않는지.
+// 저장하는 곳은 원본이고 화면은 반영이 얹힌 시간표라 두 곳의 교시가 다를 수 있다.
+{
+  await page.locator('button.cell.lesson').nth(2).click();
+  await page.waitForTimeout(350);
+  const canApply = await page.locator('.cand .btn.primary').count();
+  if (canApply > 0) {
+    await page.locator('.cand').first().getByRole('button', { name: '이 방법으로 반영' }).click();
+    await page.waitForTimeout(400);
+    // 반영이 얹힌 뒤에도 묶기 알림이 뜨면 눌러 본다. 안 뜨면 그냥 넘어간다.
+    await page.locator('button.cell.lesson').nth(4).click();
+    await page.waitForTimeout(350);
+    const hasPeers = await page.locator('.peers .btn').count();
+    if (hasPeers > 0) {
+      await page.locator('.peers .btn').first().click();
+      await page.waitForTimeout(400);
+      const toastText = (await page.locator('.toast').textContent().catch(() => '')) ?? '';
+      console.log('반영 후 묶기:', toastText.trim() || '토스트 없음');
+      if (toastText && !/묶음|해제/.test(toastText)) errors.push('반영 후 묶기 결과가 이상함');
+    } else {
+      console.log('반영 후 묶기: 이 자리에는 묶기 알림 없음(정상)');
+    }
+    await page.getByRole('button', { name: '전체 되돌리기' }).click();
+    await page.waitForTimeout(400);
+  }
+  const left = await page.locator('.cell.absent').count();
+  for (let i = 0; i < left; i++) {
+    await page.locator('button.cell.lesson.absent').first().click();
+    await page.waitForTimeout(120);
+  }
+}
+
 // 5g. 수업 없는 날 지정. 그 요일로 가는 안이 실제로 사라지는지까지 본다.
 await page.locator('button.cell.lesson').nth(2).click();
 await page.waitForTimeout(350);
