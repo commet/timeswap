@@ -129,9 +129,9 @@ CSP 는 설정만 보고는 앱이 도는지 알 수 없다. 그래서 `scripts/
 
 메이저 상향은 검증 없이 하지 않는다. 두 건 모두 시험, 빌드, 브라우저 점검을 통과한 뒤에 넣었다.
 
-### 미리 알아 둘 것: 워크플로 액션의 Node 20 종료
+### 워크플로 액션의 Node 20 종료
 
-CI 로그에 다음 경고가 남는다. 지금은 통과하지만 언젠가 실패로 바뀐다.
+CI 로그에 이런 경고가 남고 있었다. 지금은 통과하지만 언젠가 실패로 바뀐다.
 
 ```
 Node.js 20 is deprecated. The following actions target Node.js 20 but are being
@@ -139,9 +139,22 @@ forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4,
 actions/setup-node@v4, actions/upload-artifact@v4
 ```
 
-GitHub 이 지금은 Node 24 로 대신 돌려 주지만 그 배려가 사라지면 관문 전체가 멈춘다.
-네 액션의 최신 메이저로 올려야 하고, 판 번호를 짐작으로 적으면 그 자리에서 CI 가 죽으므로
-각 저장소의 실제 태그를 확인한 뒤 한 번에 올린다. 다른 작업과 섞지 않는다.
+판 번호를 확인할 수 없는 자리에서 작업하고 있었다. 그래서 짐작으로 적는 대신
+**CI 에게 물었다.** 없는 판을 적으면 `Set up job` 단계에서 몇 초 만에 죽으므로
+확인 비용이 가장 싸다. 짐작으로 밀어 넣는 것과 다른 점은 틀렸을 때 즉시 드러난다는 것이다.
+
+두 번에 걸쳐 재고 다음을 얻었다.
+
+| 액션 | 올린 판 | 결과 |
+|---|---|---|
+| `actions/checkout` | v5 | Node 24. 경고 사라짐 |
+| `actions/setup-node` | v5 | Node 24. 경고 사라짐 |
+| `actions/cache` | v5 | Node 24. 경고 사라짐 |
+| `actions/upload-artifact` | v5 로는 부족, **v6** | v5 도 Node 20 이었다. v6 에서 사라짐 |
+
+경고가 로그에서 통째로 없어졌다. 넷을 뭉뚱그려 "최신으로 올린다"고 적어 두었더라면
+`upload-artifact` 만 남는 것을 몰랐을 것이다. **한 번에 다 올리고 남는 경고를 읽는 편이
+저장소를 하나씩 찾아보는 것보다 빨랐다.**
 
 ---
 
