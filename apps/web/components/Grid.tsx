@@ -81,7 +81,15 @@ export function Grid({
       )
     : undefined;
 
-  const cols = `40px repeat(${cfg.days}, minmax(92px, 1fr))`;
+  /*
+   * 한 칸의 최소 폭을 CSS 에 맡긴다.
+   *
+   * 92px 을 여기 박아 두면 폰에서 5일이 368px 에 안 들어가 격자를 옆으로 끌어야 했다.
+   * 추천안의 절반 넘게가 다른 요일로 넘어가므로(실측 41~49%가 같은 날, 1순위도 65~80%),
+   * 다른 요일이 안 보이면 그 안들을 볼 방법이 없어진다. 주 전체가 한눈에 들어와야 한다.
+   * 좁은 화면에서는 --col-min 을 0 으로 두어 남은 폭을 요일끼리 나눈다.
+   */
+  const cols = `40px repeat(${cfg.days}, minmax(var(--col-min, 92px), 1fr))`;
 
   return (
     <section className="card grid-wrap" aria-label="주간 시간표">
@@ -98,7 +106,11 @@ export function Grid({
         </span>
       </div>
       <div className="grid-scroll">
-        <div className="tt-grid" style={{ gridTemplateColumns: cols }}>
+        {/* 좁은 화면에서 칸에 무엇을 적을지가 보기에 따라 갈린다. CSS 가 알아야 한다 */}
+        <div
+          className={`tt-grid ${teacherMode ? 'by-teacher' : 'by-klass'}`}
+          style={{ gridTemplateColumns: cols }}
+        >
           <div className="tt-head corner" aria-hidden />
           {cfg.dayNames.map((d, di) => {
             const why = closedDay.get(di);

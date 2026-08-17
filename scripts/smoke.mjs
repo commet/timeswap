@@ -307,14 +307,18 @@ if (!sideBox || sideBox.y > 500) errors.push('모바일 패널 자동 이동 실
 await page.screenshot({ path: `${OUT}/shot-9-mobile-work.png` });
 
 /*
- * 8a. 폰 폭에서 화면 전체가 옆으로 밀리지 않는지.
+ * 8a. 폰 폭에서 주 전체가 한 화면에 들어오는지.
  *
- * 이것을 눈으로만 지키다 놓쳤다. 격자를 감싼 칸이 세로로 쌓일 때 내용 크기로 줄어들어
- * 390px 화면에서 문서 폭이 548px 이 되었다. 격자만 넘겨 보면 되는데 머리글과 카드와
- * 바닥글까지 함께 밀려서, 금요일을 보려면 화면 전체를 옆으로 끌어야 했다.
+ * 두 번 고쳤고 두 번 다 눈으로 봐야 드러났다.
  *
- * 격자는 .grid-scroll 안에서 저 혼자 넘겨 보는 것이 맞다. 그래서 둘을 함께 본다.
- * 문서는 화면 폭에 맞고, 격자는 자기 칸 안에서 넘어간다.
+ * 처음에는 화면 전체가 옆으로 밀렸다. 390px 화면에서 문서 폭이 548px 이었다.
+ * 그것을 고치니 격자만 자기 칸에서 넘어가게 되었는데, 그래도 5일 가운데 3일만 보였다.
+ * 추천안의 절반 넘게가 다른 요일로 넘어가므로(실측 41~49%만 같은 날) 안 보이는 요일이
+ * 있으면 그 안들을 확인할 방법이 없다.
+ *
+ * 그래서 세 가지를 함께 본다. 문서가 화면 폭에 맞는지, 요일이 다 보이는지,
+ * 글자가 잘린 칸이 없는지다. 셋을 함께 재지 않으면 하나를 고치다 다른 것을 깬다.
+ * 요일을 다 보이게 하려고 글씨를 줄여 잘라 버리면 세 번째가 잡는다.
  *
  * 320px 까지 본다. 아직 쓰는 폰이 있고 좁은 쪽에서 먼저 깨진다.
  */
@@ -328,14 +332,33 @@ for (const w of [390, 360, 320]) {
       .map((el) => ({ el, b: el.getBoundingClientRect() }))
       .filter((x) => x.b.width > 0 && x.b.height > 0 && x.b.height < 36)
       .map((x) => `${x.el.tagName.toLowerCase()}.${(x.el.className || '').toString().slice(0, 22)}`);
-    return { vw: de.clientWidth, doc: de.scrollWidth, inner: g ? g.scrollWidth > g.clientWidth : false, small };
+    const box = g.getBoundingClientRect();
+    const heads = [...document.querySelectorAll('.tt-head.day-btn, .tt-head:not(.corner)')];
+    const vis = heads.filter((h) => {
+      const r = h.getBoundingClientRect();
+      return r.left >= box.left - 1 && r.right <= box.right + 1;
+    }).length;
+    // 글자가 칸을 넘어 잘렸는지. 보이는 것만 센다
+    const cut = [...document.querySelectorAll('.cell.lesson .k, .cell.lesson .s')].filter(
+      (e) => getComputedStyle(e).display !== 'none' && e.scrollWidth > e.clientWidth + 1,
+    ).length;
+    return {
+      vw: de.clientWidth,
+      doc: de.scrollWidth,
+      days: { vis, all: heads.length },
+      cut,
+      small,
+    };
   });
   const bled = m.doc > m.vw + 1;
   console.log(
-    `폭 ${w}: 문서 ${m.doc}${bled ? ' ** 가로 밀림 **' : ''} | 격자 자기 칸에서 넘김 ${m.inner ? '예' : '아니오'} | 누르기 작은 것 ${m.small.length}`,
+    `폭 ${w}: 문서 ${m.doc}${bled ? ' ** 가로 밀림 **' : ''} | 요일 ${m.days.vis}/${m.days.all} 보임 | 잘린 글자 ${m.cut}곳 | 누르기 작은 것 ${m.small.length}`,
   );
   if (bled) errors.push(`폭 ${w}px 에서 화면 전체가 옆으로 밀립니다 (문서 ${m.doc}px)`);
-  if (!m.inner) errors.push(`폭 ${w}px 에서 격자가 자기 칸 안에서 넘어가지 않습니다`);
+  if (m.days.vis < m.days.all) {
+    errors.push(`폭 ${w}px 에서 요일 ${m.days.all}일 가운데 ${m.days.vis}일만 보입니다`);
+  }
+  if (m.cut > 0) errors.push(`폭 ${w}px 에서 글자가 잘린 칸 ${m.cut}곳`);
   if (m.small.length > 0) {
     errors.push(`폭 ${w}px 에 누르기 작은 것 ${m.small.length}개: ${m.small.slice(0, 3).join(', ')}`);
   }
