@@ -181,9 +181,20 @@ select, input { font: inherit; color: inherit; }
 .work { flex: 1; display: flex; gap: 16px; padding: 16px 20px 28px; align-items: flex-start; }
 .grid-wrap { flex: 1.6; min-width: 0; }
 .panel-wrap { flex: 1; min-width: 300px; max-width: 400px; position: sticky; top: 66px; }
+/*
+ * 좁은 화면에서는 위아래로 쌓는다.
+ *
+ * align-items: flex-start 를 그대로 두면 안 된다. 세로로 쌓을 때 그 값은 칸을 채우지 않고
+ * 내용 크기로 줄이라는 뜻이 되어, 격자의 min-width 가 그대로 폭이 된다.
+ * 그러면 격자만 옆으로 미는 것이 아니라 머리글과 카드와 바닥글까지 함께 밀린다.
+ * 실측에서 390px 폰의 문서 폭이 548px 이었다. 금요일을 보려면 화면 전체를 옆으로 끌어야 했다.
+ * 격자는 .grid-scroll 안에서 저 혼자 넘겨 보는 것이 맞다.
+ */
 @media (max-width: 900px) {
-  .work { flex-direction: column; }
-  .panel-wrap { position: static; max-width: none; width: 100%; }
+  .work { flex-direction: column; align-items: stretch; }
+  .grid-wrap, .panel-wrap, .side {
+    width: 100%; min-width: 0; max-width: none; position: static;
+  }
 }
 
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
@@ -487,13 +498,30 @@ button.cell.empty:hover { border-color: var(--muted); }
 /* 좁은 화면 정비 */
 .tt-period, .tt-head.corner { position: sticky; left: 0; z-index: 2; background: var(--surface); }
 @media (max-width: 640px) {
-  .topbar { flex-wrap: wrap; row-gap: 8px; padding: 10px 12px; }
+  /*
+   * 폰에서는 머리글을 화면에 붙여 두지 않는다.
+   *
+   * 단추가 세 줄로 접히면서 높이가 157px 이 되었다. 664px 화면의 24% 다.
+   * 붙여 두면 그 몫이 계속 남아 시간표와 추천이 볼 자리를 잃는다.
+   * 교사와 학급을 바꾸는 일은 처음 한 번이고, 그 뒤로는 격자와 추천만 오간다.
+   * 그래서 머리글은 위로 올려 두고 화면을 내용에 넘긴다.
+   */
+  .topbar { flex-wrap: wrap; row-gap: 8px; padding: 10px 12px; position: static; }
   .school-chip { display: none; }
   .wordmark { font-size: 16px; }
-  .seg button { padding: 5px 11px; font-size: 13px; }
-  .select { max-width: 132px; }
+  /*
+   * 손가락으로 누르는 곳은 좁혀서는 안 되는 것이 있다.
+   * 폰에서 재어 보니 교사/학급 가르기와 테마 단추가 31px, 요일 단추가 29px 였다.
+   * 글씨는 줄여도 되지만 누르는 높이는 40px 아래로 내리지 않는다.
+   */
+  .seg button { padding: 9px 13px; font-size: 13px; min-height: 40px; }
+  .select { max-width: 132px; min-height: 40px; }
   .select.combo { min-width: 0; max-width: 128px; }
-  .theme-btn { padding: 4px 8px; font-size: 12.5px; }
+  .theme-btn { padding: 9px 11px; font-size: 12.5px; min-height: 40px; }
+  .offday { min-height: 40px; min-width: 40px; }
+  .wordmark { min-height: 40px; }
+  /* 요일 머리글은 누르면 그날 전체가 선택된다. 격자 안이라도 누르는 곳이다 */
+  .tt-head.day-btn { min-height: 40px; }
   .work { padding: 10px 10px 20px; gap: 12px; }
   .grid-scroll { padding: 10px 8px 12px; }
   .tt-grid { min-width: 500px; }
@@ -502,12 +530,21 @@ button.cell.empty:hover { border-color: var(--muted); }
   .card-head { padding: 12px 14px 0; flex-wrap: wrap; }
   .cand-foot { flex-wrap: wrap; }
   .cand-score { margin-left: 0; width: 100%; }
+  /*
+   * 후보 제목을 배지 옆에 두면 남은 폭이 화면 절반이라 세 줄로 접히고
+   * "↔ 월요일 2교시)" 만 오른쪽에 떨어져 남는다. 배지 아래로 내려 통째로 쓴다.
+   */
+  .cand-title { width: 100%; flex: none; text-align: left; }
+  /* 갈래 고르기 단추. 추천이 뜬 뒤에만 나오는데 24px 이라 손가락으로 누르기 어렵다 */
+  .chip { min-height: 40px; padding: 3px 14px; }
+  .chips { gap: 8px; }
   .toast { bottom: 14px; max-width: 92vw; text-align: center; }
   .landing { padding: 32px 16px; }
   .hero { gap: 0; }
   .hero-art { display: none; }
   .steps { grid-template-columns: 1fr; gap: 8px; }
-  .side { scroll-margin-top: 106px; }
+  /* 머리글이 더 이상 화면에 붙어 있지 않으므로 가릴 것을 감안하지 않는다 */
+  .side { scroll-margin-top: 8px; }
   .dropzone { padding: 20px 14px; }
   .foot { font-size: 11.5px; gap: 8px; }
 }

@@ -305,6 +305,41 @@ const sideBox = await page.locator('.side').boundingBox();
 console.log('모바일 패널 위치 y:', sideBox ? Math.round(sideBox.y) : '없음');
 if (!sideBox || sideBox.y > 500) errors.push('모바일 패널 자동 이동 실패');
 await page.screenshot({ path: `${OUT}/shot-9-mobile-work.png` });
+
+/*
+ * 8a. 폰 폭에서 화면 전체가 옆으로 밀리지 않는지.
+ *
+ * 이것을 눈으로만 지키다 놓쳤다. 격자를 감싼 칸이 세로로 쌓일 때 내용 크기로 줄어들어
+ * 390px 화면에서 문서 폭이 548px 이 되었다. 격자만 넘겨 보면 되는데 머리글과 카드와
+ * 바닥글까지 함께 밀려서, 금요일을 보려면 화면 전체를 옆으로 끌어야 했다.
+ *
+ * 격자는 .grid-scroll 안에서 저 혼자 넘겨 보는 것이 맞다. 그래서 둘을 함께 본다.
+ * 문서는 화면 폭에 맞고, 격자는 자기 칸 안에서 넘어간다.
+ *
+ * 320px 까지 본다. 아직 쓰는 폰이 있고 좁은 쪽에서 먼저 깨진다.
+ */
+for (const w of [390, 360, 320]) {
+  await page.setViewportSize({ width: w, height: 740 });
+  await page.waitForTimeout(300);
+  const m = await page.evaluate(() => {
+    const de = document.documentElement;
+    const g = document.querySelector('.grid-scroll');
+    const small = [...document.querySelectorAll('button, a, [role="button"], input, select')]
+      .map((el) => ({ el, b: el.getBoundingClientRect() }))
+      .filter((x) => x.b.width > 0 && x.b.height > 0 && x.b.height < 36)
+      .map((x) => `${x.el.tagName.toLowerCase()}.${(x.el.className || '').toString().slice(0, 22)}`);
+    return { vw: de.clientWidth, doc: de.scrollWidth, inner: g ? g.scrollWidth > g.clientWidth : false, small };
+  });
+  const bled = m.doc > m.vw + 1;
+  console.log(
+    `폭 ${w}: 문서 ${m.doc}${bled ? ' ** 가로 밀림 **' : ''} | 격자 자기 칸에서 넘김 ${m.inner ? '예' : '아니오'} | 누르기 작은 것 ${m.small.length}`,
+  );
+  if (bled) errors.push(`폭 ${w}px 에서 화면 전체가 옆으로 밀립니다 (문서 ${m.doc}px)`);
+  if (!m.inner) errors.push(`폭 ${w}px 에서 격자가 자기 칸 안에서 넘어가지 않습니다`);
+  if (m.small.length > 0) {
+    errors.push(`폭 ${w}px 에 누르기 작은 것 ${m.small.length}개: ${m.small.slice(0, 3).join(', ')}`);
+  }
+}
 await page.setViewportSize({ width: 1360, height: 860 });
 await page.waitForTimeout(300);
 
