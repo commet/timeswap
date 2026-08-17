@@ -5,6 +5,7 @@ import {
   buildNeisList,
   deriveBurden,
   calendarCoversThisWeek,
+  blankDaysOf,
   fromFile,
   gradeOf,
   normalizeName,
@@ -16,6 +17,7 @@ import {
   type Loaded,
 } from '../lib/app';
 import type { NeisEvent } from '../lib/neis';
+import type { ScheduleConfig, TimetableInput } from '@timeswap/engine';
 
 const cfg = { days: 5, periods: 7, dayNames: ['월', '화', '수', '목', '금'] };
 
@@ -350,5 +352,48 @@ describe('보강 반영', () => {
     const list = buildNeisList('보기 학교', [entry], cfg);
     expect(list).toContain('김결강 → 이한가');
     expect(list).toContain('보강(교사 변경)');
+  });
+});
+
+describe('자료가 없는 요일', () => {
+  const cfg4: ScheduleConfig = { days: 5, periods: 4, dayNames: ['월', '화', '수', '목', '금'] };
+
+  it('수업이 하나도 없는 요일을 찾아낸다', () => {
+    // 월(0~3)과 목(12~15)에만 수업이 있다. 화, 수, 금은 자료가 없다.
+    const input: TimetableInput = {
+      config: cfg4,
+      assignments: [
+        { teacher: '김국어', klass: '1-1', subject: '국어', slot: 0 },
+        { teacher: '김국어', klass: '1-1', subject: '국어', slot: 12 },
+      ],
+    };
+    expect(blankDaysOf(input)).toEqual([1, 2, 4]);
+  });
+
+  it('담당을 모르는 자리도 수업이 있다는 증거로 센다', () => {
+    const input: TimetableInput = {
+      config: cfg4,
+      assignments: [{ teacher: '김국어', klass: '1-1', subject: '국어', slot: 0 }],
+      klassBusy: { '1-2': [5, 9] }, // 화, 수
+    };
+    expect(blankDaysOf(input)).toEqual([3, 4]);
+  });
+
+  it('아무것도 못 받았으면 아무 요일도 막지 않는다', () => {
+    // 여기서 5일 전부를 막으면 화면이 통째로 잠긴다. 근거가 없을 때는 손대지 않는다.
+    expect(blankDaysOf({ config: cfg4, assignments: [] })).toEqual([]);
+  });
+
+  it('요일이 다 채워져 있으면 빈 요일이 없다', () => {
+    const input: TimetableInput = {
+      config: cfg4,
+      assignments: [0, 4, 8, 12, 16].map((slot) => ({
+        teacher: '김국어',
+        klass: '1-1',
+        subject: '국어',
+        slot,
+      })),
+    };
+    expect(blankDaysOf(input)).toEqual([]);
   });
 });

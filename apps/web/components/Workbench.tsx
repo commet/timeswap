@@ -27,6 +27,7 @@ import { BRAND } from '../lib/brand';
 import {
   applyAll,
   applyTheme,
+  blankDaysOf,
   buildClosures,
   buildCoverPhrase,
   calendarCoversThisWeek,
@@ -134,18 +135,25 @@ export function Workbench() {
 
   const base = loaded?.input ?? null;
 
+  /** 받은 자료에 수업이 하나도 없는 요일. 그 요일로는 옮기지 않는다 */
+  const blankDays = useMemo(() => (base ? blankDaysOf(base) : []), [base]);
+
   /**
    * 이번 주 휴업일. 나이스 학사일정에서 온다.
    * 시간표는 되풀이되는 한 주지만 학사일정은 날짜라 이번 주에 걸리는 것만 요일로 옮긴다.
    */
   const closures = useMemo(() => {
     const own = offDays.map((day) => ({ day, reason: '수업 없는 날로 지정됨' }));
+    // 자료가 없는 요일이 가장 앞에 온다. 사유가 가려지면 왜 빠졌는지 알 수 없다.
+    const blank = blankDays.map((day) => ({ day, reason: '자료를 받지 못한 요일' }));
     const cal = loaded?.calendar;
-    if (!cal || cal.events.length === 0 || !base || !calendarCoversThisWeek(cal)) return own;
+    if (!cal || cal.events.length === 0 || !base || !calendarCoversThisWeek(cal)) {
+      return [...blank, ...own];
+    }
     const ks = [...new Set(base.assignments.map((a) => a.klass))];
     // 손으로 지정한 것이 학사일정보다 뒤에 온다. 앞의 것이 이기므로 학사일정 사유가 남는다.
-    return [...buildClosures(cal.events, ks), ...own];
-  }, [loaded, base, offDays]);
+    return [...blank, ...buildClosures(cal.events, ks), ...own];
+  }, [loaded, base, offDays, blankDays]);
 
   /** 학사일정을 받아 두긴 했는데 그 기간이 이번 주를 지나쳤다. 다시 받아야 한다. */
   const staleCalendar =

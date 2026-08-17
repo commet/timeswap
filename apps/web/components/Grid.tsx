@@ -123,8 +123,10 @@ export function Grid({
                 key={d}
                 className={`tt-head day-btn${todayIdx === di ? " today" : ""}${why !== undefined ? " closed" : ""}`}
                 title={
+                  // 사유가 휴업일일 수도, 자료를 못 받은 요일일 수도 있다.
+                  // 어느 쪽이든 문장이 되도록 사유를 그대로 두고 뒤를 붙인다.
                   why !== undefined
-                    ? `${why}이라 수업이 없습니다`
+                    ? `${why}. 이 요일로는 옮기지 않습니다`
                     : "그날 수업 전체 선택"
                 }
                 onClick={() => onToggleDay(di)}

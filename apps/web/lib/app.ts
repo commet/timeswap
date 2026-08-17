@@ -1,5 +1,6 @@
 import {
   applyChanges,
+  dayOf,
   fromNeis,
   genSchool,
   neisToTimetable,
@@ -209,6 +210,31 @@ export function normalizeName(raw: string): string {
 
 const ymd = (d: Date): string =>
   `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+
+/**
+ * 받은 자료에 수업이 하나도 없는 요일.
+ *
+ * 나이스를 부를 때 기간이 짧거나 중간에 실패하면 어떤 요일이 통째로 빠질 수 있다.
+ * 실제 특성화고 자료에서 수요일이 빠진 채로 들어왔고, 그 요일이 빈 시간으로 보여
+ * 추천안 488개 가운데 21개가 수요일로 옮기라고 했다. 학교는 그날 수업을 한다.
+ *
+ * 담당 교사를 안 채운 자리와 같은 종류의 잘못이다. 모르는 것을 없는 것으로 바꾸면
+ * 그 자리가 비어 보인다. 그래서 자료가 없는 요일을 찾아 탐색에서 뺀다.
+ *
+ * 담당을 모르는 자리(klassBusy)도 수업이 있다는 증거로 센다. 그것까지 없는 요일만 고른다.
+ */
+export function blankDaysOf(input: TimetableInput): number[] {
+  const cfg = input.config;
+  if (input.assignments.length === 0 && !input.klassBusy) return [];
+  const seen = new Set<number>();
+  for (const a of input.assignments) seen.add(dayOf(a.slot, cfg));
+  for (const slots of Object.values(input.klassBusy ?? {})) {
+    for (const s of slots) seen.add(dayOf(s, cfg));
+  }
+  // 아무것도 못 받았으면 요일을 가릴 근거가 없다. 전부 막으면 도구가 아니다.
+  if (seen.size === 0) return [];
+  return [...Array(cfg.days).keys()].filter((d) => !seen.has(d));
+}
 
 /**
  * 학사일정을 지금 다루는 주의 요일 단위로 바꾼다.

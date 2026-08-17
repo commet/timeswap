@@ -583,9 +583,25 @@ button.cell.empty:hover { border-color: var(--muted); }
 .neis-head h2 { font-size: 17px; font-weight: 800; margin: 0; flex: 1; }
 .neis-lede { color: var(--muted); font-size: 13.5px; margin: 0 0 18px; text-wrap: pretty; }
 .neis-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+/*
+ * 라벨 줄만 flex 다. 힌트 문장까지 걸리면 안 된다.
+ * 힌트 안에 굵은 글씨와 링크를 넣었더니 그 셋이 각각 flex 항목이 되어
+ * 문장이 세 칸으로 쪼개졌다. 아래 .neis-hint 가 그것을 되돌린다.
+ */
 .neis-field > span { font-size: 13px; font-weight: 700; display: flex; align-items: baseline; gap: 8px; }
+.neis-field > span.neis-hint { display: block; }
 .neis-link { font-size: 12px; font-weight: 600; color: var(--accent); }
-.neis-hint { font-size: 12px; color: var(--muted); font-weight: 400; }
+.neis-hint { font-size: 12px; color: var(--muted); font-weight: 400; line-height: 1.6; }
+/* 인증키가 없는 상태를 눈에 띄게 둔다. 선택이라고 읽히면 안 넣고 진행한다 */
+.neis-need {
+  font-size: 11.5px; font-weight: 700; color: var(--on-accent); background: var(--warn);
+  border-radius: 999px; padding: 2px 9px; margin-left: 8px;
+}
+.neis-ok {
+  font-size: 11.5px; font-weight: 700; color: var(--accent); background: var(--accent-soft);
+  border-radius: 999px; padding: 2px 9px; margin-left: 8px;
+}
+.neis-warn { color: var(--warn); font-weight: 700; }
 .neis-row { display: flex; gap: 8px; }
 .neis-row .input { flex: 1; }
 .input {
