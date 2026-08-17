@@ -1001,6 +1001,23 @@ export function Workbench() {
         </div>
       )}
 
+      {/*
+       * 자료가 없는 요일은 격자 머리글에도 표시되지만 그것만으로는 눈에 안 든다.
+       * 파일로 받아 여신 분은 그 파일이 어떤 기간으로 만들어졌는지 모른다.
+       * 요일 하나가 통째로 빠졌다는 것은 위쪽에서 한 번 알려야 한다.
+       */}
+      {blankDays.length > 0 && input && !atHome && !needsPick && (
+        <div className="warn-bar soft" role="status">
+          <b>
+            {/* 요일 이름이 한 글자라 "수 요일" 이 되지 않게 붙여 쓴다 */}
+            {blankDays.map((d) => `${input.config.dayNames[d] ?? d + 1}요일`).join(', ')}은 받은
+            자료에 없습니다.
+          </b>{' '}
+          그 요일로 옮기는 안은 내지 않습니다. 학교가 그날 수업을 한다면 나이스에서 기간을 넓혀
+          다시 불러오십시오.
+        </div>
+      )}
+
       {unfilled > 0 && !atHome && !needsPick && (
         <div className="warn-bar soft" role="status">
           담당 교사를 아직 안 채운 수업이 <b>{unfilled}자리</b> 있습니다. 그 자리는 수업이 있는

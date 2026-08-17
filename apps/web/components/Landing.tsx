@@ -136,15 +136,25 @@ export function Landing({
           }}
         >
           <p className="dropzone-title">시간표 불러오기</p>
+          {/*
+           * 세 길이 무엇을 요구하는지 누르기 전에 밝힌다.
+           *
+           * 전에는 단추 셋이 나란히 있고 설명이 없었다. 그래서 나이스 쪽을 눌러 학교를
+           * 찾고 고른 뒤에야 인증키가 필요하다는 것을 알았다. 들인 수고가 헛되고
+           * 그 자리에서 도구를 접을 만한 순간이다.
+           */}
           <div className="actions">
             <button className="btn primary" onClick={onNeis} disabled={busy}>
               학교 이름으로 찾기
+              <span className="btn-sub">무료 인증키 필요</span>
             </button>
             <button className="btn" onClick={() => inputRef.current?.click()} disabled={busy}>
               저장한 파일 열기
+              <span className="btn-sub">동료가 준 파일</span>
             </button>
             <button className="btn" onClick={onSample} disabled={busy}>
               {busy ? '불러오는 중' : '예시로 살펴보기'}
+              {!busy && <span className="btn-sub">준비 없이 바로</span>}
             </button>
             <input
               ref={inputRef}
