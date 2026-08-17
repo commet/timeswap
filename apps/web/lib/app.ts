@@ -569,11 +569,48 @@ const SAMPLE_SUBJECTS: ReadonlyArray<readonly [string, number, string?]> = [
   ['자율·자치활동', 2, '자치'],
 ];
 
+/**
+ * 예시 학교에 이동수업 묶음 하나를 심는다.
+ *
+ * 여정을 따라가 보니 예시 학교의 수업 열두 개 전부에 교체안이 나왔다. 그래서 예시로
+ * 둘러보는 분은 **보강 후보를 한 번도 보지 못한다.** 교체가 안 될 때 무엇을 해 주는지가
+ * 이 도구의 절반인데 그 절반이 안 보인다.
+ *
+ * 실제로 교체가 막히는 자리는 이동수업이다. 여러 학급이 같은 교시에 흩어져 듣는 편성이라
+ * 학급 전원과 교사 전원이 같은 시간에 비어야 옮길 수 있다. 합성 학교로 재어 보니
+ * 묶음 수업은 열에 여덟이 교체안 0이었다.
+ *
+ * 그래서 같은 교시에 같은 과목을 듣는 학급들을 한 묶음으로 묶는다. 자료를 새로 만들지 않고
+ * 이미 있는 배정에 묶음 표시만 붙이므로 시간표는 그대로 성립한다.
+ */
+function withGroup(input: TimetableInput): TimetableInput {
+  // 같은 (교시, 과목)에 학급이 가장 많이 몰린 자리를 찾는다. 그것이 이동수업처럼 보인다.
+  const bucket = new Map<string, typeof input.assignments>();
+  for (const a of input.assignments) {
+    const k = `${a.slot}|${a.subject}`;
+    bucket.set(k, [...(bucket.get(k) ?? []), a]);
+  }
+  let best: typeof input.assignments = [];
+  for (const list of bucket.values()) {
+    // 학급이 서로 다르고 교사도 서로 달라야 한 자리에 모인 이동수업이 된다.
+    const distinct = new Set(list.map((a) => a.klass)).size === list.length;
+    if (distinct && list.length > best.length) best = list;
+  }
+  if (best.length < 2) return input;
+  const mark = new Set(best.map((a) => `${a.teacher}|${a.slot}|${a.klass}`));
+  return {
+    ...input,
+    assignments: input.assignments.map((a) =>
+      mark.has(`${a.teacher}|${a.slot}|${a.klass}`) ? { ...a, group: '이동수업-예시' } : a,
+    ),
+  };
+}
+
 export function sampleSchool(): Loaded {
   return {
     schoolName: `${BRAND} 예시 학교`,
     source: '샘플',
-    input: genSchool({ classes: 12, seed: 42, subjects: SAMPLE_SUBJECTS }),
+    input: withGroup(genSchool({ classes: 12, seed: 42, subjects: SAMPLE_SUBJECTS })),
   };
 }
 
