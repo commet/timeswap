@@ -408,6 +408,71 @@ if (warned !== 1) errors.push('저장 실패 알림이 뜨지 않음');
 await noSavePage.screenshot({ path: `${OUT}/shot-14-nosave.png` });
 await noSavePage.close();
 
+/*
+ * 11. 보강 경로.
+ *
+ * 교체가 성립하지 않을 때 무엇을 해 주는지가 이 도구의 절반이다. 그런데 이 경로를
+ * 여태 자동으로 밟은 적이 없었다. 예시 학교의 수업 전부에 교체안이 나와서 밟을 자리가
+ * 없었기 때문이다. 예시 학교에 이동수업 묶음을 심고 나서 밟을 수 있게 되었다.
+ *
+ * 보강은 자리를 옮기지 않고 담당 교사만 바꾸는 일이라 장부와 나이스 목록과 결재 서류가
+ * 교체와 다른 문장을 내야 한다. 그 셋을 여기서 함께 본다.
+ */
+// 앞 단계에서 저장된 시간표가 남아 있으면 랜딩을 건너뛰고 작업 화면이 열린다.
+// 그러면 "예시로 살펴보기" 를 누를 수 없다. 새 문맥에서 처음 오는 사람처럼 시작한다.
+const covCtx = await browser.newContext({
+  viewport: { width: 1360, height: 860 },
+  permissions: ['clipboard-read', 'clipboard-write'],
+});
+const cov = await covCtx.newPage();
+await cov.goto(BASE, { waitUntil: 'networkidle' });
+await cov.getByRole('button', { name: '예시로 살펴보기' }).click();
+await cov.waitForSelector('.pick-list', { timeout: 15000 });
+const groupTeacher = await cov.evaluate(() => {
+  const raw = localStorage.getItem('timeswap:v0:data');
+  const m = JSON.parse(raw).lessons.find((l) => l.group);
+  return m ? m.teacher : null;
+});
+if (!groupTeacher) errors.push('예시 학교에 이동수업 묶음이 없어 보강 경로를 밟을 수 없음');
+else {
+  await cov.getByPlaceholder('성함으로 찾기').fill(groupTeacher);
+  await cov.waitForTimeout(250);
+  await cov.locator('.pick-list button').first().click();
+  await cov.waitForTimeout(700);
+  const groupCell = cov.locator('button.cell.lesson[title*="이동수업"]');
+  if ((await groupCell.count()) === 0) errors.push('이동수업 칸을 찾지 못함');
+  else {
+    await groupCell.first().click();
+    await cov.waitForTimeout(1100);
+    const swaps = await cov.locator('.cand').count();
+    const coverBtns = await cov.getByRole('button', { name: '이 분으로 보강 반영' }).count();
+    console.log(`보강 경로: 묶음 수업의 교체안 ${swaps}개, 보강 후보 ${coverBtns}명`);
+    if (coverBtns === 0) errors.push('묶음 수업인데 보강 후보가 나오지 않음');
+    else {
+      await cov.getByRole('button', { name: '이 분으로 보강 반영' }).first().click();
+      await cov.waitForTimeout(600);
+      const led = await cov.locator('.chg-list li').count();
+      const absentLeft = await cov.locator('.cell.absent').count();
+      console.log(`  보강 반영 후 장부 ${led}건, 남은 결강 표시 ${absentLeft}`);
+      if (led !== 1 || absentLeft !== 0) errors.push('보강 반영 흐름 실패');
+      await cov.getByRole('button', { name: '나이스 입력 목록' }).click();
+      await cov.waitForTimeout(350);
+      const list = await cov.evaluate(() => navigator.clipboard.readText());
+      // 보강은 사람이 바뀌는 변경이다. 목록에 그 사실이 적혀야 일과 담당이 옮겨 적을 수 있다.
+      if (!/보강\(교사 변경\)/.test(list)) errors.push('나이스 목록에 보강 표기가 없음');
+      if (!/→/.test(list)) errors.push('나이스 목록에 교사 변경 표기가 없음');
+      // 결재 계획서는 화면에서 숨고 인쇄에서만 나오지만 DOM 에는 있다.
+      const sheetRow = await cov.locator('.sheet-table tbody tr').first().innerText();
+      if (!sheetRow.includes('보강')) {
+        errors.push(`결재 계획서에 보강 구분이 없음: ${sheetRow.replace(/\s+/g, ' ')}`);
+      }
+      console.log('  나이스 목록과 결재 계획서에 보강 표기 확인');
+      await cov.screenshot({ path: `${OUT}/shot-16-cover.png`, fullPage: true });
+    }
+  }
+}
+await covCtx.close();
+
 // 보안 헤더를 씌우고 돌리면 막힌 자원이 여기에 남는다. CSP 를 손보기 전에 이걸 본다.
 console.log('리소스 경고:', warnings.length);
 for (const w of [...new Set(warnings)].slice(0, 8)) console.log('  ·', w.slice(0, 150));
