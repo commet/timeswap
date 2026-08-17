@@ -265,6 +265,18 @@ export function Workbench() {
    * 나이스 자료에는 이동수업 표시가 없어 도구가 가릴 수 없다. 알리고 선생님이 정하신다.
    */
   /**
+   * 담당 교사를 아직 안 채운 자리 수.
+   *
+   * 이 값이 0 이 아니면 찾을 수 있는 교체가 그만큼 줄어든다. 다만 틀린 안이 나오지는 않는다.
+   * 그 자리는 수업이 있는 것으로 보고 비켜 가기 때문이다. 그 사실을 알려 드려야
+   * 왜 안이 적게 나오는지 납득하고 더 채울지 정하실 수 있다.
+   */
+  const unfilled = useMemo(
+    () => Object.values(input?.klassBusy ?? {}).reduce((n, s) => n + s.length, 0),
+    [input],
+  );
+
+  /**
    * 과목이 유난히 많아 교체 상대를 찾기 어려운 학년인지. 실제 학교 24곳을 재어 만든 기준이다.
    * 공통과목만 도는 1학년은 학급 수 대비 과목 종수의 중앙값이 1.5, 3학년은 2.7이다.
    *
@@ -915,6 +927,11 @@ export function Workbench() {
             onToggleOffDay={onToggleOffDay}
             myOffDays={myOffDays}
             onToggleMyOffDay={onToggleMyOffDay}
+            busySlots={
+              view === 'klass' && currentKlass !== null
+                ? (input.klassBusy?.[currentKlass] ?? [])
+                : []
+            }
           />
           <div className="side" ref={sideRef}>
             <Panel
@@ -973,6 +990,14 @@ export function Workbench() {
             .join(', ')}
           {loaded.conflicts.length > 3 ? ` 외 ${loaded.conflicts.length - 3}건` : ''}. 동명이인이라면
           교사 배정에서 이름을 구분해 다시 불러오십시오. 그대로 두면 그 자리의 추천이 어긋납니다.
+        </div>
+      )}
+
+      {unfilled > 0 && !atHome && !needsPick && (
+        <div className="warn-bar soft" role="status">
+          담당 교사를 아직 안 채운 수업이 <b>{unfilled}자리</b> 있습니다. 그 자리는 수업이 있는
+          것으로 보고 비켜 가므로 잘못된 안이 나오지는 않습니다. 다만 그만큼 찾을 수 있는 교체가
+          줄어듭니다. 교사 배정을 더 채우시면 더 많은 방법이 나옵니다.
         </div>
       )}
 

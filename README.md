@@ -34,6 +34,7 @@
 - 보강도 정식 변경으로 반영. 담당 교사를 갈아 끼우고 장부, 결재 계획서, 나이스 목록에 함께 기록
 - 나이스 교육정보 개방 포털에서 학교를 찾아 학급 시간표와 학사일정을 직접 불러오기
 - 교사 배정은 같은 학년 같은 과목을 한 번에 채우고, 채운 결과는 파일로 동료와 나누기
+- 배정을 다 채우지 않아도 안전. 담당을 모르는 자리는 수업이 있는 것으로 보고 비켜 감
 - 협조 균형: 이미 도와준 교사는 다음 추천에서 뒤로 밀림
 
 ## 자료 취급 원칙
@@ -69,7 +70,6 @@ scripts           검사 도구
 | 문서 | 내용 |
 |---|---|
 | [00-research.md](00-research.md) | 딥 리서치: 국내 현황, 해외 제품, 알고리즘 문헌, 시장과 구매 구조 |
-| 01-plan.md | 제품과 구현 계획 v1. 아직 [PR #1](https://github.com/commet/timeswap/pull/1) 초안이라 main 에 없다 |
 | [02-spike-record.md](02-spike-record.md) | 스파이크 기록. 데이터 경로 판단은 03 에서 뒤집혔다 |
 | [03-domain-and-data.md](03-domain-and-data.md) | 운영 실태, 나이스 개방 API 실측, 묶음 교체, 현장 규칙의 점수화 |
 | [04-operations.md](04-operations.md) | 배포 구조, 검증 관문, 의존성 정책, 자료 보관 설계 |
@@ -81,7 +81,7 @@ scripts           검사 도구
 npm ci              # 잠금 파일 그대로 설치
 npm run check       # 배포 설정이 서로 맞는지
 npm run typecheck   # 엔진과 웹 앱 타입 검사
-npm test            # 엔진 137개, 웹 lib 35개
+npm test            # 엔진 145개, 웹 lib 38개
 npm run build       # 웹 정적 빌드 (결과는 apps/web/out)
 npm run demo        # 엔진 CLI 데모
 ```

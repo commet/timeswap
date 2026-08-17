@@ -132,6 +132,31 @@ describe('저장 형식', () => {
     expect(back.input.config).toEqual(cfg);
   });
 
+  it('담당을 안 채운 자리도 함께 살아남는다', () => {
+    // 이것이 빠지면 저장했다 여는 것만으로 그 자리가 빈 시간으로 되살아난다.
+    // 그러면 학급이 실제로는 수업 중인 교시로 다른 수업을 밀어 넣는 안이 다시 나온다.
+    const withBusy = { ...loaded, input: { ...loaded.input, klassBusy: { '1-1': [2, 3] } } };
+    const back = fromFile(toFile(withBusy));
+    expect(back.input.klassBusy).toEqual({ '1-1': [2, 3] });
+  });
+
+  it('전문교과 표시도 함께 살아남는다', () => {
+    const withPro = {
+      ...loaded,
+      input: {
+        ...loaded.input,
+        assignments: [{ teacher: '박실습', klass: '2-1', subject: '용접 작업', slot: 0, pro: true }],
+      },
+    };
+    expect(fromFile(toFile(withPro)).input.assignments[0]?.pro).toBe(true);
+  });
+
+  it('칸 밖으로 나간 담당 미상 자리는 버린다', () => {
+    const doc = JSON.parse(toFile(loaded)) as Record<string, unknown>;
+    doc.busy = { '1-1': [0, 999, -1], '1-2': [] };
+    expect(fromFile(JSON.stringify(doc)).input.klassBusy).toEqual({ '1-1': [0] });
+  });
+
   it('학사일정도 함께 살아남는다', () => {
     // 이것이 빠져 있었다. 새로고침 한 번에 휴업일이 사라져
     // 쉬는 날로 옮기라는 추천이 조용히 되살아났다.

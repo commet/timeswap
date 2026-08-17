@@ -218,6 +218,15 @@ select, input { font: inherit; color: inherit; }
 }
 .cell.empty { background: transparent; border: 1px dashed var(--line); }
 button.cell.empty { cursor: pointer; align-items: flex-start; }
+/* 수업은 있는데 담당 교사를 아직 안 채운 자리. 빈 칸과 구분해야 한다 */
+.cell.unknown {
+  background: repeating-linear-gradient(
+    -45deg, transparent, transparent 5px, var(--surface-2) 5px, var(--surface-2) 10px
+  );
+  border: 1px dashed var(--line);
+  align-items: center; justify-content: center;
+}
+.cell.unknown .s { color: var(--muted); font-size: 11px; font-weight: 700; }
 button.cell.empty:hover { border-color: var(--muted); }
 .cell.locked {
   background: repeating-linear-gradient(45deg, var(--surface-2) 0 5px, transparent 5px 10px);

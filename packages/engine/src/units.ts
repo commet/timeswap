@@ -168,6 +168,14 @@ export function checkMoves(
     if ((stay & arr) !== 0n) {
       return { ok: false, reason: `${k} 학급이 그 시간에 이미 수업이 있습니다` };
     }
+    // 담당 교사를 아직 안 채운 수업이 있는 자리도 차 있는 자리다.
+    // 비우는 계산에서 빼지 않는다. 모르는 수업을 우리가 옮길 수는 없기 때문이다.
+    if (((idx.klassBusyMask.get(k) ?? 0n) & arr) !== 0n) {
+      return {
+        ok: false,
+        reason: `${k} 학급이 그 시간에 수업이 있습니다 (담당 교사를 아직 안 채운 자리)`,
+      };
+    }
   }
 
   // 요일마다 교시 수가 다른 학교가 많다. 수요일 단축수업, 금요일 6교시 없음이 그렇다.
@@ -198,9 +206,11 @@ export function checkMoves(
   }
 
   // 학급 하루 수업의 중간 빈틈이 늘면 안 된다. 그날 마지막 교시가 사라지는 축소는 허용한다.
+  // 담당 교사를 모르는 수업도 수업으로 세어야 그 자리가 빈 시간으로 잡히지 않는다.
   for (const [k, arr] of kArrive) {
-    const before = idx.klassMask.get(k) ?? 0n;
-    const after = (before & ~(kVacate.get(k) ?? 0n)) | arr;
+    const busy = idx.klassBusyMask.get(k) ?? 0n;
+    const before = (idx.klassMask.get(k) ?? 0n) | busy;
+    const after = ((before & ~(kVacate.get(k) ?? 0n)) | arr) | busy;
     const days = new Set<number>();
     for (const m of moves) {
       if (!m.unit.klasses.includes(k)) continue;

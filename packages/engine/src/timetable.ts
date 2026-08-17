@@ -4,6 +4,11 @@ import { bit, dayOf, hasBit, periodOf, slotName } from './slots';
 export interface Indexes {
   teacherMask: Map<string, bigint>;
   klassMask: Map<string, bigint>;
+  /**
+   * 담당 교사를 모르는 채로 차 있는 교시를 학급별로 모은 것.
+   * klassMask 와 겹치지 않게 둔다. 겹치면 자리를 비우는 계산이 어긋난다.
+   */
+  klassBusyMask: Map<string, bigint>;
   unavailMask: Map<string, bigint>;
   byTeacherSlot: Map<string, Assignment>;
   byKlassSlot: Map<string, Assignment>;
@@ -34,6 +39,7 @@ export function buildIndexes(input: TimetableInput): Indexes {
   const idx: Indexes = {
     teacherMask: new Map(),
     klassMask: new Map(),
+    klassBusyMask: new Map(),
     unavailMask: new Map(),
     byTeacherSlot: new Map(),
     byKlassSlot: new Map(),
@@ -51,6 +57,11 @@ export function buildIndexes(input: TimetableInput): Indexes {
     let m = 0n;
     for (const s of slots) m |= bit(s);
     idx.unavailMask.set(teacher, m);
+  }
+  for (const [klass, slots] of Object.entries(input.klassBusy ?? {})) {
+    let m = 0n;
+    for (const s of slots) m |= bit(s);
+    idx.klassBusyMask.set(klass, m);
   }
   for (const a of input.assignments) {
     idx.teacherMask.set(a.teacher, (idx.teacherMask.get(a.teacher) ?? 0n) | bit(a.slot));
@@ -123,11 +134,16 @@ export function dayHoles(mask: bigint, day: number, cfg: ScheduleConfig): number
   return holes;
 }
 
-/** 학급 전체의 중간 빈 교시 합계. 추천 적용 전후 비교(늘면 안 됨)에 쓴다. */
+/**
+ * 학급 전체의 중간 빈 교시 합계. 추천 적용 전후 비교(늘면 안 됨)에 쓴다.
+ * 담당 교사를 모르는 수업도 수업으로 센다. 빼면 그 자리가 빈 시간으로 잡힌다.
+ */
 export function totalHoles(input: TimetableInput): number {
   const idx = buildIndexes(input);
   let sum = 0;
-  for (const mask of idx.klassMask.values()) {
+  const klasses = new Set([...idx.klassMask.keys(), ...idx.klassBusyMask.keys()]);
+  for (const k of klasses) {
+    const mask = (idx.klassMask.get(k) ?? 0n) | (idx.klassBusyMask.get(k) ?? 0n);
     for (let d = 0; d < input.config.days; d++) {
       sum += dayHoles(mask, d, input.config);
     }

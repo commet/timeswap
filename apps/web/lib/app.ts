@@ -394,8 +394,23 @@ export interface PumasiFile {
   version: 1 | 2;
   school: string;
   config: ScheduleConfig;
-  lessons: Array<{ teacher: string; klass: string; subject: string; slot: number; group?: string }>;
+  lessons: Array<{
+    teacher: string;
+    klass: string;
+    subject: string;
+    slot: number;
+    group?: string;
+    pro?: boolean;
+  }>;
   calendar?: Calendar;
+  /**
+   * 학급별로 담당 교사를 아직 안 채운 교시.
+   *
+   * 이것을 안 담으면 파일로 저장했다 열 때 그 자리가 빈 시간으로 되살아난다.
+   * 그러면 학급이 실제로는 수업 중인 교시로 다른 수업을 밀어 넣는 안이 다시 나온다.
+   * 저장했다 여는 것만으로 조용히 되돌아가는 종류의 잘못이라 파일에 함께 담는다.
+   */
+  busy?: Record<string, number[]>;
 }
 
 export function toFile(loaded: Loaded): string {
@@ -410,8 +425,10 @@ export function toFile(loaded: Loaded): string {
       subject: a.subject,
       slot: a.slot,
       ...(a.group ? { group: a.group } : {}),
+      ...(a.pro ? { pro: true } : {}),
     })),
     ...(loaded.calendar ? { calendar: loaded.calendar } : {}),
+    ...(loaded.input.klassBusy ? { busy: loaded.input.klassBusy } : {}),
   };
   return JSON.stringify(doc, null, 1);
 }
@@ -462,6 +479,21 @@ export function fromFile(raw: string): Loaded {
       config: cfg,
       // 파일마다 이름 표기가 흔들린다. 여기서 한 번 다듬어야 같은 사람이 한 사람으로 잡힌다.
       assignments: doc.lessons.map((l) => ({ ...l, teacher: normalizeName(l.teacher) })),
+      // 칸 밖으로 나간 값은 버린다. 파일이 손상되었을 때 격자가 어긋나는 것을 막는다.
+      ...(doc.busy && typeof doc.busy === 'object'
+        ? {
+            klassBusy: Object.fromEntries(
+              Object.entries(doc.busy)
+                .map(([k, v]) => [
+                  k,
+                  (Array.isArray(v) ? v : []).filter(
+                    (s) => Number.isInteger(s) && s >= 0 && s < size,
+                  ),
+                ])
+                .filter(([, v]) => (v as number[]).length > 0),
+            ) as Record<string, number[]>,
+          }
+        : {}),
     },
     ...(doc.calendar ? { calendar: doc.calendar } : {}),
   };
