@@ -27,6 +27,7 @@ import { BRAND } from '../lib/brand';
 import {
   applyAll,
   applyTheme,
+  blankDaysOf,
   buildClosures,
   buildCoverPhrase,
   calendarCoversThisWeek,
@@ -134,18 +135,25 @@ export function Workbench() {
 
   const base = loaded?.input ?? null;
 
+  /** 받은 자료에 수업이 하나도 없는 요일. 그 요일로는 옮기지 않는다 */
+  const blankDays = useMemo(() => (base ? blankDaysOf(base) : []), [base]);
+
   /**
    * 이번 주 휴업일. 나이스 학사일정에서 온다.
    * 시간표는 되풀이되는 한 주지만 학사일정은 날짜라 이번 주에 걸리는 것만 요일로 옮긴다.
    */
   const closures = useMemo(() => {
     const own = offDays.map((day) => ({ day, reason: '수업 없는 날로 지정됨' }));
+    // 자료가 없는 요일이 가장 앞에 온다. 사유가 가려지면 왜 빠졌는지 알 수 없다.
+    const blank = blankDays.map((day) => ({ day, reason: '자료를 받지 못한 요일' }));
     const cal = loaded?.calendar;
-    if (!cal || cal.events.length === 0 || !base || !calendarCoversThisWeek(cal)) return own;
+    if (!cal || cal.events.length === 0 || !base || !calendarCoversThisWeek(cal)) {
+      return [...blank, ...own];
+    }
     const ks = [...new Set(base.assignments.map((a) => a.klass))];
     // 손으로 지정한 것이 학사일정보다 뒤에 온다. 앞의 것이 이기므로 학사일정 사유가 남는다.
-    return [...buildClosures(cal.events, ks), ...own];
-  }, [loaded, base, offDays]);
+    return [...blank, ...buildClosures(cal.events, ks), ...own];
+  }, [loaded, base, offDays, blankDays]);
 
   /** 학사일정을 받아 두긴 했는데 그 기간이 이번 주를 지나쳤다. 다시 받아야 한다. */
   const staleCalendar =
@@ -264,6 +272,18 @@ export function Workbench() {
    * 같은 교시에 같은 과목을 듣는 다른 학급.
    * 나이스 자료에는 이동수업 표시가 없어 도구가 가릴 수 없다. 알리고 선생님이 정하신다.
    */
+  /**
+   * 담당 교사를 아직 안 채운 자리 수.
+   *
+   * 이 값이 0 이 아니면 찾을 수 있는 교체가 그만큼 줄어든다. 다만 틀린 안이 나오지는 않는다.
+   * 그 자리는 수업이 있는 것으로 보고 비켜 가기 때문이다. 그 사실을 알려 드려야
+   * 왜 안이 적게 나오는지 납득하고 더 채울지 정하실 수 있다.
+   */
+  const unfilled = useMemo(
+    () => Object.values(input?.klassBusy ?? {}).reduce((n, s) => n + s.length, 0),
+    [input],
+  );
+
   /**
    * 과목이 유난히 많아 교체 상대를 찾기 어려운 학년인지. 실제 학교 24곳을 재어 만든 기준이다.
    * 공통과목만 도는 1학년은 학급 수 대비 과목 종수의 중앙값이 1.5, 3학년은 2.7이다.
@@ -915,6 +935,11 @@ export function Workbench() {
             onToggleOffDay={onToggleOffDay}
             myOffDays={myOffDays}
             onToggleMyOffDay={onToggleMyOffDay}
+            busySlots={
+              view === 'klass' && currentKlass !== null
+                ? (input.klassBusy?.[currentKlass] ?? [])
+                : []
+            }
           />
           <div className="side" ref={sideRef}>
             <Panel
@@ -973,6 +998,31 @@ export function Workbench() {
             .join(', ')}
           {loaded.conflicts.length > 3 ? ` 외 ${loaded.conflicts.length - 3}건` : ''}. 동명이인이라면
           교사 배정에서 이름을 구분해 다시 불러오십시오. 그대로 두면 그 자리의 추천이 어긋납니다.
+        </div>
+      )}
+
+      {/*
+       * 자료가 없는 요일은 격자 머리글에도 표시되지만 그것만으로는 눈에 안 든다.
+       * 파일로 받아 여신 분은 그 파일이 어떤 기간으로 만들어졌는지 모른다.
+       * 요일 하나가 통째로 빠졌다는 것은 위쪽에서 한 번 알려야 한다.
+       */}
+      {blankDays.length > 0 && input && !atHome && !needsPick && (
+        <div className="warn-bar soft" role="status">
+          <b>
+            {/* 요일 이름이 한 글자라 "수 요일" 이 되지 않게 붙여 쓴다 */}
+            {blankDays.map((d) => `${input.config.dayNames[d] ?? d + 1}요일`).join(', ')}은 받은
+            자료에 없습니다.
+          </b>{' '}
+          그 요일로 옮기는 안은 내지 않습니다. 학교가 그날 수업을 한다면 나이스에서 기간을 넓혀
+          다시 불러오십시오.
+        </div>
+      )}
+
+      {unfilled > 0 && !atHome && !needsPick && (
+        <div className="warn-bar soft" role="status">
+          담당 교사를 아직 안 채운 수업이 <b>{unfilled}자리</b> 있습니다. 그 자리는 수업이 있는
+          것으로 보고 비켜 가므로 잘못된 안이 나오지는 않습니다. 다만 그만큼 찾을 수 있는 교체가
+          줄어듭니다. 교사 배정을 더 채우시면 더 많은 방법이 나옵니다.
         </div>
       )}
 

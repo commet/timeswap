@@ -326,28 +326,50 @@ export function fromNeis(rows: NeisRow[]): NeisReport {
 /**
  * 기준 시간표를 엔진 입력으로 바꾼다.
  * 개방 자료에 교사가 없으므로 (학급, 과목) 을 교사로 옮기는 표는 부르는 쪽이 준다.
- * 표에 없는 과목은 건너뛴다. 부분만 채워도 그만큼은 탐색에 쓸 수 있다.
+ *
+ * 표에 없는 과목은 배정으로 만들지 않는다. 다만 **그 자리가 비어 있다고 하지도 않는다.**
+ * 학교 하나에 (학급, 과목) 짝이 수백 개라 처음부터 다 채우고 시작하는 사람은 없고,
+ * 덜 채운 칸을 배정에서 빼면 그 자리가 빈 시간으로 보여 학급이 실제로는 수업 중인 교시로
+ * 다른 수업을 밀어 넣는 안이 나온다. 실측에서 표를 60%만 채웠을 때
+ * 추천안 459개에 그런 이동이 282건 들어 있었다.
+ * 그래서 담당을 모르는 자리는 klassBusy 로 넘겨 "차 있다"는 사실만 지킨다.
  */
 export function neisToTimetable(
   report: NeisReport,
   teacherOf: (klass: string, subject: string) => string | undefined,
 ): TimetableInput & { conflicts: TeacherConflict[] } {
   const assignments: Assignment[] = [];
+  const busy = new Map<string, Set<number>>();
   for (const [key, subjects] of report.base) {
     const [klass, dayStr, periodStr] = key.split('|');
     if (klass === undefined || dayStr === undefined || periodStr === undefined) continue;
+    if (subjects.length === 0) continue;
     const slot = slotOf(Number(dayStr), Number(periodStr), report.config);
     const pro = report.proKeys.has(key);
-    for (const subject of subjects) {
-      const teacher = teacherOf(klass, subject);
-      if (!teacher) continue;
-      // 한 칸에 과목이 둘 이상이면 그 학급은 그 시간에 나뉘어 수업을 받는다.
-      // 나뉜 쪽은 따로 옮길 수 없고, 학급 중복 배정 검사도 같은 묶음일 때만 통과한다.
-      // 묶는 일은 아래 한곳에서 한꺼번에 한다. 여기서 미리 묶으면 두 갈래가 어긋난다.
-      assignments.push({ teacher, klass, subject, slot, ...(pro ? { pro: true } : {}) });
+    const teachers = subjects.map((s) => teacherOf(klass, s));
+
+    // 한 칸은 통째로 채워졌을 때만 다룬다. 나뉜 수업의 한쪽만 알고 옮기면
+    // 남은 학생들이 갈 데가 없다. 하나라도 비면 그 칸은 차 있다는 사실만 남긴다.
+    if (teachers.some((t) => !t)) {
+      (busy.get(klass) ?? busy.set(klass, new Set()).get(klass)!).add(slot);
+      continue;
     }
+    subjects.forEach((subject, i) => {
+      assignments.push({
+        teacher: teachers[i]!,
+        klass,
+        subject,
+        slot,
+        ...(pro ? { pro: true } : {}),
+      });
+    });
   }
   assignments.sort((a, b) => a.slot - b.slot || a.klass.localeCompare(b.klass, 'ko'));
+
+  const klassBusy: Record<string, number[]> = {};
+  for (const [klass, slots] of busy) {
+    klassBusy[klass] = [...slots].sort((x, y) => x - y);
+  }
 
   /*
    * 같은 교시의 수업들을 물리적으로 한 몸인 것끼리 묶는다.
@@ -433,7 +455,12 @@ export function neisToTimetable(
     });
   }
 
-  return { config: report.config, assignments, conflicts };
+  return {
+    config: report.config,
+    assignments,
+    conflicts,
+    ...(Object.keys(klassBusy).length > 0 ? { klassBusy } : {}),
+  };
 }
 
 /**

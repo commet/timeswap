@@ -305,6 +305,64 @@ const sideBox = await page.locator('.side').boundingBox();
 console.log('모바일 패널 위치 y:', sideBox ? Math.round(sideBox.y) : '없음');
 if (!sideBox || sideBox.y > 500) errors.push('모바일 패널 자동 이동 실패');
 await page.screenshot({ path: `${OUT}/shot-9-mobile-work.png` });
+
+/*
+ * 8a. 폰 폭에서 주 전체가 한 화면에 들어오는지.
+ *
+ * 두 번 고쳤고 두 번 다 눈으로 봐야 드러났다.
+ *
+ * 처음에는 화면 전체가 옆으로 밀렸다. 390px 화면에서 문서 폭이 548px 이었다.
+ * 그것을 고치니 격자만 자기 칸에서 넘어가게 되었는데, 그래도 5일 가운데 3일만 보였다.
+ * 추천안의 절반 넘게가 다른 요일로 넘어가므로(실측 41~49%만 같은 날) 안 보이는 요일이
+ * 있으면 그 안들을 확인할 방법이 없다.
+ *
+ * 그래서 세 가지를 함께 본다. 문서가 화면 폭에 맞는지, 요일이 다 보이는지,
+ * 글자가 잘린 칸이 없는지다. 셋을 함께 재지 않으면 하나를 고치다 다른 것을 깬다.
+ * 요일을 다 보이게 하려고 글씨를 줄여 잘라 버리면 세 번째가 잡는다.
+ *
+ * 320px 까지 본다. 아직 쓰는 폰이 있고 좁은 쪽에서 먼저 깨진다.
+ */
+for (const w of [390, 360, 320]) {
+  await page.setViewportSize({ width: w, height: 740 });
+  await page.waitForTimeout(300);
+  const m = await page.evaluate(() => {
+    const de = document.documentElement;
+    const g = document.querySelector('.grid-scroll');
+    const small = [...document.querySelectorAll('button, a, [role="button"], input, select')]
+      .map((el) => ({ el, b: el.getBoundingClientRect() }))
+      .filter((x) => x.b.width > 0 && x.b.height > 0 && x.b.height < 36)
+      .map((x) => `${x.el.tagName.toLowerCase()}.${(x.el.className || '').toString().slice(0, 22)}`);
+    const box = g.getBoundingClientRect();
+    const heads = [...document.querySelectorAll('.tt-head.day-btn, .tt-head:not(.corner)')];
+    const vis = heads.filter((h) => {
+      const r = h.getBoundingClientRect();
+      return r.left >= box.left - 1 && r.right <= box.right + 1;
+    }).length;
+    // 글자가 칸을 넘어 잘렸는지. 보이는 것만 센다
+    const cut = [...document.querySelectorAll('.cell.lesson .k, .cell.lesson .s')].filter(
+      (e) => getComputedStyle(e).display !== 'none' && e.scrollWidth > e.clientWidth + 1,
+    ).length;
+    return {
+      vw: de.clientWidth,
+      doc: de.scrollWidth,
+      days: { vis, all: heads.length },
+      cut,
+      small,
+    };
+  });
+  const bled = m.doc > m.vw + 1;
+  console.log(
+    `폭 ${w}: 문서 ${m.doc}${bled ? ' ** 가로 밀림 **' : ''} | 요일 ${m.days.vis}/${m.days.all} 보임 | 잘린 글자 ${m.cut}곳 | 누르기 작은 것 ${m.small.length}`,
+  );
+  if (bled) errors.push(`폭 ${w}px 에서 화면 전체가 옆으로 밀립니다 (문서 ${m.doc}px)`);
+  if (m.days.vis < m.days.all) {
+    errors.push(`폭 ${w}px 에서 요일 ${m.days.all}일 가운데 ${m.days.vis}일만 보입니다`);
+  }
+  if (m.cut > 0) errors.push(`폭 ${w}px 에서 글자가 잘린 칸 ${m.cut}곳`);
+  if (m.small.length > 0) {
+    errors.push(`폭 ${w}px 에 누르기 작은 것 ${m.small.length}개: ${m.small.slice(0, 3).join(', ')}`);
+  }
+}
 await page.setViewportSize({ width: 1360, height: 860 });
 await page.waitForTimeout(300);
 
@@ -349,6 +407,71 @@ console.log('저장 막힌 브라우저 알림:', warned === 1 ? '표시됨' : '
 if (warned !== 1) errors.push('저장 실패 알림이 뜨지 않음');
 await noSavePage.screenshot({ path: `${OUT}/shot-14-nosave.png` });
 await noSavePage.close();
+
+/*
+ * 11. 보강 경로.
+ *
+ * 교체가 성립하지 않을 때 무엇을 해 주는지가 이 도구의 절반이다. 그런데 이 경로를
+ * 여태 자동으로 밟은 적이 없었다. 예시 학교의 수업 전부에 교체안이 나와서 밟을 자리가
+ * 없었기 때문이다. 예시 학교에 이동수업 묶음을 심고 나서 밟을 수 있게 되었다.
+ *
+ * 보강은 자리를 옮기지 않고 담당 교사만 바꾸는 일이라 장부와 나이스 목록과 결재 서류가
+ * 교체와 다른 문장을 내야 한다. 그 셋을 여기서 함께 본다.
+ */
+// 앞 단계에서 저장된 시간표가 남아 있으면 랜딩을 건너뛰고 작업 화면이 열린다.
+// 그러면 "예시로 살펴보기" 를 누를 수 없다. 새 문맥에서 처음 오는 사람처럼 시작한다.
+const covCtx = await browser.newContext({
+  viewport: { width: 1360, height: 860 },
+  permissions: ['clipboard-read', 'clipboard-write'],
+});
+const cov = await covCtx.newPage();
+await cov.goto(BASE, { waitUntil: 'networkidle' });
+await cov.getByRole('button', { name: '예시로 살펴보기' }).click();
+await cov.waitForSelector('.pick-list', { timeout: 15000 });
+const groupTeacher = await cov.evaluate(() => {
+  const raw = localStorage.getItem('timeswap:v0:data');
+  const m = JSON.parse(raw).lessons.find((l) => l.group);
+  return m ? m.teacher : null;
+});
+if (!groupTeacher) errors.push('예시 학교에 이동수업 묶음이 없어 보강 경로를 밟을 수 없음');
+else {
+  await cov.getByPlaceholder('성함으로 찾기').fill(groupTeacher);
+  await cov.waitForTimeout(250);
+  await cov.locator('.pick-list button').first().click();
+  await cov.waitForTimeout(700);
+  const groupCell = cov.locator('button.cell.lesson[title*="이동수업"]');
+  if ((await groupCell.count()) === 0) errors.push('이동수업 칸을 찾지 못함');
+  else {
+    await groupCell.first().click();
+    await cov.waitForTimeout(1100);
+    const swaps = await cov.locator('.cand').count();
+    const coverBtns = await cov.getByRole('button', { name: '이 분으로 보강 반영' }).count();
+    console.log(`보강 경로: 묶음 수업의 교체안 ${swaps}개, 보강 후보 ${coverBtns}명`);
+    if (coverBtns === 0) errors.push('묶음 수업인데 보강 후보가 나오지 않음');
+    else {
+      await cov.getByRole('button', { name: '이 분으로 보강 반영' }).first().click();
+      await cov.waitForTimeout(600);
+      const led = await cov.locator('.chg-list li').count();
+      const absentLeft = await cov.locator('.cell.absent').count();
+      console.log(`  보강 반영 후 장부 ${led}건, 남은 결강 표시 ${absentLeft}`);
+      if (led !== 1 || absentLeft !== 0) errors.push('보강 반영 흐름 실패');
+      await cov.getByRole('button', { name: '나이스 입력 목록' }).click();
+      await cov.waitForTimeout(350);
+      const list = await cov.evaluate(() => navigator.clipboard.readText());
+      // 보강은 사람이 바뀌는 변경이다. 목록에 그 사실이 적혀야 일과 담당이 옮겨 적을 수 있다.
+      if (!/보강\(교사 변경\)/.test(list)) errors.push('나이스 목록에 보강 표기가 없음');
+      if (!/→/.test(list)) errors.push('나이스 목록에 교사 변경 표기가 없음');
+      // 결재 계획서는 화면에서 숨고 인쇄에서만 나오지만 DOM 에는 있다.
+      const sheetRow = await cov.locator('.sheet-table tbody tr').first().innerText();
+      if (!sheetRow.includes('보강')) {
+        errors.push(`결재 계획서에 보강 구분이 없음: ${sheetRow.replace(/\s+/g, ' ')}`);
+      }
+      console.log('  나이스 목록과 결재 계획서에 보강 표기 확인');
+      await cov.screenshot({ path: `${OUT}/shot-16-cover.png`, fullPage: true });
+    }
+  }
+}
+await covCtx.close();
 
 // 보안 헤더를 씌우고 돌리면 막힌 자원이 여기에 남는다. CSP 를 손보기 전에 이걸 본다.
 console.log('리소스 경고:', warnings.length);

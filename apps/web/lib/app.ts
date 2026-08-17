@@ -1,5 +1,6 @@
 import {
   applyChanges,
+  dayOf,
   fromNeis,
   genSchool,
   neisToTimetable,
@@ -211,6 +212,31 @@ const ymd = (d: Date): string =>
   `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 
 /**
+ * 받은 자료에 수업이 하나도 없는 요일.
+ *
+ * 나이스를 부를 때 기간이 짧거나 중간에 실패하면 어떤 요일이 통째로 빠질 수 있다.
+ * 실제 특성화고 자료에서 수요일이 빠진 채로 들어왔고, 그 요일이 빈 시간으로 보여
+ * 추천안 488개 가운데 21개가 수요일로 옮기라고 했다. 학교는 그날 수업을 한다.
+ *
+ * 담당 교사를 안 채운 자리와 같은 종류의 잘못이다. 모르는 것을 없는 것으로 바꾸면
+ * 그 자리가 비어 보인다. 그래서 자료가 없는 요일을 찾아 탐색에서 뺀다.
+ *
+ * 담당을 모르는 자리(klassBusy)도 수업이 있다는 증거로 센다. 그것까지 없는 요일만 고른다.
+ */
+export function blankDaysOf(input: TimetableInput): number[] {
+  const cfg = input.config;
+  if (input.assignments.length === 0 && !input.klassBusy) return [];
+  const seen = new Set<number>();
+  for (const a of input.assignments) seen.add(dayOf(a.slot, cfg));
+  for (const slots of Object.values(input.klassBusy ?? {})) {
+    for (const s of slots) seen.add(dayOf(s, cfg));
+  }
+  // 아무것도 못 받았으면 요일을 가릴 근거가 없다. 전부 막으면 도구가 아니다.
+  if (seen.size === 0) return [];
+  return [...Array(cfg.days).keys()].filter((d) => !seen.has(d));
+}
+
+/**
  * 학사일정을 지금 다루는 주의 요일 단위로 바꾼다.
  *
  * 시간표는 한 주가 되풀이되는 표인데 학사일정은 날짜로 온다.
@@ -394,8 +420,23 @@ export interface PumasiFile {
   version: 1 | 2;
   school: string;
   config: ScheduleConfig;
-  lessons: Array<{ teacher: string; klass: string; subject: string; slot: number; group?: string }>;
+  lessons: Array<{
+    teacher: string;
+    klass: string;
+    subject: string;
+    slot: number;
+    group?: string;
+    pro?: boolean;
+  }>;
   calendar?: Calendar;
+  /**
+   * 학급별로 담당 교사를 아직 안 채운 교시.
+   *
+   * 이것을 안 담으면 파일로 저장했다 열 때 그 자리가 빈 시간으로 되살아난다.
+   * 그러면 학급이 실제로는 수업 중인 교시로 다른 수업을 밀어 넣는 안이 다시 나온다.
+   * 저장했다 여는 것만으로 조용히 되돌아가는 종류의 잘못이라 파일에 함께 담는다.
+   */
+  busy?: Record<string, number[]>;
 }
 
 export function toFile(loaded: Loaded): string {
@@ -410,8 +451,10 @@ export function toFile(loaded: Loaded): string {
       subject: a.subject,
       slot: a.slot,
       ...(a.group ? { group: a.group } : {}),
+      ...(a.pro ? { pro: true } : {}),
     })),
     ...(loaded.calendar ? { calendar: loaded.calendar } : {}),
+    ...(loaded.input.klassBusy ? { busy: loaded.input.klassBusy } : {}),
   };
   return JSON.stringify(doc, null, 1);
 }
@@ -462,6 +505,21 @@ export function fromFile(raw: string): Loaded {
       config: cfg,
       // 파일마다 이름 표기가 흔들린다. 여기서 한 번 다듬어야 같은 사람이 한 사람으로 잡힌다.
       assignments: doc.lessons.map((l) => ({ ...l, teacher: normalizeName(l.teacher) })),
+      // 칸 밖으로 나간 값은 버린다. 파일이 손상되었을 때 격자가 어긋나는 것을 막는다.
+      ...(doc.busy && typeof doc.busy === 'object'
+        ? {
+            klassBusy: Object.fromEntries(
+              Object.entries(doc.busy)
+                .map(([k, v]) => [
+                  k,
+                  (Array.isArray(v) ? v : []).filter(
+                    (s) => Number.isInteger(s) && s >= 0 && s < size,
+                  ),
+                ])
+                .filter(([, v]) => (v as number[]).length > 0),
+            ) as Record<string, number[]>,
+          }
+        : {}),
     },
     ...(doc.calendar ? { calendar: doc.calendar } : {}),
   };
@@ -481,11 +539,78 @@ export function calendarCoversThisWeek(cal: Calendar | undefined, monday = weekM
   return cal.from <= ymd(monday) && ymd(friday) <= cal.to;
 }
 
+/**
+ * 예시 학교의 과목과 교사.
+ *
+ * 엔진 기본값은 "국어", "과학" 처럼 짧다. 그것으로 화면 폭을 재면 실제보다 쉽게 나온다.
+ * 실제 자료의 과목명은 중앙 6자에 최대 14자였고, 특성화고에서 특히 길다.
+ * 예시 학교가 쉬우면 폰 화면을 재는 검사도 쉬운 것만 재게 된다.
+ *
+ * 그래서 실측에서 실제로 나온 이름을 그대로 쓴다. 가운데점이 든 이름도 그대로 둔다.
+ * 저장 값이라 문장 부호 규칙의 대상이 아니고, 오히려 그 이름이 가장 어려운 경우다.
+ * 교사 이름은 과목의 짧은 이름으로 따로 준다. 과목명을 그대로 쓰면
+ * "휠·타이어·얼라인먼트 정비1" 같은 교사 이름이 나온다. 예시 학교의 교사 이름은
+ * 무엇을 가르치는지 바로 보이는 편이 좋아서 사람 이름 대신 과목의 짧은 이름을 쓴다.
+ *
+ * 시수 합은 32여야 한다. 4+4+3+2+2+2+3+3+3+2+2+2 = 32.
+ */
+const SAMPLE_SUBJECTS: ReadonlyArray<readonly [string, number, string?]> = [
+  ['공통국어1', 4, '국어'],
+  ['공통수학1', 4, '수학'],
+  ['공통영어1', 3, '영어'],
+  ['통합사회1', 2, '사회'],
+  ['통합과학1', 2, '과학'],
+  ['체육1', 2, '체육'],
+  ['성공적인 직업생활', 3, '직업생활'],
+  ['디지털 논리 회로', 3, '논리회로'],
+  ['하드웨어 부품 선정', 3, '부품선정'],
+  ['휠·타이어·얼라인먼트 정비', 2, '정비'],
+  ['진로활동', 2, '진로'],
+  ['자율·자치활동', 2, '자치'],
+];
+
+/**
+ * 예시 학교에 이동수업 묶음 하나를 심는다.
+ *
+ * 여정을 따라가 보니 예시 학교의 수업 열두 개 전부에 교체안이 나왔다. 그래서 예시로
+ * 둘러보는 분은 **보강 후보를 한 번도 보지 못한다.** 교체가 안 될 때 무엇을 해 주는지가
+ * 이 도구의 절반인데 그 절반이 안 보인다.
+ *
+ * 실제로 교체가 막히는 자리는 이동수업이다. 여러 학급이 같은 교시에 흩어져 듣는 편성이라
+ * 학급 전원과 교사 전원이 같은 시간에 비어야 옮길 수 있다. 합성 학교로 재어 보니
+ * 묶음 수업은 열에 여덟이 교체안 0이었다.
+ *
+ * 그래서 같은 교시에 같은 과목을 듣는 학급들을 한 묶음으로 묶는다. 자료를 새로 만들지 않고
+ * 이미 있는 배정에 묶음 표시만 붙이므로 시간표는 그대로 성립한다.
+ */
+function withGroup(input: TimetableInput): TimetableInput {
+  // 같은 (교시, 과목)에 학급이 가장 많이 몰린 자리를 찾는다. 그것이 이동수업처럼 보인다.
+  const bucket = new Map<string, typeof input.assignments>();
+  for (const a of input.assignments) {
+    const k = `${a.slot}|${a.subject}`;
+    bucket.set(k, [...(bucket.get(k) ?? []), a]);
+  }
+  let best: typeof input.assignments = [];
+  for (const list of bucket.values()) {
+    // 학급이 서로 다르고 교사도 서로 달라야 한 자리에 모인 이동수업이 된다.
+    const distinct = new Set(list.map((a) => a.klass)).size === list.length;
+    if (distinct && list.length > best.length) best = list;
+  }
+  if (best.length < 2) return input;
+  const mark = new Set(best.map((a) => `${a.teacher}|${a.slot}|${a.klass}`));
+  return {
+    ...input,
+    assignments: input.assignments.map((a) =>
+      mark.has(`${a.teacher}|${a.slot}|${a.klass}`) ? { ...a, group: '이동수업-예시' } : a,
+    ),
+  };
+}
+
 export function sampleSchool(): Loaded {
   return {
     schoolName: `${BRAND} 예시 학교`,
     source: '샘플',
-    input: genSchool({ classes: 12, seed: 42 }),
+    input: withGroup(genSchool({ classes: 12, seed: 42, subjects: SAMPLE_SUBJECTS })),
   };
 }
 

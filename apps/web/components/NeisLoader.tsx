@@ -74,6 +74,25 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
           setError('그 기간의 시간표가 아직 공개되지 않았습니다. 학교에 시간표가 올라간 뒤 다시 시도해 주십시오.');
           return;
         }
+        /*
+         * 잘린 자료로는 다음 단계로 보내지 않는다.
+         *
+         * 키가 없으면 학교 전체 질의에 5행만 온다. 5주치 학교 하나가 수천 행인데 5행이다.
+         * 그것으로 만든 시간표는 거의 다 빈 시간이고, 빈 시간은 "옮겨도 되는 자리"로 읽힌다.
+         * 그러면 성립하지 않는 교체를 잔뜩 내놓는다. 경고만 띄우고 통과시키면
+         * 사용자는 그 경고를 지나치고 틀린 안을 받는다.
+         *
+         * 그래서 여기서 멈추고 무엇이 필요한지 숫자로 알린다.
+         */
+        if (tt.truncated) {
+          setError(
+            `나이스가 ${tt.total.toLocaleString()}줄 가운데 ${tt.rows.length}줄만 보냈습니다. ` +
+              '인증키 없는 요청은 5줄에서 끊기고 쪽 넘김도 되지 않습니다. ' +
+              '이 상태로 만든 시간표는 대부분이 빈 시간이 되어, 실제로는 수업이 있는 자리로 ' +
+              '옮기라는 안이 나옵니다. 아래에 무료 인증키를 넣고 다시 찾아 주십시오.',
+          );
+          return;
+        }
         const rep = fromNeis(tt.rows);
         setSchool(picked);
         setRows(tt.rows);
@@ -81,11 +100,6 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
         setRange(range);
         setReport(rep);
         setStage('배정');
-        if (tt.truncated) {
-          setError(
-            '인증키가 없어 일부만 받았습니다. 학교 전체를 받으려면 무료 인증키를 입력하십시오.',
-          );
-        }
       } catch (e) {
         setError(e instanceof Error ? e.message : '시간표를 받지 못했습니다');
       } finally {
@@ -94,6 +108,28 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
     },
     [neisKey],
   );
+
+  /**
+   * 받은 자료가 어디까지 덮는지.
+   *
+   * 이것을 보여 주지 않으면 사용자는 받은 것이 온전한지 알 수 없다.
+   * 실제로 어떤 학교 자료에서 수요일이 통째로 빠진 채 들어왔고, 그 요일이 빈 시간으로
+   * 보여 추천안 488개 가운데 21개가 수요일로 옮기라고 했다. 화면에 아무 표시도 없었다.
+   */
+  const coverage = useMemo(() => {
+    const names = ['월', '화', '수', '목', '금'];
+    if (!report) {
+      return { klasses: 0, periods: 0, dayNames: '', missingDays: [] as string[] };
+    }
+    const lessons = report.cells.filter((c) => c.kind === '수업');
+    const seen = new Set(lessons.map((c) => c.day));
+    return {
+      klasses: new Set(lessons.map((c) => c.klass)).size,
+      periods: report.config.periods,
+      dayNames: names.filter((_, i) => seen.has(i)).join(''),
+      missingDays: names.filter((_, i) => i < report.config.days && !seen.has(i)),
+    };
+  }, [report]);
 
   /** 교사를 채워야 할 (학급, 과목) 목록 */
   const pairs = useMemo(() => {
@@ -162,22 +198,46 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
           </div>
         </label>
 
+        {/*
+         * 이 자리를 "선택" 으로 적어 두었던 것이 잘못이었다.
+         * 키가 없으면 나이스가 학교 전체 질의에 5행만 준다. 쪽 넘김도 듣지 않는다.
+         * 실측에서 어떤 학급의 하루가 6교시인데 5행에서 끊겼다.
+         * 학교 하나를 받아 교체를 찾는 일은 키 없이 되지 않는다.
+         * 선택이라고 적으면 안 넣고 진행했다가 빈 시간표를 보고 도구를 접는다.
+         */}
         <label className="neis-field">
           <span>
-            인증키 (선택)
-            <a className="neis-link" href={NEIS_KEY_GUIDE} target="_blank" rel="noreferrer">
-              무료 발급 안내
-            </a>
+            인증키
+            {neisKey === '' ? (
+              <b className="neis-need">한 번만 넣으면 됩니다</b>
+            ) : (
+              <b className="neis-ok">저장됨</b>
+            )}
           </span>
           <input
             className="input"
-            placeholder="없어도 일부는 볼 수 있습니다. 학교 전체를 받으려면 입력하십시오"
+            placeholder="나이스에서 받은 인증키를 붙여 넣으십시오"
             value={neisKey}
             onChange={(e) => onKeyChange(e.target.value.trim())}
           />
+          {/*
+           * 발급 절차를 확인해 적었다. 링크를 열면 회원가입 화면이 아니라 로그인 화면이고
+           * 카카오톡, 네이버, 구글 계정으로 바로 들어간다. 포털이 그 자리에
+           * "복잡한 회원가입 절차없이" 라고 적어 두었다.
+           * 이 사실이 빠져 있으면 "발급"이라는 말만 보고 관공서 회원가입을 떠올려 접는다.
+           */}
           <span className="neis-hint">
-            나이스 공개 자료는 무료입니다. 인증키는 요금이 아니라 이용량을 구분하기 위한 것이며,
-            발급도 무료입니다. 입력한 키는 이 브라우저에만 저장하고 나이스에만 보냅니다.
+            나이스는 키 없는 요청에 <b>5줄만</b> 보냅니다. 학교 하나가 수천 줄이라 키가
+            필요합니다.
+            <br />
+            <b>회원가입은 없습니다.</b> 아래를 열어 <b>카카오톡이나 네이버 계정으로 로그인</b>한 뒤
+            인증키 신청을 누르시면 바로 나옵니다.{' '}
+            <a className="neis-link" href={NEIS_KEY_GUIDE} target="_blank" rel="noreferrer">
+              나이스에서 인증키 받기
+            </a>
+            <br />
+            받은 키를 위에 붙여 넣으십시오. 이 브라우저에만 저장하고 나이스에만 보냅니다. 다음에
+            오시면 다시 넣지 않아도 됩니다.
           </span>
         </label>
 
@@ -210,10 +270,24 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
           학교 다시 고르기
         </button>
       </div>
+      {/*
+       * 이 화면이 이 도구에서 가장 무거운 자리다.
+       * 실제 특성화고를 재어 보니 (학급, 과목) 짝이 223개였다. 같은 학년 같은 과목을
+       * 한 번에 채우는 단추를 쓰면 손으로 치는 횟수가 62회로 줄지만 그래도 적지 않다.
+       *
+       * 중요한 것은 이 일을 학교에서 한 사람만 하면 된다는 사실이다. 채운 결과를 파일로
+       * 내보내 동료에게 주면 동료는 열기만 하면 된다. 그 말을 여기 적어야
+       * 모두가 각자 223칸을 채우려 들지 않는다.
+       */}
       <p className="neis-lede">
         나이스 공개 자료에는 과목만 있고 담당 교사는 없습니다. 교체 방법을 찾으려면 누가 그 수업에
         들어가는지가 필요합니다. 아시는 것부터 채우십시오. 중간에 멈추어도 채운 만큼은 그대로
         쓸 수 있습니다.
+      </p>
+      <p className="neis-share">
+        <b>이 일은 학교에서 한 분만 하시면 됩니다.</b> 채운 뒤 위쪽 <b>파일로 저장</b>으로
+        내보내 동료께 전달하시면, 받으신 분은 <b>저장한 파일 열기</b>로 바로 시작하십니다.
+        인증키도 그분들께는 필요하지 않습니다.
       </p>
 
       <div className="neis-progress">
@@ -227,8 +301,18 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
 
       {report && (
         <p className="neis-facts">
-          최근 5주 시간표를 받았습니다. 휴업일 {report.holidays.length}일과 보강{' '}
+          최근 5주 시간표를 받았습니다. 학급 {coverage.klasses}개, {coverage.dayNames} 요일,{' '}
+          {coverage.periods}교시까지입니다. 휴업일 {report.holidays.length}일과 보강{' '}
           {report.covers.length}건이 들어 있습니다.
+          {coverage.missingDays.length > 0 && (
+            <>
+              {' '}
+              <b className="neis-warn">
+                {coverage.missingDays.join(', ')} 요일은 자료에 없습니다. 그 요일로 옮기는 안은
+                내지 않습니다. 기간을 넓혀 다시 받으시면 채워집니다.
+              </b>
+            </>
+          )}
         </p>
       )}
       {error && <p className="neis-error">{error}</p>}
