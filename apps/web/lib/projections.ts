@@ -1,0 +1,635 @@
+import { classIdentityKey } from '@timeswap/engine';
+
+import type {
+  AbsenceCase,
+  ClassIdentity,
+  Lesson,
+  Publication,
+  ResolutionChange,
+  TeacherAssignment,
+  WorkspaceState,
+} from './domain';
+
+export interface TeacherLessonValue {
+  date: string;
+  period: string;
+  teacherId: string | null;
+  caseId?: string;
+  publicationId?: string;
+  publishedAt?: string;
+}
+
+export interface TeacherScheduleLessonView {
+  lessonId: string;
+  subject: string;
+  room: string;
+  classIdentity: ClassIdentity;
+  status: 'base' | '변경 예정' | 'published';
+  base: TeacherLessonValue;
+  pending?: TeacherLessonValue;
+  published?: TeacherLessonValue;
+}
+
+export interface TeacherScheduleView {
+  teacherId: string;
+  lessons: TeacherScheduleLessonView[];
+}
+
+export interface OpsSourceHealthView {
+  activeRevisionId: string;
+  source: 'neis' | 'school_file' | 'demo' | null;
+  loadedAt: string | null;
+  complete: boolean;
+  lessonCount: number;
+  unassignedLessons: number;
+}
+
+export interface TeacherBurdenView {
+  teacherId: string;
+  acceptedChanges: number;
+}
+
+export interface OpsDashboardView {
+  today: string;
+  todayChanges: number;
+  unresolvedLessons: number;
+  pendingCases: number;
+  neisTasks: number;
+  publicationTasks: number;
+  burdenAlerts: number;
+  burden: TeacherBurdenView[];
+  sourceHealth: OpsSourceHealthView;
+}
+
+export interface PlanValidation {
+  valid: boolean;
+  staleRevision: boolean;
+  conflicts: Array<{
+    lessonId: string;
+    kind: 'teacher' | 'class' | 'closure' | 'unknown-occupancy' | 'parallel-group';
+    message: string;
+  }>;
+}
+
+export interface PublicClassLessonView {
+  lessonId: string;
+  date: string;
+  period: string;
+  subject: string;
+  room: string;
+  changed: boolean;
+  originalDate?: string;
+  originalPeriod?: string;
+  originalSubject?: string;
+  publicationId?: string;
+  publishedAt?: string;
+}
+
+export interface PublicClassView {
+  workspaceId: string;
+  schoolName: string;
+  classKey: string;
+  lessons: PublicClassLessonView[];
+  lastPublishedAt?: string;
+}
+
+interface PublishedChange {
+  change: ResolutionChange;
+  publication: Publication;
+}
+
+interface PendingChange {
+  change: ResolutionChange;
+  absenceCase: AbsenceCase;
+}
+
+const RESERVING_STATUSES = new Set<AbsenceCase['status']>([
+  'resolution_approved',
+  'admin_in_progress',
+  'ready_to_publish',
+  'published',
+]);
+
+const PENDING_STATUSES = new Set<AbsenceCase['status']>([
+  'resolution_approved',
+  'admin_in_progress',
+  'ready_to_publish',
+]);
+
+const ACTIONABLE_STATUSES = new Set<AbsenceCase['status']>([
+  'submitted',
+  'in_review',
+  'resolution_approved',
+  'admin_in_progress',
+  'ready_to_publish',
+]);
+
+function publishedChanges(state: WorkspaceState): Map<string, PublishedChange> {
+  const byLesson = new Map<string, PublishedChange>();
+  const publications = [...state.publications]
+    .filter((publication) => publication.revisionId === state.workspace.activeRevisionId)
+    .sort((left, right) => left.publishedAt.localeCompare(right.publishedAt));
+
+  for (const publication of publications) {
+    const absenceCase = state.cases.find((item) =>
+      item.id === publication.caseId && item.status === 'published');
+    if (!absenceCase) continue;
+    const allowedLessonIds = new Set(publication.changedLessonIds);
+    for (const resolution of absenceCase.resolutionItems) {
+      for (const change of resolution.changes) {
+        if (allowedLessonIds.has(change.lessonId)) {
+          byLesson.set(change.lessonId, { change, publication });
+        }
+      }
+    }
+  }
+
+  return byLesson;
+}
+
+function pendingChanges(state: WorkspaceState): Map<string, PendingChange> {
+  const byLesson = new Map<string, PendingChange>();
+  const cases = [...state.cases]
+    .filter((absenceCase) => PENDING_STATUSES.has(absenceCase.status))
+    .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt));
+
+  for (const absenceCase of cases) {
+    for (const resolution of absenceCase.resolutionItems) {
+      if (resolution.kind === 'unresolved') continue;
+      for (const change of resolution.changes) {
+        byLesson.set(change.lessonId, { change, absenceCase });
+      }
+    }
+  }
+
+  return byLesson;
+}
+
+function teacherId(lesson: Lesson): string | null {
+  return lesson.teacher.state === 'assigned' ? lesson.teacher.teacherId : null;
+}
+
+function changeTeacherId(change: ResolutionChange): string | null {
+  return change.teacher.state === 'assigned' ? change.teacher.teacherId : null;
+}
+
+export function projectTeacherSchedule(
+  state: WorkspaceState,
+  requestedTeacherId: string,
+): TeacherScheduleView {
+  const pending = pendingChanges(state);
+  const published = publishedChanges(state);
+  const lessons = state.lessons
+    .filter((lesson) => lesson.revisionId === state.workspace.activeRevisionId)
+    .flatMap((lesson): TeacherScheduleLessonView[] => {
+      const pendingChange = pending.get(lesson.id);
+      const publishedChange = published.get(lesson.id);
+      const baseValue: TeacherLessonValue = {
+        date: lesson.date,
+        period: lesson.period,
+        teacherId: teacherId(lesson),
+      };
+      const pendingValue: TeacherLessonValue | undefined = pendingChange ? {
+        date: pendingChange.change.toDate,
+        period: pendingChange.change.toPeriod,
+        teacherId: changeTeacherId(pendingChange.change),
+        caseId: pendingChange.absenceCase.id,
+      } : undefined;
+      const publishedValue: TeacherLessonValue | undefined = publishedChange ? {
+        date: publishedChange.change.toDate,
+        period: publishedChange.change.toPeriod,
+        teacherId: changeTeacherId(publishedChange.change),
+        publicationId: publishedChange.publication.id,
+        publishedAt: publishedChange.publication.publishedAt,
+      } : undefined;
+      if (![baseValue, pendingValue, publishedValue]
+        .some((value) => value?.teacherId === requestedTeacherId)) return [];
+
+      return [{
+        lessonId: lesson.id,
+        subject: lesson.subject,
+        room: lesson.room,
+        classIdentity: { ...lesson.classIdentity },
+        status: publishedValue ? 'published' : pendingValue ? '변경 예정' : 'base',
+        base: baseValue,
+        pending: pendingValue,
+        published: publishedValue,
+      }];
+    })
+    .sort((left, right) => {
+      const leftValue = left.published ?? left.pending ?? left.base;
+      const rightValue = right.published ?? right.pending ?? right.base;
+      return leftValue.date.localeCompare(rightValue.date)
+        || leftValue.period.localeCompare(rightValue.period)
+        || left.lessonId.localeCompare(right.lessonId);
+    });
+
+  return { teacherId: requestedTeacherId, lessons };
+}
+
+function unresolvedLessonCount(state: WorkspaceState): number {
+  let count = 0;
+  for (const absenceCase of state.cases) {
+    if (!ACTIONABLE_STATUSES.has(absenceCase.status)) continue;
+    for (const lessonId of absenceCase.lessonIds) {
+      const resolution = absenceCase.resolutionItems.find((item) => item.lessonId === lessonId);
+      if (!resolution || resolution.kind === 'unresolved' || resolution.changes.length === 0) {
+        count += 1;
+      }
+    }
+  }
+  return count;
+}
+
+function deriveBurden(state: WorkspaceState): TeacherBurdenView[] {
+  const counts = new Map<string, number>();
+  for (const absenceCase of state.cases) {
+    if (!RESERVING_STATUSES.has(absenceCase.status)) continue;
+    for (const resolution of absenceCase.resolutionItems) {
+      if (resolution.computedAgainstRevisionId !== state.workspace.activeRevisionId) continue;
+      for (const change of resolution.changes) {
+        if (change.teacher.state !== 'assigned') continue;
+        counts.set(change.teacher.teacherId, (counts.get(change.teacher.teacherId) ?? 0) + 1);
+      }
+    }
+  }
+  return [...counts]
+    .map(([burdenTeacherId, acceptedChanges]) => ({
+      teacherId: burdenTeacherId,
+      acceptedChanges,
+    }))
+    .filter((item) => item.acceptedChanges >= 3)
+    .sort((left, right) => right.acceptedChanges - left.acceptedChanges
+      || left.teacherId.localeCompare(right.teacherId));
+}
+
+export function projectOpsDashboard(state: WorkspaceState, today: string): OpsDashboardView {
+  const activeRevision = state.revisions.find((revision) =>
+    revision.id === state.workspace.activeRevisionId);
+  const activeLessons = state.lessons.filter((lesson) =>
+    lesson.revisionId === state.workspace.activeRevisionId);
+  const burden = deriveBurden(state);
+
+  return {
+    today,
+    todayChanges: [...publishedChanges(state).values()]
+      .filter(({ change }) => change.toDate === today).length,
+    unresolvedLessons: unresolvedLessonCount(state),
+    pendingCases: state.cases.filter((absenceCase) =>
+      absenceCase.status === 'submitted' || absenceCase.status === 'in_review').length,
+    neisTasks: state.adminTasks.filter((task) =>
+      task.kind === 'neis' && task.status === 'pending').length,
+    publicationTasks: state.adminTasks.filter((task) =>
+      task.kind === 'class_publication' && task.status === 'pending').length,
+    burdenAlerts: burden.length,
+    burden,
+    sourceHealth: {
+      activeRevisionId: state.workspace.activeRevisionId,
+      source: activeRevision?.source ?? null,
+      loadedAt: activeRevision?.loadedAt ?? null,
+      complete: activeRevision?.complete ?? false,
+      lessonCount: activeLessons.length,
+      unassignedLessons: activeLessons.filter((lesson) =>
+        lesson.teacher.state === 'unassigned').length,
+    },
+  };
+}
+
+export function validateCasePlan(state: WorkspaceState, caseId: string): PlanValidation {
+  const absenceCase = state.cases.find((item) => item.id === caseId);
+  if (!absenceCase) throw new Error(`Case does not exist: ${caseId}`);
+  const activeRevision = state.revisions.find((revision) =>
+    revision.id === state.workspace.activeRevisionId);
+  const activeLessons = state.lessons.filter((lesson) =>
+    lesson.revisionId === state.workspace.activeRevisionId);
+  const lessonsById = new Map(activeLessons.map((lesson) => [lesson.id, lesson]));
+  const staleRevision = absenceCase.resolutionItems.some((item) =>
+    !item.computedAgainstRevisionId
+    || item.computedAgainstRevisionId !== state.workspace.activeRevisionId);
+  const conflicts: PlanValidation['conflicts'] = [];
+  const conflictKeys = new Set<string>();
+
+  const addConflict = (
+    lessonId: string,
+    kind: PlanValidation['conflicts'][number]['kind'],
+    message: string,
+  ): void => {
+    const key = JSON.stringify([lessonId, kind, message]);
+    if (conflictKeys.has(key)) return;
+    conflictKeys.add(key);
+    conflicts.push({ lessonId, kind, message });
+  };
+
+  const resolutionCoversLesson = (itemCase: AbsenceCase, lessonId: string): boolean =>
+    itemCase.resolutionItems.some((item) => item.kind !== 'unresolved'
+      && (item.kind === 'manual' || item.changes.length > 0)
+      && (item.lessonId === lessonId
+        || item.changes.some((change) => change.lessonId === lessonId)));
+
+  for (const lessonId of absenceCase.lessonIds) {
+    if (!resolutionCoversLesson(absenceCase, lessonId)) {
+      addConflict(
+        lessonId,
+        'unknown-occupancy',
+        '선택된 해결안이 없어 점유 상태를 확정할 수 없습니다.',
+      );
+    }
+  }
+
+  if (!activeRevision?.complete) {
+    for (const lessonId of absenceCase.lessonIds) {
+      addConflict(
+        lessonId,
+        'unknown-occupancy',
+        '활성 시간표 버전의 완전성이 확인되지 않았습니다.',
+      );
+    }
+  }
+
+  interface PlannedMovement {
+    change: ResolutionChange;
+    lesson?: Lesson;
+  }
+  interface Occupancy {
+    lessonId: string;
+    date: string;
+    period: string;
+    classIdentity?: ClassIdentity;
+    teacher: TeacherAssignment;
+    parallelGroupId?: string;
+    known: boolean;
+  }
+
+  const identityEquals = (left: ClassIdentity, right: ClassIdentity): boolean =>
+    left.schoolCode === right.schoolCode
+    && left.academicYear === right.academicYear
+    && left.dayCourse === right.dayCourse
+    && left.affiliation === right.affiliation
+    && left.major === right.major
+    && left.grade === right.grade
+    && left.className === right.className;
+
+  const movementKey = (movement: PlannedMovement): string => JSON.stringify([
+    movement.change.lessonId,
+    movement.change.toDate,
+    movement.change.toPeriod,
+    movement.change.teacher.state,
+    movement.change.teacher.state === 'assigned'
+      ? movement.change.teacher.teacherId
+      : null,
+  ]);
+  const caseMovements = (itemCase: AbsenceCase): PlannedMovement[] => {
+    const unique = new Map<string, PlannedMovement>();
+    for (const item of itemCase.resolutionItems) {
+      if (item.kind === 'unresolved') continue;
+      for (const change of item.changes) {
+        const movement = { change, lesson: lessonsById.get(change.lessonId) };
+        unique.set(movementKey(movement), movement);
+      }
+    }
+    return [...unique.values()];
+  };
+  const planIsProven = (itemCase: AbsenceCase): boolean =>
+    Boolean(activeRevision?.complete)
+    && itemCase.resolutionItems.every((item) =>
+      item.computedAgainstRevisionId === state.workspace.activeRevisionId)
+    && itemCase.lessonIds.every((lessonId) => resolutionCoversLesson(itemCase, lessonId))
+    && caseMovements(itemCase).every((movement) =>
+      movement.lesson && movement.change.teacher.state === 'assigned');
+
+  const candidateMovements = caseMovements(absenceCase);
+  const changedLessonDestinations = new Map<string, string>();
+  for (const movement of candidateMovements) {
+    const priorDestination = changedLessonDestinations.get(movement.change.lessonId);
+    const destination = JSON.stringify([
+      movement.change.toDate,
+      movement.change.toPeriod,
+      movement.change.teacher,
+    ]);
+    if (priorDestination && priorDestination !== destination) {
+      addConflict(
+        movement.change.lessonId,
+        'unknown-occupancy',
+        '하나의 수업에 서로 다른 이동이 선택되었습니다.',
+      );
+    }
+    changedLessonDestinations.set(movement.change.lessonId, destination);
+    if (!movement.lesson) {
+      addConflict(
+        movement.change.lessonId,
+        'unknown-occupancy',
+        '활성 시간표 버전에서 이동할 수업을 확인할 수 없습니다.',
+      );
+    }
+    if (movement.change.teacher.state === 'unassigned') {
+      addConflict(
+        movement.change.lessonId,
+        'unknown-occupancy',
+        '담당 교사가 확정되지 않아 점유 상태를 판정할 수 없습니다.',
+      );
+    }
+  }
+
+  const acceptedCases = state.cases.filter((item) =>
+    item.id !== absenceCase.id
+    && item.id !== absenceCase.supersedesCaseId
+    && RESERVING_STATUSES.has(item.status));
+  const acceptedPlans = acceptedCases.map((itemCase) => ({
+    itemCase,
+    movements: caseMovements(itemCase),
+    proven: planIsProven(itemCase),
+  }));
+  for (const movement of candidateMovements) {
+    const accepted = acceptedPlans.find((plan) => plan.movements.some((item) =>
+      item.change.lessonId === movement.change.lessonId));
+    if (!accepted) continue;
+    addConflict(
+      movement.change.lessonId,
+      accepted.proven ? 'class' : 'unknown-occupancy',
+      accepted.proven
+        ? '해당 수업은 다른 사건의 승인된 해결안에 이미 포함되었습니다.'
+        : '해당 수업은 점유 상태가 확정되지 않은 승인 사건에 포함되었습니다.',
+    );
+  }
+  const removedLessonIds = new Set(candidateMovements
+    .flatMap((movement) => movement.lesson ? [movement.lesson.id] : []));
+  for (const accepted of acceptedPlans) {
+    if (!accepted.proven) continue;
+    for (const movement of accepted.movements) {
+      if (movement.lesson) removedLessonIds.add(movement.lesson.id);
+    }
+  }
+
+  const occupancyByDate = new Map<string, Map<string, Occupancy[]>>();
+  const addOccupancy = (occupancy: Occupancy): void => {
+    let byPeriod = occupancyByDate.get(occupancy.date);
+    if (!byPeriod) {
+      byPeriod = new Map<string, Occupancy[]>();
+      occupancyByDate.set(occupancy.date, byPeriod);
+    }
+    byPeriod.set(occupancy.period, [...(byPeriod.get(occupancy.period) ?? []), occupancy]);
+  };
+  const occupanciesAt = (date: string, period: string): Occupancy[] =>
+    occupancyByDate.get(date)?.get(period) ?? [];
+
+  for (const lesson of activeLessons) {
+    if (removedLessonIds.has(lesson.id)) continue;
+    addOccupancy({
+      lessonId: lesson.id,
+      date: lesson.date,
+      period: lesson.period,
+      classIdentity: lesson.classIdentity,
+      teacher: lesson.teacher,
+      ...(lesson.parallelGroupId ? { parallelGroupId: lesson.parallelGroupId } : {}),
+      known: true,
+    });
+  }
+  for (const accepted of acceptedPlans) {
+    for (const movement of accepted.movements) {
+      addOccupancy({
+        lessonId: movement.change.lessonId,
+        date: movement.change.toDate,
+        period: movement.change.toPeriod,
+        ...(movement.lesson ? { classIdentity: movement.lesson.classIdentity } : {}),
+        teacher: movement.change.teacher,
+        ...(movement.lesson?.parallelGroupId
+          ? { parallelGroupId: movement.lesson.parallelGroupId }
+          : {}),
+        known: accepted.proven,
+      });
+    }
+  }
+
+  for (const movement of candidateMovements) {
+    const { change, lesson } = movement;
+    if (!lesson) continue;
+
+    if (lesson.parallelGroupId) {
+      const groupMembers = activeLessons.filter((item) =>
+        item.parallelGroupId === lesson.parallelGroupId);
+      const groupMovements = candidateMovements.filter((item) =>
+        item.lesson?.parallelGroupId === lesson.parallelGroupId);
+      const movedMemberIds = new Set(groupMovements.map((item) => item.change.lessonId));
+      const sameDestination = groupMovements.every((item) =>
+        item.change.toDate === change.toDate && item.change.toPeriod === change.toPeriod);
+      if (groupMembers.some((member) => !movedMemberIds.has(member.id)) || !sameDestination) {
+        addConflict(
+          change.lessonId,
+          'parallel-group',
+          '병렬 수업 묶음 전체를 같은 시간으로 이동해야 합니다.',
+        );
+      }
+    }
+
+    const closure = activeRevision?.closures?.find((item) =>
+      item.date === change.toDate
+      && (!item.classIdentities?.length
+        || item.classIdentities.some((identity) => identityEquals(identity, lesson.classIdentity))));
+    if (closure) {
+      addConflict(
+        change.lessonId,
+        'closure',
+        `${change.toDate}은 수업 운영 제외일입니다: ${closure.reason}`,
+      );
+    }
+
+    for (const occupied of occupanciesAt(change.toDate, change.toPeriod)) {
+      if (!occupied.known || occupied.teacher.state === 'unassigned') {
+        addConflict(
+          change.lessonId,
+          'unknown-occupancy',
+          `${change.toDate} ${change.toPeriod}교시에 담당이 확정되지 않은 수업이 있습니다.`,
+        );
+      }
+      if (change.teacher.state === 'assigned'
+        && occupied.teacher.state === 'assigned'
+        && change.teacher.teacherId === occupied.teacher.teacherId) {
+        addConflict(
+          change.lessonId,
+          'teacher',
+          `${change.toDate} ${change.toPeriod}교시에 해당 교사의 수업이 있습니다.`,
+        );
+      }
+      const sameParallelGroup = Boolean(lesson.parallelGroupId)
+        && lesson.parallelGroupId === occupied.parallelGroupId;
+      if (occupied.classIdentity
+        && identityEquals(lesson.classIdentity, occupied.classIdentity)
+        && !sameParallelGroup) {
+        addConflict(
+          change.lessonId,
+          'class',
+          `${change.toDate} ${change.toPeriod}교시에 해당 학급의 수업이 있습니다.`,
+        );
+      }
+    }
+
+    addOccupancy({
+      lessonId: change.lessonId,
+      date: change.toDate,
+      period: change.toPeriod,
+      classIdentity: lesson.classIdentity,
+      teacher: change.teacher,
+      ...(lesson.parallelGroupId ? { parallelGroupId: lesson.parallelGroupId } : {}),
+      known: change.teacher.state === 'assigned',
+    });
+  }
+
+  return {
+    valid: !staleRevision && conflicts.length === 0,
+    staleRevision,
+    conflicts,
+  };
+}
+
+function publicLesson(lesson: Lesson, published?: PublishedChange): PublicClassLessonView {
+  if (!published) {
+    return {
+      lessonId: lesson.id,
+      date: lesson.date,
+      period: lesson.period,
+      subject: lesson.subject,
+      room: lesson.room,
+      changed: false,
+    };
+  }
+
+  return {
+    lessonId: lesson.id,
+    date: published.change.toDate,
+    period: published.change.toPeriod,
+    subject: lesson.subject,
+    room: lesson.room,
+    changed: true,
+    originalDate: lesson.date,
+    originalPeriod: lesson.period,
+    originalSubject: lesson.subject,
+    publicationId: published.publication.id,
+    publishedAt: published.publication.publishedAt,
+  };
+}
+
+export function projectPublicClassSchedule(
+  state: WorkspaceState,
+  classKey: string,
+): PublicClassView {
+  const changes = publishedChanges(state);
+  const lessons = state.lessons
+    .filter((lesson) => lesson.revisionId === state.workspace.activeRevisionId
+      && classIdentityKey(lesson.classIdentity) === classKey)
+    .map((lesson) => publicLesson(lesson, changes.get(lesson.id)))
+    .sort((left, right) => left.date.localeCompare(right.date)
+      || left.period.localeCompare(right.period)
+      || left.lessonId.localeCompare(right.lessonId));
+  const publishedAt = lessons
+    .flatMap((lesson) => lesson.publishedAt ? [lesson.publishedAt] : [])
+    .sort()
+    .at(-1);
+
+  return {
+    workspaceId: state.workspace.id,
+    schoolName: state.workspace.name,
+    classKey,
+    lessons,
+    ...(publishedAt ? { lastPublishedAt: publishedAt } : {}),
+  };
+}

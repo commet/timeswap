@@ -172,7 +172,22 @@ describe('transitionCase', () => {
   ];
 
   it.each(allowed)('allows %s → %s and audits both states', (from, to) => {
-    const base = caseAtStatus(from);
+    const original = caseAtStatus(from);
+    const base = from === 'in_review'
+      ? {
+          ...original,
+          cases: [{
+            ...original.cases[0]!,
+            resolutionItems: [{
+              id: 'resolution-manual',
+              lessonId: 'lesson-1',
+              kind: 'manual' as const,
+              computedAgainstRevisionId: 'revision-1',
+              changes: [],
+            }],
+          }],
+        }
+      : original;
     const before = from === 'admin_in_progress'
       ? {
           ...base,

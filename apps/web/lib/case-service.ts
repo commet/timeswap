@@ -5,6 +5,7 @@ import type {
   CaseStatus,
   WorkspaceState,
 } from './domain';
+import { validateCasePlan } from './projections';
 
 export interface CreateAbsenceCaseInput {
   id: string;
@@ -200,6 +201,15 @@ export function transitionCase(
   }
   if (!NEXT_STATUS[current.status]?.includes(input.to)) {
     throw new Error(`Invalid case transition: ${current.status} → ${input.to}`);
+  }
+  if (current.status === 'in_review' && input.to === 'resolution_approved') {
+    const validation = validateCasePlan(state, current.id);
+    if (!validation.valid) {
+      if (validation.staleRevision) {
+        throw new Error('The resolution must be recomputed against the active revision.');
+      }
+      throw new Error('The resolution plan has unresolved conflicts.');
+    }
   }
   if (current.status === 'admin_in_progress'
     && input.to === 'ready_to_publish'

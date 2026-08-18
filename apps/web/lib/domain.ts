@@ -21,6 +21,13 @@ export interface BaseScheduleRevision {
   loadedAt: ISOTimestamp;
   complete: boolean;
   checksum: string;
+  closures?: ScheduleClosure[];
+}
+
+export interface ScheduleClosure {
+  date: ISODate;
+  reason: string;
+  classIdentities?: ClassIdentity[];
 }
 
 export type TeacherAssignment =
@@ -58,7 +65,7 @@ export interface ResolutionItem {
   id: string;
   lessonId: string;
   kind: 'unresolved' | 'move' | 'swap2' | 'cycle3' | 'cover' | 'manual';
-  computedAgainstRevisionId?: string;
+  computedAgainstRevisionId: string;
   changes: ResolutionChange[];
 }
 
