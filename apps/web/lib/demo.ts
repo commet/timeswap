@@ -7,6 +7,7 @@ import {
 import publicRowsFixture from '../../../packages/engine/test/fixtures/neis-data-quality.json';
 import type {
   AbsenceCase,
+  AtomicLessonGroup,
   AuditEvent,
   BaseScheduleRevision,
   Lesson,
@@ -112,23 +113,34 @@ export const DEMO_SCENARIOS = [
   },
 ] as const satisfies readonly DemoScenarioDefinition[];
 
-export const DEMO_PROVENANCE_LABEL = '공식 시간표 구조 · 교사와 사건은 예시';
+export const DEMO_PROVENANCE_LABEL = '공개 시간표 관측 구조 기반 · 일정·교사·사건은 예시';
 
-export interface DemoFactSource {
+interface DemoFactSourceBase {
+  retrievedAt: '2026-08-18';
+  credentialIncluded: false;
+}
+
+export interface DemoStructureFactSource extends DemoFactSourceBase {
+  kind: 'public-structure-derived-demo';
+  name: 'NEIS 공개 시간표 관측 구조를 바탕으로 만든 합성 일정';
+  basis: 'verified-aggregate-patterns-and-documented-structures';
+}
+
+export interface DemoExactFactSource extends DemoFactSourceBase {
   kind: 'official-neis';
   name: string;
   endpoints: readonly ['hisTimetable', 'misTimetable'];
-  retrievedAt: '2026-08-18';
   fixture: 'packages/engine/test/fixtures/neis-data-quality.json';
-  credentialIncluded: false;
 }
+
+export type DemoFactSource = DemoStructureFactSource | DemoExactFactSource;
 
 export interface DemoProvenance {
   factSource: DemoFactSource;
   operationSource: 'synthetic-demo';
   label: typeof DEMO_PROVENANCE_LABEL;
   fieldBoundary: {
-    officialScheduleFacts: readonly ['date', 'period', 'classIdentity', 'subject', 'room'];
+    scheduleFactFields: readonly ['date', 'period', 'classIdentity', 'subject', 'room'];
     syntheticOperations: readonly [
       'teacherAssignments',
       'absenceReasons',
@@ -142,9 +154,6 @@ export interface DemoDiagnostics {
   recommendationEnabled?: boolean;
   expectedRows?: number;
   receivedRows?: number;
-  atomicParallelGroup?: boolean;
-  practiceBlockLessonIds?: string[];
-  unsplittablePracticeBlock?: boolean;
   fixtureCredentialRequired?: boolean;
   acceptedRows?: number;
   duplicateCount?: number;
@@ -164,13 +173,19 @@ export interface DemoWorkspaceState extends WorkspaceState {
 }
 
 const DEFAULT_NOW = '2026-08-18T00:00:00.000Z';
-const OFFICIAL_REVISION_QUERY = {
+const EXACT_REVISION_QUERY = {
   sourceFixture: 'packages/engine/test/fixtures/neis-data-quality.json',
   retrievedAt: '2026-08-18',
   responseCache: 'not-stored',
 };
 
-const FACT_SOURCE: DemoFactSource = {
+const STRUCTURE_REVISION_QUERY = {
+  provenance: 'public-structure-derived-demo',
+  observedAt: '2026-08-18',
+  responseCache: 'not-stored',
+};
+
+const EXACT_FACT_SOURCE: DemoExactFactSource = {
   kind: 'official-neis',
   name: 'NEIS 교육정보 개방 포털 공개 시간표 응답',
   endpoints: ['hisTimetable', 'misTimetable'],
@@ -179,20 +194,33 @@ const FACT_SOURCE: DemoFactSource = {
   credentialIncluded: false,
 };
 
-const PROVENANCE: DemoProvenance = {
-  factSource: FACT_SOURCE,
-  operationSource: 'synthetic-demo',
-  label: DEMO_PROVENANCE_LABEL,
-  fieldBoundary: {
-    officialScheduleFacts: ['date', 'period', 'classIdentity', 'subject', 'room'],
-    syntheticOperations: [
-      'teacherAssignments',
-      'absenceReasons',
-      'approvals',
-      'burden',
-    ],
-  },
+const STRUCTURE_FACT_SOURCE: DemoStructureFactSource = {
+  kind: 'public-structure-derived-demo',
+  name: 'NEIS 공개 시간표 관측 구조를 바탕으로 만든 합성 일정',
+  basis: 'verified-aggregate-patterns-and-documented-structures',
+  retrievedAt: '2026-08-18',
+  credentialIncluded: false,
 };
+
+function createProvenance(surface: DemoScenarioSurface): DemoProvenance {
+  const factSource = surface === 'diagnostics'
+    ? { ...EXACT_FACT_SOURCE, endpoints: ['hisTimetable', 'misTimetable'] as const }
+    : { ...STRUCTURE_FACT_SOURCE };
+  return {
+    factSource,
+    operationSource: 'synthetic-demo',
+    label: DEMO_PROVENANCE_LABEL,
+    fieldBoundary: {
+      scheduleFactFields: ['date', 'period', 'classIdentity', 'subject', 'room'],
+      syntheticOperations: [
+        'teacherAssignments',
+        'absenceReasons',
+        'approvals',
+        'burden',
+      ],
+    },
+  };
+}
 
 function canonicalNow(value: string): string {
   const parsed = new Date(value);
@@ -274,6 +302,7 @@ interface CaseInput {
 
 interface StateInput {
   lessons: LessonInput[];
+  atomicLessonGroups?: Array<Pick<AtomicLessonGroup, 'id' | 'kind' | 'lessonIds'>>;
   cases?: CaseInput[];
   complete?: boolean;
   closures?: ScheduleClosure[];
@@ -335,11 +364,14 @@ function buildState(
   const revision: BaseScheduleRevision = {
     id: revisionId,
     workspaceId,
-    source: 'neis',
-    query: { ...OFFICIAL_REVISION_QUERY, ...input.revisionQuery },
+    source: scenario.surface === 'diagnostics' ? 'neis' : 'demo',
+    query: {
+      ...(scenario.surface === 'diagnostics' ? EXACT_REVISION_QUERY : STRUCTURE_REVISION_QUERY),
+      ...input.revisionQuery,
+    },
     loadedAt: timestampAt(now, 1),
     complete: input.complete ?? true,
-    checksum: `${scenarioId}:official-structure:2026-08-18`,
+    checksum: `${scenarioId}:${scenario.surface === 'diagnostics' ? 'official-rows' : 'structure-derived-demo'}:2026-08-18`,
     ...(input.closures ? { closures: input.closures } : {}),
   };
 
@@ -354,6 +386,14 @@ function buildState(
     },
     revisions: [revision],
     lessons: input.lessons.map((item) => lesson(workspaceId, revisionId, item)),
+    ...(input.atomicLessonGroups ? {
+      atomicLessonGroups: input.atomicLessonGroups.map((group) => ({
+        ...group,
+        lessonIds: [...group.lessonIds],
+        workspaceId,
+        revisionId,
+      })),
+    } : {}),
     cases,
     adminTasks: [],
     publications,
@@ -364,7 +404,7 @@ function buildState(
       surface: scenario.surface,
       initialView: scenario.initialView,
       expectedOutcome: scenario.expectedOutcome,
-      provenance: PROVENANCE,
+      provenance: createProvenance(scenario.surface),
       diagnostics: { ...input.diagnostics },
     },
   };
@@ -520,13 +560,16 @@ function electiveBlock(now: string): DemoWorkspaceState {
         id: 'elective-block:resolution:cover',
         lessonId: ids[0]!,
         kind: 'cover',
-        changes: [assigned(ids[0]!, '2026-08-18', '5', 'teacher:cover-elective')],
+        changes: [
+          assigned(ids[0]!, '2026-08-18', '5', 'teacher:cover-elective'),
+          assigned(ids[1]!, '2026-08-18', '5', 'teacher:elective-2'),
+          assigned(ids[2]!, '2026-08-18', '5', 'teacher:elective-3'),
+        ],
       }],
       status: 'in_review',
     }],
     diagnostics: {
       recommendationEnabled: true,
-      atomicParallelGroup: true,
     },
   });
 }
@@ -543,6 +586,11 @@ function practiceBlock(now: string): DemoWorkspaceState {
       room: '자동차실습실',
       teacherId: 'teacher:seo-jun',
     })),
+    atomicLessonGroups: [{
+      id: 'practice-block:atomic:professional-practice',
+      kind: 'professional-practice-block',
+      lessonIds: ids,
+    }],
     cases: [{
       id: 'practice-block:case:request',
       requesterTeacherId: 'teacher:seo-jun',
@@ -550,18 +598,17 @@ function practiceBlock(now: string): DemoWorkspaceState {
       toDate: '2026-08-18',
       reason: '연수·출장',
       lessonIds: ids,
-      resolutionItems: ids.map((id, index) => ({
-        id: `practice-block:resolution:cover-${index + 1}`,
-        lessonId: id,
+      resolutionItems: [{
+        id: 'practice-block:resolution:atomic-cover',
+        lessonId: ids[0]!,
         kind: 'cover',
-        changes: [assigned(id, '2026-08-18', String(index + 2), 'teacher:cover-practice')],
-      })),
+        changes: ids.map((id, index) =>
+          assigned(id, '2026-08-18', String(index + 2), 'teacher:cover-practice')),
+      }],
       status: 'in_review',
     }],
     diagnostics: {
       recommendationEnabled: true,
-      practiceBlockLessonIds: ids,
-      unsplittablePracticeBlock: true,
     },
   });
 }

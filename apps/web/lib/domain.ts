@@ -54,6 +54,15 @@ export interface ParallelLessonGroup {
   lessonIds: string[];
 }
 
+/** Lessons that must be selected and resolved as one operational unit. */
+export interface AtomicLessonGroup {
+  id: string;
+  workspaceId: string;
+  revisionId: string;
+  kind: 'professional-practice-block';
+  lessonIds: string[];
+}
+
 export interface ResolutionChange {
   lessonId: string;
   toDate: ISODate;
@@ -154,6 +163,7 @@ export interface WorkspaceState {
   workspace: SchoolWorkspace;
   revisions: BaseScheduleRevision[];
   lessons: Lesson[];
+  atomicLessonGroups?: AtomicLessonGroup[];
   cases: AbsenceCase[];
   adminTasks: AdminTask[];
   publications: Publication[];

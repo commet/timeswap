@@ -80,15 +80,39 @@ describe('demo scenario inventory', () => {
 });
 
 describe('demo source boundary', () => {
-  it.each(scenarioIds)('separates official facts from synthetic operations in %s', (id) => {
+  it.each(scenarioIds.slice(0, 8))('labels %s facts as structure-derived demo data', (id) => {
     const state = loadDemoScenario(id, '2026-08-18T00:00:00.000Z');
 
-    expect(state.demo.provenance.factSource.kind).toBe('official-neis');
-    expect(state.demo.provenance.factSource.retrievedAt).toBe('2026-08-18');
-    expect(state.demo.provenance.factSource.credentialIncluded).toBe(false);
+    expect(state.demo.provenance.factSource).toEqual(expect.objectContaining({
+      kind: 'public-structure-derived-demo',
+      retrievedAt: '2026-08-18',
+      credentialIncluded: false,
+    }));
+    expect(state.revisions[0]?.source).toBe('demo');
+    expect(state.revisions[0]?.query).not.toHaveProperty('sourceFixture');
     expect(state.demo.provenance.operationSource).toBe('synthetic-demo');
     expect(state.demo.provenance.label).toBe(DEMO_PROVENANCE_LABEL);
-    expect(DEMO_PROVENANCE_LABEL).toBe('공식 시간표 구조 · 교사와 사건은 예시');
+  });
+
+  it.each(scenarioIds.slice(8))('labels %s as exact official public fixture rows', (id) => {
+    const state = loadDemoScenario(id, '2026-08-18T00:00:00.000Z');
+
+    expect(state.demo.provenance.factSource).toEqual(expect.objectContaining({
+      kind: 'official-neis',
+      fixture: 'packages/engine/test/fixtures/neis-data-quality.json',
+    }));
+    expect(state.demo.provenance.factSource.retrievedAt).toBe('2026-08-18');
+    expect(state.demo.provenance.factSource.credentialIncluded).toBe(false);
+    expect(state.revisions[0]?.source).toBe('neis');
+    expect(state.revisions[0]?.query?.sourceFixture).toBe(
+      'packages/engine/test/fixtures/neis-data-quality.json',
+    );
+    expect(state.demo.provenance.operationSource).toBe('synthetic-demo');
+    expect(state.demo.provenance.label).toBe(DEMO_PROVENANCE_LABEL);
+  });
+
+  it('uses the visible structure-derived provenance wording', () => {
+    expect(DEMO_PROVENANCE_LABEL).toBe('공개 시간표 관측 구조 기반 · 일정·교사·사건은 예시');
   });
 });
 
@@ -121,24 +145,52 @@ describe('operational demo scenarios', () => {
   it('keeps the elective parallel group atomic and resolves it by cover', () => {
     const state = loadDemoScenario('elective-block');
     const grouped = state.lessons.filter((lesson) => lesson.parallelGroupId);
+    const resolution = state.cases[0]?.resolutionItems[0];
 
     expect(grouped).toHaveLength(3);
     expect(new Set(grouped.map((lesson) => lesson.parallelGroupId))).toEqual(
       new Set(['elective-block:parallel:grade-2']),
     );
-    expect(state.cases[0]?.resolutionItems.every((item) => item.kind === 'cover')).toBe(true);
-    expect(state.demo.diagnostics.atomicParallelGroup).toBe(true);
+    expect(state.cases[0]?.resolutionItems).toHaveLength(1);
+    expect(resolution?.kind).toBe('cover');
+    expect(new Set(resolution?.changes.map((change) => change.lessonId))).toEqual(
+      new Set(grouped.map((lesson) => lesson.id)),
+    );
+    expect(state.cases[0]?.resolutionItems.some((item) =>
+      item.kind === 'move' || item.kind === 'swap2' || item.kind === 'cycle3')).toBe(false);
+    expect(validateCasePlan(state, state.cases[0]!.id).valid).toBe(true);
   });
 
-  it('keeps the three-period professional-practice run unsplittable', () => {
+  it('models the three-period professional-practice run as one atomic resolution', () => {
     const state = loadDemoScenario('practice-block');
-    const practiceIds = state.demo.diagnostics.practiceBlockLessonIds;
+    const group = state.atomicLessonGroups?.[0];
+    const resolution = state.cases[0]?.resolutionItems[0];
 
-    expect(practiceIds).toHaveLength(3);
-    expect(state.lessons.filter((lesson) => practiceIds?.includes(lesson.id))
+    expect(group).toEqual(expect.objectContaining({
+      id: 'practice-block:atomic:professional-practice',
+      kind: 'professional-practice-block',
+    }));
+    expect(group?.lessonIds).toHaveLength(3);
+    expect(state.lessons.filter((lesson) => group?.lessonIds.includes(lesson.id))
       .map((lesson) => lesson.period)).toEqual(['2', '3', '4']);
-    expect(state.demo.diagnostics.unsplittablePracticeBlock).toBe(true);
-    expect(state.cases[0]?.resolutionItems.every((item) => item.kind === 'cover')).toBe(true);
+    expect(state.cases[0]?.resolutionItems).toHaveLength(1);
+    expect(resolution?.kind).toBe('cover');
+    expect(new Set(resolution?.changes.map((change) => change.lessonId))).toEqual(
+      new Set(group?.lessonIds),
+    );
+    expect(validateCasePlan(state, state.cases[0]!.id).valid).toBe(true);
+  });
+
+  it('rejects a one-period split from the professional-practice block', () => {
+    const state = loadDemoScenario('practice-block');
+    const split = structuredClone(state);
+    const resolution = split.cases[0]!.resolutionItems[0]!;
+    resolution.changes = resolution.changes.slice(0, 1);
+
+    const result = validateCasePlan(split, split.cases[0]!.id);
+
+    expect(result.valid).toBe(false);
+    expect(result.conflicts.map((conflict) => conflict.kind)).toContain('atomic-group');
   });
 
   it('rejects a move onto an official closure', () => {

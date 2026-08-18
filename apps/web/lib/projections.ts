@@ -66,7 +66,13 @@ export interface PlanValidation {
   staleRevision: boolean;
   conflicts: Array<{
     lessonId: string;
-    kind: 'teacher' | 'class' | 'closure' | 'unknown-occupancy' | 'parallel-group';
+    kind:
+      | 'teacher'
+      | 'class'
+      | 'closure'
+      | 'unknown-occupancy'
+      | 'parallel-group'
+      | 'atomic-group';
     message: string;
   }>;
 }
@@ -394,11 +400,36 @@ export function validateCasePlan(state: WorkspaceState, caseId: string): PlanVal
     }
     return [...unique.values()];
   };
+  const activeAtomicGroups = (state.atomicLessonGroups ?? []).filter((group) =>
+    group.workspaceId === state.workspace.id
+    && group.revisionId === state.workspace.activeRevisionId);
+  const resolutionKeepsAtomicGroups = (itemCase: AbsenceCase): boolean =>
+    itemCase.resolutionItems.every((item) => {
+      const changedLessonIds = new Set(item.changes.map((change) => change.lessonId));
+      return activeAtomicGroups.every((group) => {
+        const touchesGroup = group.lessonIds.some((lessonId) => changedLessonIds.has(lessonId));
+        return !touchesGroup || group.lessonIds.every((lessonId) => changedLessonIds.has(lessonId));
+      });
+    });
+  for (const item of absenceCase.resolutionItems) {
+    const changedLessonIds = new Set(item.changes.map((change) => change.lessonId));
+    for (const group of activeAtomicGroups) {
+      const touchesGroup = group.lessonIds.some((lessonId) => changedLessonIds.has(lessonId));
+      if (touchesGroup && group.lessonIds.some((lessonId) => !changedLessonIds.has(lessonId))) {
+        addConflict(
+          item.lessonId,
+          'atomic-group',
+          '연속 실습 묶음 전체를 하나의 해결안으로 선택해야 합니다.',
+        );
+      }
+    }
+  }
   const planIsProven = (itemCase: AbsenceCase): boolean =>
     Boolean(activeRevision?.complete)
     && itemCase.resolutionItems.every((item) =>
       item.computedAgainstRevisionId === state.workspace.activeRevisionId)
     && itemCase.lessonIds.every((lessonId) => resolutionCoversLesson(itemCase, lessonId))
+    && resolutionKeepsAtomicGroups(itemCase)
     && caseMovements(itemCase).every((movement) =>
       movement.lesson && movement.change.teacher.state === 'assigned');
 
