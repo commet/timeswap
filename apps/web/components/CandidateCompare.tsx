@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Candidate, ScheduleConfig } from '@timeswap/engine';
-import type { RequestReason } from '../lib/requests';
+import type { RequestReason } from '../lib/request-workflow';
 
 const TYPE_LABEL: Record<Candidate['type'], string> = {
   move: '빈 시간 이동',

@@ -135,7 +135,8 @@ export interface AuditEvent {
     | 'case.deleted'
     | 'case.correction_created'
     | 'admin.tasks_created'
-    | 'admin.task_completed';
+    | 'admin.task_completed'
+    | 'migration.v1';
   at: ISOTimestamp;
   details: Record<string, AuditValue>;
 }

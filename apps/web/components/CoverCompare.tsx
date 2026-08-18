@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { CoverCandidate } from '@timeswap/engine';
-import type { RequestReason } from '../lib/requests';
+import type { RequestReason } from '../lib/request-workflow';
 
 export function CoverCompare({
   candidates,

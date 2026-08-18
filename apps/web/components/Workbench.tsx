@@ -30,15 +30,13 @@ import { BRAND } from '../lib/brand';
 import {
   createRequest,
   createCoverRequest,
-  loadRequests,
-  saveRequests,
   selectCandidate,
   setChecklist,
   transitionRequest,
   type ChangeRequest,
   type ChecklistKey,
   type RequestReason,
-} from '../lib/requests';
+} from '../lib/request-workflow';
 import {
   applyAll,
   applyTheme,
@@ -179,7 +177,7 @@ export function Workbench() {
     }
     setOffDays(loadOffDays());
     setTheme(loadTheme());
-    setRequests(loadRequests());
+    setRequests([]);
     const wd = new Date().getDay(); // 일 0, 월 1
     setTodayIdx(wd >= 1 && wd <= 5 ? wd - 1 : null);
     if (window.innerWidth < 700) setScheduleFocus('today');
@@ -474,7 +472,6 @@ export function Workbench() {
       setEntries([]);
       saveEntries([]);
       setRequests([]);
-      saveRequests([]);
       setQueue([]);
       setUnavail({});
       saveUnavail({});
@@ -823,7 +820,6 @@ export function Workbench() {
         });
         const next = [request, ...requests];
         setRequests(next);
-        if (!saveRequests(next)) setNoSave(true);
         setHovered(null);
         setQueue((current) => current.slice(1));
         show('일과 담당자에게 변경 요청을 보냈습니다');
@@ -864,7 +860,6 @@ export function Workbench() {
         });
         const next = [request, ...requests];
         setRequests(next);
-        if (!saveRequests(next)) setNoSave(true);
         setQueue((current) => current.slice(1));
         show(candidate.teacher + ' 선생님 보강 요청을 보냈습니다');
         window.setTimeout(() => document.getElementById('my-requests-title')?.focus(), 80);
@@ -882,7 +877,6 @@ export function Workbench() {
           request.id === id ? transitionRequest(request, 'cancelled') : request,
         );
         setRequests(next);
-        if (!saveRequests(next)) setNoSave(true);
         show('요청을 취소했습니다');
       } catch (error) {
         show(error instanceof Error ? error.message : '요청을 취소하지 못했습니다');
@@ -898,7 +892,6 @@ export function Workbench() {
           request.id === id ? selectCandidate(request, candidate) : request,
         );
         setRequests(next);
-        if (!saveRequests(next)) setNoSave(true);
         show('승인할 교체안을 바꿨습니다');
       } catch (error) {
         show(error instanceof Error ? error.message : '교체안을 바꾸지 못했습니다');
@@ -931,7 +924,6 @@ export function Workbench() {
         setEntries(nextEntries);
         if (!saveEntries(nextEntries)) setNoSave(true);
         setRequests(nextRequests);
-        if (!saveRequests(nextRequests)) setNoSave(true);
         show('승인했습니다. 이제 행정 마무리 세 단계를 확인해 주세요');
         window.setTimeout(() => document.getElementById('admin-checklist-title')?.focus(), 80);
       } catch (error) {
@@ -948,7 +940,6 @@ export function Workbench() {
           request.id === id ? transitionRequest(request, 'rejected', note) : request,
         );
         setRequests(next);
-        if (!saveRequests(next)) setNoSave(true);
         show('조정할 이유와 함께 반려했습니다');
       } catch (error) {
         show(error instanceof Error ? error.message : '반려하지 못했습니다');
@@ -964,7 +955,6 @@ export function Workbench() {
           request.id === id ? setChecklist(request, key, checked) : request,
         );
         setRequests(next);
-        if (!saveRequests(next)) setNoSave(true);
       } catch (error) {
         show(error instanceof Error ? error.message : '완료 상태를 저장하지 못했습니다');
       }
@@ -979,7 +969,6 @@ export function Workbench() {
           request.id === id ? transitionRequest(request, 'published') : request,
         );
         setRequests(next);
-        if (!saveRequests(next)) setNoSave(true);
         show('변경 시간표를 게시 완료로 표시했습니다');
         window.setTimeout(() => document.getElementById('ops-detail-title')?.focus(), 80);
       } catch (error) {
@@ -1004,7 +993,6 @@ export function Workbench() {
     if (!window.confirm('반영한 변경을 모두 되돌리시겠습니까?')) return;
     setEntries([]);
     setRequests([]);
-    saveRequests([]);
     saveEntries([]);
     setQueue([]);
     setHovered(null);

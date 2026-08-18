@@ -3,8 +3,8 @@
 import { useMemo, useState } from 'react';
 import type { Candidate, ScheduleConfig } from '@timeswap/engine';
 import { slotName } from '@timeswap/engine';
-import type { ChangeRequest, ChecklistKey } from '../lib/requests';
-import { requestStatusLabel } from '../lib/requests';
+import type { ChangeRequest, ChecklistKey } from '../lib/request-workflow';
+import { requestStatusLabel } from '../lib/request-workflow';
 
 export function OpsInbox({
   requests,

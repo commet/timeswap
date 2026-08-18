@@ -3,11 +3,10 @@ import type { Assignment, Candidate, CoverCandidate } from '@timeswap/engine';
 import {
   createCoverRequest,
   createRequest,
-  decodeRequests,
   selectCandidate,
   setChecklist,
   transitionRequest,
-} from '../lib/requests';
+} from '../lib/request-workflow';
 
 const target: Assignment = {
   teacher: '김수학',
@@ -142,8 +141,4 @@ describe('변경 요청', () => {
     expect(transitionRequest(ready, 'published').status).toBe('published');
   });
 
-  it('손상되거나 판이 다른 저장값은 빈 목록으로 복구한다', () => {
-    expect(decodeRequests('not json')).toEqual([]);
-    expect(decodeRequests(JSON.stringify({ version: 99, requests: [] }))).toEqual([]);
-  });
 });

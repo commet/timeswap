@@ -2,8 +2,8 @@
 
 import type { ScheduleConfig } from '@timeswap/engine';
 import { slotName } from '@timeswap/engine';
-import type { ChangeRequest } from '../lib/requests';
-import { requestStatusLabel } from '../lib/requests';
+import type { ChangeRequest } from '../lib/request-workflow';
+import { requestStatusLabel } from '../lib/request-workflow';
 
 export function RequestStatusList({
   requests,

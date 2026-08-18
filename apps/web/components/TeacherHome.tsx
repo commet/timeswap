@@ -2,8 +2,8 @@
 
 import type { Assignment, ScheduleConfig } from '@timeswap/engine';
 import { dayOf, periodOf } from '@timeswap/engine';
-import type { ChangeRequest } from '../lib/requests';
-import { requestStatusLabel } from '../lib/requests';
+import type { ChangeRequest } from '../lib/request-workflow';
+import { requestStatusLabel } from '../lib/request-workflow';
 
 export type ScheduleFocus = 'today' | 'week';
 

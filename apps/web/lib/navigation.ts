@@ -1,0 +1,102 @@
+export type AppLocation =
+  | { view: 'landing' }
+  | { view: 'setup' }
+  | { view: 'teacher'; school: string; teacher: string }
+  | { view: 'ops'; school: string; caseId?: string }
+  | { view: 'class'; school: string; grade: string; className: string };
+
+type PushHistoryLike = Pick<History, 'pushState'>;
+type ReplaceHistoryLike = Pick<History, 'replaceState'>;
+type LocationLike = Pick<Location, 'pathname' | 'search'>;
+type PopStateTarget = {
+  addEventListener(type: 'popstate', listener: () => void): void;
+  removeEventListener(type: 'popstate', listener: () => void): void;
+};
+
+function required(params: URLSearchParams, key: string): string | null {
+  const values = params.getAll(key);
+  return values.length === 1 && values[0]!.trim() ? values[0]! : null;
+}
+
+function hasOnly(params: URLSearchParams, keys: readonly string[]): boolean {
+  return [...params.keys()].every((key) => keys.includes(key));
+}
+
+export function formatLocation(location: AppLocation): string {
+  if (location.view === 'landing') return '/';
+  const params = new URLSearchParams({ view: location.view });
+  if (location.view === 'setup') return `/?${params}`;
+  params.set('school', location.school);
+  if (location.view === 'teacher') params.set('teacher', location.teacher);
+  if (location.view === 'ops' && location.caseId) params.set('case', location.caseId);
+  if (location.view === 'class') {
+    params.set('grade', location.grade);
+    params.set('class', location.className);
+  }
+  return `/?${params}`;
+}
+
+export function parseLocation(input: string | LocationLike): AppLocation {
+  const parsed = typeof input === 'string'
+    ? new URL(input, 'https://static-export.invalid')
+    : input;
+  if (parsed.pathname !== '/') return { view: 'landing' };
+  const search = parsed.search;
+  const params = new URLSearchParams(search);
+  const view = required(params, 'view');
+  if (view === 'setup' && hasOnly(params, ['view'])) return { view };
+  if (view === 'teacher' && hasOnly(params, ['view', 'school', 'teacher'])) {
+    const school = required(params, 'school');
+    const teacher = required(params, 'teacher');
+    return school && teacher ? { view, school, teacher } : { view: 'landing' };
+  }
+  if (view === 'ops' && hasOnly(params, ['view', 'school', 'case'])) {
+    const school = required(params, 'school');
+    const caseId = params.has('case') ? required(params, 'case') : undefined;
+    return school && caseId !== null ? { view, school, ...(caseId ? { caseId } : {}) } : { view: 'landing' };
+  }
+  if (view === 'class' && hasOnly(params, ['view', 'school', 'grade', 'class'])) {
+    const school = required(params, 'school');
+    const grade = required(params, 'grade');
+    const className = required(params, 'class');
+    return school && grade && className ? { view, school, grade, className } : { view: 'landing' };
+  }
+  return { view: 'landing' };
+}
+
+function browserHistory(): History {
+  return window.history;
+}
+
+export function pushLocation(location: AppLocation): void;
+export function pushLocation(history: PushHistoryLike, location: AppLocation): void;
+export function pushLocation(first: AppLocation | PushHistoryLike, second?: AppLocation): void {
+  const [history, location] = second ? [first as PushHistoryLike, second] : [browserHistory(), first as AppLocation];
+  history.pushState(null, '', formatLocation(location));
+}
+
+export function replaceLocation(location: AppLocation): void;
+export function replaceLocation(history: ReplaceHistoryLike, location: AppLocation): void;
+export function replaceLocation(first: AppLocation | ReplaceHistoryLike, second?: AppLocation): void {
+  const [history, location] = second ? [first as ReplaceHistoryLike, second] : [browserHistory(), first as AppLocation];
+  history.replaceState(null, '', formatLocation(location));
+}
+
+export function subscribeToPopState(onLocation: (location: AppLocation) => void): () => void;
+export function subscribeToPopState(
+  location: LocationLike,
+  target: PopStateTarget,
+  onLocation: (location: AppLocation) => void,
+): () => void;
+export function subscribeToPopState(
+  first: LocationLike | ((location: AppLocation) => void),
+  second?: PopStateTarget,
+  third?: (location: AppLocation) => void,
+): () => void {
+  const location = typeof first === 'function' ? window.location : first;
+  const target = typeof first === 'function' ? window : second!;
+  const onLocation = typeof first === 'function' ? first : third!;
+  const listener = () => onLocation(parseLocation(location));
+  target.addEventListener('popstate', listener);
+  return () => target.removeEventListener('popstate', listener);
+}

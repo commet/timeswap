@@ -9,7 +9,7 @@ import type {
   ScheduleConfig,
 } from '@timeswap/engine';
 import { slotName } from '@timeswap/engine';
-import type { RequestReason } from '../lib/requests';
+import type { RequestReason } from '../lib/request-workflow';
 import { CandidateCompare } from './CandidateCompare';
 import { CoverCompare } from './CoverCompare';
 
