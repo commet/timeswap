@@ -403,33 +403,78 @@ export function validateCasePlan(state: WorkspaceState, caseId: string): PlanVal
   const activeAtomicGroups = (state.atomicLessonGroups ?? []).filter((group) =>
     group.workspaceId === state.workspace.id
     && group.revisionId === state.workspace.activeRevisionId);
-  const resolutionKeepsAtomicGroups = (itemCase: AbsenceCase): boolean =>
-    itemCase.resolutionItems.every((item) => {
-      const changedLessonIds = new Set(item.changes.map((change) => change.lessonId));
-      return activeAtomicGroups.every((group) => {
-        const touchesGroup = group.lessonIds.some((lessonId) => changedLessonIds.has(lessonId));
-        return !touchesGroup || group.lessonIds.every((lessonId) => changedLessonIds.has(lessonId));
-      });
-    });
-  for (const item of absenceCase.resolutionItems) {
-    const changedLessonIds = new Set(item.changes.map((change) => change.lessonId));
+  const atomicViolations = (itemCase: AbsenceCase): Array<{
+    lessonId: string;
+    message: string;
+  }> => {
+    const violations: Array<{ lessonId: string; message: string }> = [];
+    const selectedLessonIds = new Set(itemCase.lessonIds);
     for (const group of activeAtomicGroups) {
-      const touchesGroup = group.lessonIds.some((lessonId) => changedLessonIds.has(lessonId));
-      if (touchesGroup && group.lessonIds.some((lessonId) => !changedLessonIds.has(lessonId))) {
-        addConflict(
-          item.lessonId,
-          'atomic-group',
-          '연속 실습 묶음 전체를 하나의 해결안으로 선택해야 합니다.',
-        );
+      const selectedMembers = group.lessonIds.filter((lessonId) => selectedLessonIds.has(lessonId));
+      if (selectedMembers.length > 0 && selectedMembers.length !== group.lessonIds.length) {
+        violations.push({
+          lessonId: selectedMembers[0]!,
+          message: '연속 실습 묶음 전체를 한 사건에서 함께 선택해야 합니다.',
+        });
+      }
+
+      const groupLessonIds = new Set(group.lessonIds);
+      const sourceLessons = group.lessonIds
+        .map((lessonId) => lessonsById.get(lessonId))
+        .filter((item): item is Lesson => Boolean(item))
+        .sort((left, right) => left.date.localeCompare(right.date)
+          || Number(left.period) - Number(right.period)
+          || left.id.localeCompare(right.id));
+      for (const item of itemCase.resolutionItems) {
+        const changedLessonIds = new Set(item.changes.map((change) => change.lessonId));
+        const touchesGroup = groupLessonIds.has(item.lessonId)
+          || group.lessonIds.some((lessonId) => changedLessonIds.has(lessonId));
+        if (!touchesGroup) continue;
+
+        if (group.lessonIds.some((lessonId) => !changedLessonIds.has(lessonId))) {
+          violations.push({
+            lessonId: item.lessonId,
+            message: '연속 실습 묶음 전체를 하나의 해결안으로 선택해야 합니다.',
+          });
+          continue;
+        }
+
+        const changesByLessonId = new Map(item.changes.map((change) => [change.lessonId, change]));
+        const destinations = sourceLessons.map((source) => changesByLessonId.get(source.id)!);
+        const destinationDate = destinations[0]?.toDate;
+        const consecutive = sourceLessons.length === group.lessonIds.length
+          && destinations.every((change) => change?.toDate === destinationDate)
+          && destinations.every((change, index) => {
+            const period = Number(change?.toPeriod);
+            return Number.isInteger(period)
+              && (index === 0 || period === Number(destinations[index - 1]?.toPeriod) + 1);
+          });
+        const manualStaysAtOriginalSlots = item.kind !== 'manual'
+          || sourceLessons.every((source) => {
+            const change = changesByLessonId.get(source.id);
+            return change?.toDate === source.date && change.toPeriod === source.period;
+          });
+        if (!consecutive || !manualStaysAtOriginalSlots) {
+          violations.push({
+            lessonId: item.lessonId,
+            message: item.kind === 'manual'
+              ? '수동 처리도 연속 실습 묶음 전체를 원래 연속 교시에 유지해야 합니다.'
+              : '연속 실습 묶음은 같은 날짜의 이어지는 교시 순서를 유지해야 합니다.',
+          });
+        }
       }
     }
+    return violations;
+  };
+  for (const violation of atomicViolations(absenceCase)) {
+    addConflict(violation.lessonId, 'atomic-group', violation.message);
   }
   const planIsProven = (itemCase: AbsenceCase): boolean =>
     Boolean(activeRevision?.complete)
     && itemCase.resolutionItems.every((item) =>
       item.computedAgainstRevisionId === state.workspace.activeRevisionId)
     && itemCase.lessonIds.every((lessonId) => resolutionCoversLesson(itemCase, lessonId))
-    && resolutionKeepsAtomicGroups(itemCase)
+    && atomicViolations(itemCase).length === 0
     && caseMovements(itemCase).every((movement) =>
       movement.lesson && movement.change.teacher.state === 'assigned');
 

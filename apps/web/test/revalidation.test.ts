@@ -92,6 +92,41 @@ function currentPlan(): WorkspaceState {
   return state;
 }
 
+function atomicPracticePlan(): WorkspaceState {
+  const state = currentPlan();
+  state.lessons = [2, 3, 4].map((period) => ({
+    ...state.lessons[0]!,
+    id: `practice-${period}`,
+    period: String(period),
+    subject: '자동차 정비 실습',
+    room: '자동차실습실',
+  }));
+  state.atomicLessonGroups = [{
+    id: 'practice-block-1',
+    workspaceId: 'workspace-1',
+    revisionId: 'r2',
+    kind: 'professional-practice-block',
+    lessonIds: ['practice-2', 'practice-3', 'practice-4'],
+  }];
+  state.cases[0] = {
+    ...state.cases[0]!,
+    lessonIds: ['practice-2', 'practice-3', 'practice-4'],
+    resolutionItems: [{
+      id: 'practice-cover',
+      lessonId: 'practice-2',
+      kind: 'cover',
+      computedAgainstRevisionId: 'r2',
+      changes: [2, 3, 4].map((period) => ({
+        lessonId: `practice-${period}`,
+        toDate: '2026-08-24',
+        toPeriod: String(period),
+        teacher: { state: 'assigned' as const, teacherId: 'practice-cover-teacher' },
+      })),
+    }],
+  };
+  return state;
+}
+
 function scaleState(): WorkspaceState {
   const state = currentPlan();
   state.lessons = Array.from({ length: 41 }, (_, index) => ({
@@ -526,6 +561,65 @@ describe('approval revalidation', () => {
       valid: true,
       conflicts: [],
     });
+  });
+
+  it('rejects a case that selects only one lesson from an atomic practice block', () => {
+    const state = atomicPracticePlan();
+    state.cases[0] = {
+      ...state.cases[0]!,
+      lessonIds: ['practice-2'],
+    };
+
+    expect(validateCasePlan(state, 'case-1').conflicts).toContainEqual(
+      expect.objectContaining({ kind: 'atomic-group', lessonId: 'practice-2' }),
+    );
+  });
+
+  it('does not let a one-member manual resolution bypass atomic practice validation', () => {
+    const state = atomicPracticePlan();
+    state.cases[0] = {
+      ...state.cases[0]!,
+      resolutionItems: [{
+        id: 'practice-manual-one-member',
+        lessonId: 'practice-2',
+        kind: 'manual',
+        manualAction: '2교시만 별도 처리',
+        computedAgainstRevisionId: 'r2',
+        changes: [],
+      }],
+    };
+
+    expect(validateCasePlan(state, 'case-1').conflicts).toContainEqual(
+      expect.objectContaining({ kind: 'atomic-group', lessonId: 'practice-2' }),
+    );
+  });
+
+  it('rejects an atomic practice block scattered across dates and periods', () => {
+    const state = atomicPracticePlan();
+    state.cases[0]!.resolutionItems[0]!.changes = [
+      {
+        lessonId: 'practice-2',
+        toDate: '2026-08-25',
+        toPeriod: '2',
+        teacher: { state: 'assigned', teacherId: 'practice-cover-teacher' },
+      },
+      {
+        lessonId: 'practice-3',
+        toDate: '2026-08-26',
+        toPeriod: '5',
+        teacher: { state: 'assigned', teacherId: 'practice-cover-teacher' },
+      },
+      {
+        lessonId: 'practice-4',
+        toDate: '2026-08-25',
+        toPeriod: '7',
+        teacher: { state: 'assigned', teacherId: 'practice-cover-teacher' },
+      },
+    ];
+
+    expect(validateCasePlan(state, 'case-1').conflicts).toContainEqual(
+      expect.objectContaining({ kind: 'atomic-group', lessonId: 'practice-2' }),
+    );
   });
 
   it('removes every changed source slot before validating a whole-case swap', () => {
