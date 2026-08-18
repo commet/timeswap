@@ -134,6 +134,90 @@ function scaleState(): WorkspaceState {
 }
 
 describe('approval revalidation', () => {
+  it('does not cover an affected lesson with an unrelated movement', () => {
+    const state = currentPlan();
+    state.lessons.push({
+      ...state.lessons[0]!,
+      id: 'lesson-unrelated',
+      period: '3',
+      classIdentity: { ...klass, className: '2' },
+      teacher: { state: 'assigned', teacherId: 'teacher-2' },
+    });
+    state.cases[0] = {
+      ...state.cases[0]!,
+      resolutionItems: [{
+        id: 'resolution-unrelated',
+        lessonId: 'lesson-1',
+        kind: 'move',
+        computedAgainstRevisionId: 'r2',
+        changes: [{
+          lessonId: 'lesson-unrelated',
+          toDate: '2026-08-24',
+          toPeriod: '5',
+          teacher: { state: 'assigned', teacherId: 'teacher-2' },
+        }],
+      }],
+    };
+
+    expect(validateCasePlan(state, 'case-1')).toMatchObject({
+      valid: false,
+      conflicts: [expect.objectContaining({
+        lessonId: 'lesson-1',
+        kind: 'unknown-occupancy',
+      })],
+    });
+    expect(() => transitionCase(state, {
+      caseId: 'case-1',
+      to: 'resolution_approved',
+      actorId: 'ops-1',
+      at: '2026-08-18T03:00:00.000Z',
+      auditEventId: 'audit-unrelated-approval',
+    })).toThrow(/conflict/i);
+  });
+
+  it('does not approve an empty manual resolution', () => {
+    const state = currentPlan();
+    state.cases[0] = {
+      ...state.cases[0]!,
+      resolutionItems: [{
+        id: 'resolution-empty-manual',
+        lessonId: 'lesson-1',
+        kind: 'manual',
+        computedAgainstRevisionId: 'r2',
+        changes: [],
+      }],
+    };
+
+    expect(validateCasePlan(state, 'case-1').valid).toBe(false);
+    expect(() => transitionCase(state, {
+      caseId: 'case-1',
+      to: 'resolution_approved',
+      actorId: 'ops-1',
+      at: '2026-08-18T03:00:00.000Z',
+      auditEventId: 'audit-empty-manual-approval',
+    })).toThrow(/conflict/i);
+  });
+
+  it('accepts a manual resolution with an explicit safe action', () => {
+    const state = currentPlan();
+    state.cases[0] = {
+      ...state.cases[0]!,
+      resolutionItems: [{
+        id: 'resolution-safe-manual',
+        lessonId: 'lesson-1',
+        kind: 'manual',
+        manualAction: '담임교사가 자율학습을 감독합니다.',
+        computedAgainstRevisionId: 'r2',
+        changes: [],
+      }],
+    };
+
+    expect(validateCasePlan(state, 'case-1')).toMatchObject({
+      valid: true,
+      conflicts: [],
+    });
+  });
+
   it('blocks a candidate computed against an inactive revision', () => {
     const before = reviewState();
 

@@ -65,6 +65,7 @@ export interface ResolutionItem {
   id: string;
   lessonId: string;
   kind: 'unresolved' | 'move' | 'swap2' | 'cycle3' | 'cover' | 'manual';
+  manualAction?: string;
   computedAgainstRevisionId: string;
   changes: ResolutionChange[];
 }

@@ -124,6 +124,16 @@ const ACTIONABLE_STATUSES = new Set<AbsenceCase['status']>([
   'ready_to_publish',
 ]);
 
+function resolutionCoversLesson(absenceCase: AbsenceCase, lessonId: string): boolean {
+  return absenceCase.resolutionItems.some((item) => {
+    if (item.kind === 'unresolved') return false;
+    if (item.changes.some((change) => change.lessonId === lessonId)) return true;
+    return item.kind === 'manual'
+      && item.lessonId === lessonId
+      && Boolean(item.manualAction?.trim());
+  });
+}
+
 function publishedChanges(state: WorkspaceState): Map<string, PublishedChange> {
   const byLesson = new Map<string, PublishedChange>();
   const publications = [...state.publications]
@@ -151,6 +161,8 @@ function pendingChanges(state: WorkspaceState): Map<string, PendingChange> {
   const byLesson = new Map<string, PendingChange>();
   const cases = [...state.cases]
     .filter((absenceCase) => PENDING_STATUSES.has(absenceCase.status))
+    .filter((absenceCase) => absenceCase.resolutionItems.every((item) =>
+      item.computedAgainstRevisionId === state.workspace.activeRevisionId))
     .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt));
 
   for (const absenceCase of cases) {
@@ -210,15 +222,15 @@ export function projectTeacherSchedule(
         subject: lesson.subject,
         room: lesson.room,
         classIdentity: { ...lesson.classIdentity },
-        status: publishedValue ? 'published' : pendingValue ? '변경 예정' : 'base',
+        status: pendingValue ? '변경 예정' : publishedValue ? 'published' : 'base',
         base: baseValue,
         pending: pendingValue,
         published: publishedValue,
       }];
     })
     .sort((left, right) => {
-      const leftValue = left.published ?? left.pending ?? left.base;
-      const rightValue = right.published ?? right.pending ?? right.base;
+      const leftValue = left.pending ?? left.published ?? left.base;
+      const rightValue = right.pending ?? right.published ?? right.base;
       return leftValue.date.localeCompare(rightValue.date)
         || leftValue.period.localeCompare(rightValue.period)
         || left.lessonId.localeCompare(right.lessonId);
@@ -232,8 +244,7 @@ function unresolvedLessonCount(state: WorkspaceState): number {
   for (const absenceCase of state.cases) {
     if (!ACTIONABLE_STATUSES.has(absenceCase.status)) continue;
     for (const lessonId of absenceCase.lessonIds) {
-      const resolution = absenceCase.resolutionItems.find((item) => item.lessonId === lessonId);
-      if (!resolution || resolution.kind === 'unresolved' || resolution.changes.length === 0) {
+      if (!resolutionCoversLesson(absenceCase, lessonId)) {
         count += 1;
       }
     }
@@ -319,12 +330,6 @@ export function validateCasePlan(state: WorkspaceState, caseId: string): PlanVal
     conflictKeys.add(key);
     conflicts.push({ lessonId, kind, message });
   };
-
-  const resolutionCoversLesson = (itemCase: AbsenceCase, lessonId: string): boolean =>
-    itemCase.resolutionItems.some((item) => item.kind !== 'unresolved'
-      && (item.kind === 'manual' || item.changes.length > 0)
-      && (item.lessonId === lessonId
-        || item.changes.some((change) => change.lessonId === lessonId)));
 
   for (const lessonId of absenceCase.lessonIds) {
     if (!resolutionCoversLesson(absenceCase, lessonId)) {

@@ -182,6 +182,7 @@ describe('transitionCase', () => {
               id: 'resolution-manual',
               lessonId: 'lesson-1',
               kind: 'manual' as const,
+              manualAction: '담임교사가 자율학습을 감독합니다.',
               computedAgainstRevisionId: 'revision-1',
               changes: [],
             }],

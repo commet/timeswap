@@ -168,6 +168,67 @@ describe('projectTeacherSchedule', () => {
       }),
     ]);
   });
+
+  it('omits a pending value computed against an inactive revision', () => {
+    const state = stateAt('resolution_approved');
+    state.workspace = { ...state.workspace, activeRevisionId: 'revision-2' };
+    state.revisions.push({
+      ...state.revisions[0]!,
+      id: 'revision-2',
+      loadedAt: '2026-08-18T02:00:00.000Z',
+      checksum: 'checksum-2',
+    });
+    state.lessons[0] = { ...state.lessons[0]!, revisionId: 'revision-2' };
+
+    expect(projectTeacherSchedule(state, '김수학').lessons).toEqual([
+      expect.objectContaining({
+        lessonId: 'lesson-1',
+        status: 'base',
+        pending: undefined,
+        published: undefined,
+      }),
+    ]);
+  });
+
+  it('shows a pending correction over its older published value', () => {
+    const state = stateAt('published');
+    state.cases.push({
+      ...state.cases[0]!,
+      id: 'case-correction',
+      status: 'resolution_approved',
+      supersedesCaseId: 'case-1',
+      updatedAt: '2026-08-18T02:00:00.000Z',
+      resolutionItems: [{
+        id: 'resolution-correction',
+        lessonId: 'lesson-1',
+        kind: 'cover',
+        computedAgainstRevisionId: 'revision-1',
+        changes: [{
+          lessonId: 'lesson-1',
+          toDate: '2026-08-24',
+          toPeriod: '6',
+          teacher: { state: 'assigned', teacherId: '박수학' },
+        }],
+      }],
+    });
+
+    expect(projectTeacherSchedule(state, '김수학').lessons).toEqual([
+      expect.objectContaining({
+        lessonId: 'lesson-1',
+        status: '변경 예정',
+        pending: expect.objectContaining({
+          period: '6',
+          teacherId: '박수학',
+          caseId: 'case-correction',
+        }),
+        published: expect.objectContaining({
+          period: '4',
+          teacherId: '이수학',
+          publicationId: 'publication-1',
+        }),
+      }),
+    ]);
+  });
 });
 
 describe('projectOpsDashboard', () => {
@@ -232,6 +293,66 @@ describe('projectOpsDashboard', () => {
       },
     });
     expect(before).toEqual(snapshot);
+  });
+
+  it.each([
+    ['swap2', 2, false],
+    ['cycle3', 3, false],
+    ['move', 2, true],
+  ] as const)('counts every lesson moved by one %s resolution as resolved', (kind, count, grouped) => {
+    const state = stateAt('in_review');
+    state.lessons = Array.from({ length: count }, (_, index) => ({
+      ...state.lessons[0]!,
+      id: `lesson-${index + 1}`,
+      period: String(index + 1),
+      classIdentity: { ...klass, className: String(index + 3) },
+      ...(grouped ? { parallelGroupId: 'parallel-1' } : {}),
+    }));
+    state.cases[0] = {
+      ...state.cases[0]!,
+      lessonIds: state.lessons.map((lesson) => lesson.id),
+      resolutionItems: [{
+        id: 'resolution-multi',
+        lessonId: 'lesson-1',
+        kind,
+        computedAgainstRevisionId: 'revision-1',
+        changes: state.lessons.map((lesson, index) => ({
+          lessonId: lesson.id,
+          toDate: '2026-08-25',
+          toPeriod: String(index + 1),
+          teacher: lesson.teacher,
+        })),
+      }],
+    };
+
+    expect(projectOpsDashboard(state, '2026-08-24').unresolvedLessons).toBe(0);
+  });
+
+  it('counts an affected lesson as unresolved when only an unrelated lesson moves', () => {
+    const state = stateAt('in_review');
+    state.lessons.push({
+      ...state.lessons[0]!,
+      id: 'lesson-unrelated',
+      period: '3',
+      classIdentity: { ...klass, className: '4' },
+    });
+    state.cases[0] = {
+      ...state.cases[0]!,
+      resolutionItems: [{
+        id: 'resolution-unrelated',
+        lessonId: 'lesson-1',
+        kind: 'move',
+        computedAgainstRevisionId: 'revision-1',
+        changes: [{
+          lessonId: 'lesson-unrelated',
+          toDate: '2026-08-25',
+          toPeriod: '3',
+          teacher: state.lessons[1]!.teacher,
+        }],
+      }],
+    };
+
+    expect(projectOpsDashboard(state, '2026-08-24').unresolvedLessons).toBe(1);
   });
 
   it('reports a burden alert after three accepted assignments to one teacher', () => {
