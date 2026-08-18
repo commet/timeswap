@@ -6,4 +6,5 @@ export * from './search';
 export * from './units';
 export * from './synthetic';
 export * from './adapters/neis';
+export * from './adapters/neis-normalize';
 export * from './cover';

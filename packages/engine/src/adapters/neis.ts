@@ -1,5 +1,12 @@
 import type { ScheduleConfig, TimetableInput, Assignment } from './../types';
 import { slotOf } from './../slots';
+import {
+  normalizeNeisRows,
+  type NeisNormalizationReport,
+  type NeisRow,
+} from './neis-normalize';
+
+export type { NeisRow } from './neis-normalize';
 
 /**
  * 나이스 교육정보 개방 포털의 시간표 응답을 다룬다.
@@ -13,22 +20,6 @@ import { slotOf } from './../slots';
  * 엔드포인트는 학교급에 따라 elsTimetable(초), misTimetable(중),
  * hisTimetable(고), spsTimetable(특수)로 나뉘지만 응답 항목은 같다.
  */
-
-/** 개방 포털 응답 1행. 쓰지 않는 항목은 생략했다. */
-export interface NeisRow {
-  SCHUL_NM?: string;
-  AY?: string;
-  SEM?: string;
-  /** 수업 일자. 예: "20260622" */
-  ALL_TI_YMD: string;
-  GRADE: string;
-  CLASS_NM: string;
-  /** 교시. 1부터 */
-  PERIO: string;
-  /** 수업 내용. 과목명이 들어오지만 휴업 사유나 보강 표기도 이 자리에 온다. */
-  ITRT_CNTNT: string;
-  CLRM_NM?: string;
-}
 
 export type NeisKind = '수업' | '보강' | '휴업';
 
@@ -70,6 +61,8 @@ export interface NeisSwap {
 
 export interface NeisReport {
   schoolName: string;
+  /** Accepted, quarantined, duplicate, and parallel NEIS data-quality diagnostics. */
+  normalization: NeisNormalizationReport;
   config: ScheduleConfig;
   cells: NeisCell[];
   /** 학급 하루 전체가 같은 값으로 채워진 날. 값은 일자 문자열 */
@@ -134,14 +127,24 @@ export function dayOfYmd(ymd: string): number {
  * 관측 주가 적으면 기준이 흔들리므로 최소 3주 이상의 자료를 넣는 것을 권한다.
  */
 export function fromNeis(rows: NeisRow[]): NeisReport {
-  const parsed = rows
-    .filter((r) => r && r.ALL_TI_YMD && r.PERIO && r.ITRT_CNTNT)
-    .map((r) => ({
-      date: r.ALL_TI_YMD,
-      day: dayOfYmd(r.ALL_TI_YMD),
-      period: Number(r.PERIO) - 1,
-      klass: `${r.GRADE}-${r.CLASS_NM}`,
-      raw: r.ITRT_CNTNT.trim(),
+  const normalization = normalizeNeisRows(rows);
+  const canonicalKeysByDisplay = new Map<string, Set<string>>();
+  for (const row of normalization.accepted) {
+    const displayKey = `${row.classIdentity.grade}-${row.classIdentity.className}`;
+    (canonicalKeysByDisplay.get(displayKey) ?? canonicalKeysByDisplay.set(displayKey, new Set()).get(displayKey)!)
+      .add(row.classKey);
+  }
+  const engineClassKey = (row: (typeof normalization.accepted)[number]): string => {
+    const displayKey = `${row.classIdentity.grade}-${row.classIdentity.className}`;
+    return (canonicalKeysByDisplay.get(displayKey)?.size ?? 0) > 1 ? row.classKey : displayKey;
+  };
+  const parsed = normalization.accepted.map((row) => ({
+      date: row.date,
+      day: dayOfYmd(row.date),
+      period: Number(row.period) - 1,
+      klass: engineClassKey(row),
+      grade: row.classIdentity.grade,
+      raw: row.rawSubject,
     }));
 
   /*
@@ -163,7 +166,8 @@ export function fromNeis(rows: NeisRow[]): NeisReport {
    * 자료도 다뤄야 하기 때문이다. 그때는 1/1 이라 통과한다. 학교 전체를 받아 오면
    * 한 학급짜리 실습은 걸러진다. 자료가 두꺼울수록 정확해지고 얇아도 쓸 수 있다.
    */
-  const gradeOfKlass = (klass: string): string => klass.split('-')[0] ?? klass;
+  const gradeByKlass = new Map(parsed.map((row) => [row.klass, row.grade]));
+  const gradeOfKlass = (klass: string): string => gradeByKlass.get(klass) ?? klass;
   const perDay = new Map<string, { vals: Set<string>; n: number; pro: boolean }>();
   for (const p of parsed) {
     const k = `${p.klass}|${p.date}`;
@@ -310,7 +314,8 @@ export function fromNeis(rows: NeisRow[]): NeisReport {
 
   const lesson = cells.filter((c) => c.kind === '수업');
   return {
-    schoolName: rows[0]?.SCHUL_NM ?? '이름 없는 학교',
+    schoolName: normalization.accepted[0]?.row.SCHUL_NM?.trim() ?? rows[0]?.SCHUL_NM?.trim() ?? '이름 없는 학교',
+    normalization,
     config,
     cells,
     holidays: [...new Set([...holidaySet].map((k) => k.split('|')[1] ?? ''))].filter(Boolean).sort(),
