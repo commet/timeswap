@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "retrievedAt": "2026-08-18",
+  "source": "NEIS 교육정보 개방 포털 공개 시간표 응답을 사용한 credentialed research run",
+  "endpoints": {
+    "highSchool": "hisTimetable",
+    "middleSchool": "misTimetable"
+  },
+  "sampleCategories": [
+    {
+      "category": "general-autonomous-high-school",
+      "schoolCount": 4
+    },
+    {
+      "category": "vocational-meister-high-school",
+      "schoolCount": 4
+    },
+    {
+      "category": "middle-school",
+      "schoolCount": 4
+    }
+  ],
+  "totals": {
+    "rawRows": 12145,
+    "invalidRows": 250,
+    "exactDuplicates": 393,
+    "validUniqueRows": 11502,
+    "professionalRows": 1631,
+    "professionalBlocks": 464,
+    "parallelCells": 288
+  },
+  "namedObservations": [
+    {
+      "schoolName": "서울공업고등학교",
+      "simpleClassIdentityCount": 4,
+      "fullClassIdentityCount": 27,
+      "observedWeekLabels": [
+        {
+          "label": "3월 9일 주",
+          "rawRows": 0
+        },
+        {
+          "label": "3월 16일 주",
+          "rawRows": 1130
+        }
+      ]
+    },
+    {
+      "schoolName": "대구공업고등학교",
+      "simpleClassIdentityCount": 15,
+      "fullClassIdentityCount": 42
+    },
+    {
+      "schoolName": "대전중학교",
+      "observedWeekLabels": [
+        {
+          "label": "3월 9일 주",
+          "rawRows": 0
+        },
+        {
+          "label": "3월 16일 주",
+          "rawRows": 397
+        }
+      ]
+    }
+  ],
+  "schoolLevelRefresh": {
+    "status": "unavailable",
+    "requiresCredentialedCorpusRefresh": true,
+    "reason": "The verified bulk responses and their school-level query manifest were not committed. School names, codes, ISO query weeks, and per-school counts cannot be reconstructed honestly from aggregate measurements."
+  },
+  "security": {
+    "apiCredentialStored": false,
+    "fullResponseCacheStored": false
+  }
+}

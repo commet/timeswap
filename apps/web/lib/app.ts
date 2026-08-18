@@ -17,6 +17,12 @@ import {
 import { BRAND } from './brand';
 import type { NeisEvent, NeisSchool } from './neis';
 
+export {
+  createDemoWorkspace,
+  loadDemoScenario,
+  type DemoScenarioId,
+} from './demo';
+
 export const STORAGE_KEY = 'timeswap:v0:data';
 export const TEACHER_KEY = 'timeswap:v0:teacher';
 export const CHANGES_KEY = 'timeswap:v0:changes';
