@@ -1,0 +1,434 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  completeAdminTask,
+  createAbsenceCase,
+  createCorrectionCase,
+  createPrototypeAdminTasks,
+  deleteCase,
+  transitionCase,
+} from '../lib/case-service';
+import type { ClassIdentity } from '@timeswap/engine';
+import type { CaseStatus, Lesson, WorkspaceState } from '../lib/domain';
+
+const classIdentity: ClassIdentity = {
+  schoolCode: 'school-1',
+  academicYear: '2026',
+  dayCourse: '주간',
+  affiliation: '공업계',
+  major: '정보통신과',
+  grade: '2',
+  className: '1',
+};
+
+const lessons: Lesson[] = [1, 2, 3, 4].map((period) => ({
+  id: `lesson-${period}`,
+  workspaceId: 'workspace-1',
+  revisionId: 'revision-1',
+  date: '2026-08-24',
+  period: String(period),
+  classIdentity,
+  subject: '정보 통신',
+  room: '2-1',
+  teacher: { state: 'assigned', teacherId: 'teacher-1' },
+}));
+
+const initialState = (): WorkspaceState => ({
+  schemaVersion: 2,
+  workspace: {
+    id: 'workspace-1',
+    name: '조율고등학교',
+    activeRevisionId: 'revision-1',
+    createdAt: '2026-08-18T00:00:00.000Z',
+    updatedAt: '2026-08-18T00:00:00.000Z',
+  },
+  revisions: [{
+    id: 'revision-1',
+    workspaceId: 'workspace-1',
+    source: 'neis',
+    loadedAt: '2026-08-18T00:00:00.000Z',
+    complete: true,
+    checksum: 'checksum-1',
+  }],
+  lessons: [...lessons],
+  cases: [],
+  adminTasks: [],
+  publications: [],
+  audit: [],
+});
+
+const caseAtStatus = (status: CaseStatus): WorkspaceState => {
+  const created = createAbsenceCase(initialState(), {
+    id: 'case-1',
+    auditEventId: 'audit-created',
+    workspaceId: 'workspace-1',
+    requesterTeacherId: 'teacher-1',
+    fromDate: '2026-08-24',
+    toDate: '2026-08-24',
+    reason: '업무상 부재',
+    lessonIds: ['lesson-1'],
+    at: '2026-08-18T01:00:00.000Z',
+  });
+  return { ...created, cases: [{ ...created.cases[0]!, status }] };
+};
+
+describe('createAbsenceCase', () => {
+  it('stores one shared reason and note around all affected lessons', () => {
+    const state = createAbsenceCase(initialState(), {
+      id: 'case-1',
+      auditEventId: 'audit-1',
+      workspaceId: 'workspace-1',
+      requesterTeacherId: 'teacher-1',
+      fromDate: '2026-08-24',
+      toDate: '2026-08-24',
+      reason: '연수·출장',
+      note: '오전 직무 연수',
+      lessonIds: lessons.map((lesson) => lesson.id),
+      at: '2026-08-18T01:00:00.000Z',
+    });
+
+    expect(state.cases).toHaveLength(1);
+    expect(state.cases[0]).toMatchObject({
+      reason: '연수·출장',
+      note: '오전 직무 연수',
+      lessonIds: ['lesson-1', 'lesson-2', 'lesson-3', 'lesson-4'],
+    });
+    expect(state.audit).toEqual([
+      expect.objectContaining({
+        id: 'audit-1',
+        type: 'case.created',
+        details: { lessonCount: 4 },
+      }),
+    ]);
+    expect(JSON.stringify(state.audit)).not.toContain('오전 직무 연수');
+  });
+
+  it.each([
+    ['a reversed date range', { fromDate: '2026-08-25', toDate: '2026-08-24' }],
+    ['a blank requester', { requesterTeacherId: '   ' }],
+    ['no affected lessons', { lessonIds: [] }],
+    ['a lesson not owned by the requester', { requesterTeacherId: 'teacher-2' }],
+  ])('rejects %s', (_label, override) => {
+    expect(() => createAbsenceCase(initialState(), {
+      id: 'case-invalid',
+      auditEventId: 'audit-invalid',
+      workspaceId: 'workspace-1',
+      requesterTeacherId: 'teacher-1',
+      fromDate: '2026-08-24',
+      toDate: '2026-08-24',
+      reason: '업무상 부재',
+      lessonIds: ['lesson-1'],
+      at: '2026-08-18T01:00:00.000Z',
+      ...override,
+    })).toThrow();
+  });
+
+  it('rejects lessons that cross workspace boundaries', () => {
+    const state = initialState();
+    state.lessons.push({ ...lessons[0]!, id: 'foreign-lesson', workspaceId: 'workspace-2' });
+
+    expect(() => createAbsenceCase(state, {
+      id: 'case-invalid',
+      auditEventId: 'audit-invalid',
+      workspaceId: 'workspace-1',
+      requesterTeacherId: 'teacher-1',
+      fromDate: '2026-08-24',
+      toDate: '2026-08-24',
+      reason: '업무상 부재',
+      lessonIds: ['lesson-1', 'foreign-lesson'],
+      at: '2026-08-18T01:00:00.000Z',
+    })).toThrow(/workspace/i);
+  });
+
+  it('appends without mutating the prior state or its audit array', () => {
+    const before = initialState();
+    const after = createAbsenceCase(before, {
+      id: 'case-1',
+      auditEventId: 'audit-1',
+      workspaceId: 'workspace-1',
+      requesterTeacherId: 'teacher-1',
+      fromDate: '2026-08-24',
+      toDate: '2026-08-24',
+      reason: '학교 행사',
+      lessonIds: ['lesson-1'],
+      at: '2026-08-18T01:00:00.000Z',
+    });
+
+    expect(before.cases).toEqual([]);
+    expect(before.audit).toEqual([]);
+    expect(after.cases).not.toBe(before.cases);
+    expect(after.audit).not.toBe(before.audit);
+  });
+});
+
+describe('transitionCase', () => {
+  const allowed: Array<[CaseStatus, CaseStatus]> = [
+    ['draft', 'submitted'],
+    ['submitted', 'in_review'],
+    ['in_review', 'resolution_approved'],
+    ['resolution_approved', 'admin_in_progress'],
+    ['admin_in_progress', 'ready_to_publish'],
+    ['ready_to_publish', 'published'],
+  ];
+
+  it.each(allowed)('allows %s → %s and audits both states', (from, to) => {
+    const base = caseAtStatus(from);
+    const before = from === 'admin_in_progress'
+      ? {
+          ...base,
+          adminTasks: ['neis', 'teacher_notice', 'class_publication'].map((kind, index) => ({
+            id: `task-${index}`,
+            workspaceId: 'workspace-1',
+            caseId: 'case-1',
+            kind: kind as 'neis' | 'teacher_notice' | 'class_publication',
+            required: true,
+            status: 'completed' as const,
+            createdAt: '2026-08-18T01:30:00.000Z',
+            updatedAt: '2026-08-18T01:30:00.000Z',
+            completedAt: '2026-08-18T01:30:00.000Z',
+            completedBy: 'ops-1',
+          })),
+        }
+      : base;
+    const after = transitionCase(before, {
+      caseId: 'case-1',
+      to,
+      actorId: 'ops-1',
+      at: '2026-08-18T02:00:00.000Z',
+      auditEventId: `audit-${from}-${to}`,
+    });
+
+    expect(after.cases[0]).toMatchObject({ status: to, updatedAt: '2026-08-18T02:00:00.000Z' });
+    expect(after.audit.at(-1)).toMatchObject({
+      actorId: 'ops-1',
+      type: 'case.status_changed',
+      details: { previousStatus: from, nextStatus: to },
+    });
+    expect(before.cases[0]!.status).toBe(from);
+  });
+
+  it('rejects a skipped submitted → published edge', () => {
+    expect(() => transitionCase(caseAtStatus('submitted'), {
+      caseId: 'case-1',
+      to: 'published',
+      actorId: 'ops-1',
+      at: '2026-08-18T02:00:00.000Z',
+      auditEventId: 'audit-skipped',
+    })).toThrow(/Invalid case transition/);
+  });
+
+  it('does not bypass required administrative tasks', () => {
+    expect(() => transitionCase(caseAtStatus('admin_in_progress'), {
+      caseId: 'case-1',
+      to: 'ready_to_publish',
+      actorId: 'ops-1',
+      at: '2026-08-18T02:00:00.000Z',
+      auditEventId: 'audit-bypass-admin',
+    })).toThrow(/Required administrative tasks are incomplete/);
+  });
+
+  it.each<CaseStatus>(['published', 'rejected', 'cancelled', 'superseded'])(
+    'does not reopen terminal state %s',
+    (terminal) => {
+      expect(() => transitionCase(caseAtStatus(terminal), {
+        caseId: 'case-1',
+        to: 'draft',
+        actorId: 'ops-1',
+        at: '2026-08-18T02:00:00.000Z',
+        auditEventId: `audit-terminal-${terminal}`,
+      })).toThrow(/Terminal cases cannot be transitioned/);
+    },
+  );
+
+  it('requires an actor id and canonical timestamp', () => {
+    const before = caseAtStatus('draft');
+    expect(() => transitionCase(before, {
+      caseId: 'case-1',
+      to: 'submitted',
+      actorId: '',
+      at: '2026-08-18T02:00:00.000Z',
+      auditEventId: 'audit-no-actor',
+    })).toThrow(/actor/i);
+    expect(() => transitionCase(before, {
+      caseId: 'case-1',
+      to: 'submitted',
+      actorId: 'teacher-1',
+      at: 'not-a-timestamp',
+      auditEventId: 'audit-no-time',
+    })).toThrow(/timestamp/i);
+  });
+
+  it('stores the note when an in-review case is rejected', () => {
+    const after = transitionCase(caseAtStatus('in_review'), {
+      caseId: 'case-1',
+      to: 'rejected',
+      actorId: 'ops-1',
+      at: '2026-08-18T02:00:00.000Z',
+      auditEventId: 'audit-rejected',
+      rejectionNote: '해결안의 충돌이 해소되지 않음',
+    });
+
+    expect(after.cases[0]).toMatchObject({
+      status: 'rejected',
+      rejectionNote: '해결안의 충돌이 해소되지 않음',
+    });
+    expect(after.audit.at(-1)?.details).toEqual({
+      previousStatus: 'in_review',
+      nextStatus: 'rejected',
+      rejectionNote: '해결안의 충돌이 해소되지 않음',
+    });
+  });
+});
+
+describe('deleteCase', () => {
+  it('rejects deletion of a published record', () => {
+    expect(() => deleteCase(caseAtStatus('published'), {
+      caseId: 'case-1',
+      actorId: 'teacher-1',
+      at: '2026-08-18T02:00:00.000Z',
+      auditEventId: 'audit-delete',
+    })).toThrow(/Published cases cannot be deleted/);
+  });
+
+  it('allows an auditable draft deletion without mutating prior state', () => {
+    const before = caseAtStatus('draft');
+    const after = deleteCase(before, {
+      caseId: 'case-1',
+      actorId: 'teacher-1',
+      at: '2026-08-18T02:00:00.000Z',
+      auditEventId: 'audit-delete',
+    });
+
+    expect(after.cases).toEqual([]);
+    expect(after.audit.at(-1)).toMatchObject({ type: 'case.deleted', caseId: 'case-1' });
+    expect(before.cases).toHaveLength(1);
+  });
+});
+
+describe('prototype administrative policy', () => {
+  it('becomes ready when all required tasks finish while the optional document stays open', () => {
+    const withTasks = createPrototypeAdminTasks(caseAtStatus('resolution_approved'), {
+      caseId: 'case-1',
+      actorId: 'ops-1',
+      at: '2026-08-18T02:00:00.000Z',
+      auditEventId: 'audit-admin-start',
+      taskIds: {
+        neis: 'task-neis',
+        teacher_notice: 'task-teacher-notice',
+        class_publication: 'task-class-publication',
+        internal_document: 'task-internal-document',
+      },
+    });
+
+    expect(withTasks.adminTasks.map(({ kind, required }) => ({ kind, required }))).toEqual([
+      { kind: 'neis', required: true },
+      { kind: 'teacher_notice', required: true },
+      { kind: 'class_publication', required: true },
+      { kind: 'internal_document', required: false },
+    ]);
+    expect(withTasks.cases[0]!.status).toBe('admin_in_progress');
+
+    const neisDone = completeAdminTask(withTasks, {
+      taskId: 'task-neis',
+      actorId: 'ops-1',
+      at: '2026-08-18T02:10:00.000Z',
+      auditEventId: 'audit-neis',
+    });
+    const noticeDone = completeAdminTask(neisDone, {
+      taskId: 'task-teacher-notice',
+      actorId: 'ops-1',
+      at: '2026-08-18T02:20:00.000Z',
+      auditEventId: 'audit-notice',
+    });
+    expect(noticeDone.cases[0]!.status).toBe('admin_in_progress');
+
+    const requiredDone = completeAdminTask(noticeDone, {
+      taskId: 'task-class-publication',
+      actorId: 'ops-1',
+      at: '2026-08-18T02:30:00.000Z',
+      auditEventId: 'audit-publication',
+    });
+
+    expect(requiredDone.cases[0]).toMatchObject({
+      status: 'ready_to_publish',
+      updatedAt: '2026-08-18T02:30:00.000Z',
+    });
+    expect(requiredDone.adminTasks.find((task) => task.kind === 'internal_document')).toMatchObject({
+      status: 'pending',
+      required: false,
+    });
+    expect(requiredDone.audit.at(-1)?.details).toMatchObject({
+      taskId: 'task-class-publication',
+      taskKind: 'class_publication',
+      previousStatus: 'admin_in_progress',
+      nextStatus: 'ready_to_publish',
+    });
+    expect(withTasks.adminTasks.every((task) => task.status === 'pending')).toBe(true);
+  });
+});
+
+describe('correction supersession', () => {
+  it('keeps the published source immutable and creates a linked draft', () => {
+    const before = caseAtStatus('published');
+    const publishedSource = before.cases[0]!;
+    const after = createCorrectionCase(before, {
+      sourceCaseId: 'case-1',
+      id: 'case-correction',
+      actorId: 'ops-1',
+      at: '2026-08-18T03:00:00.000Z',
+      auditEventId: 'audit-correction',
+    });
+
+    expect(after.cases[0]).toBe(publishedSource);
+    expect(after.cases[0]!.status).toBe('published');
+    expect(after.cases[1]).toMatchObject({
+      id: 'case-correction',
+      status: 'draft',
+      supersedesCaseId: 'case-1',
+      resolutionItems: [],
+      createdAt: '2026-08-18T03:00:00.000Z',
+      updatedAt: '2026-08-18T03:00:00.000Z',
+    });
+    expect(after.cases[1]!.lessonIds).not.toBe(publishedSource.lessonIds);
+    expect(after.audit.at(-1)).toMatchObject({
+      type: 'case.correction_created',
+      details: { supersedesCaseId: 'case-1' },
+    });
+  });
+
+  it('supersedes the old case only when the correction reaches published', () => {
+    const correctionCreated = createCorrectionCase(caseAtStatus('published'), {
+      sourceCaseId: 'case-1',
+      id: 'case-correction',
+      actorId: 'ops-1',
+      at: '2026-08-18T03:00:00.000Z',
+      auditEventId: 'audit-correction',
+    });
+    expect(correctionCreated.cases[0]!.status).toBe('published');
+
+    const ready = {
+      ...correctionCreated,
+      cases: correctionCreated.cases.map((item) => item.id === 'case-correction'
+        ? { ...item, status: 'ready_to_publish' as const }
+        : item),
+    };
+    const published = transitionCase(ready, {
+      caseId: 'case-correction',
+      to: 'published',
+      actorId: 'ops-1',
+      at: '2026-08-18T04:00:00.000Z',
+      auditEventId: 'audit-correction-published',
+    });
+
+    expect(published.cases.find((item) => item.id === 'case-1')).toMatchObject({
+      status: 'superseded',
+      updatedAt: '2026-08-18T04:00:00.000Z',
+    });
+    expect(published.cases.find((item) => item.id === 'case-correction')!.status).toBe('published');
+    expect(published.audit.at(-1)?.details).toMatchObject({
+      previousStatus: 'ready_to_publish',
+      nextStatus: 'published',
+      supersededCaseId: 'case-1',
+    });
+  });
+});
