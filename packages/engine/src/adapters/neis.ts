@@ -30,7 +30,10 @@ export interface NeisCell {
   day: number;
   /** 0부터 세는 교시 */
   period: number;
+  /** Canonical, collision-safe class identity used by the engine. */
   klass: string;
+  /** Human-readable grade/class label for presentation. */
+  classLabel: string;
   /** 보강과 전문교과 표기를 떼어 낸 실제 과목명 */
   subject: string;
   kind: NeisKind;
@@ -128,21 +131,12 @@ export function dayOfYmd(ymd: string): number {
  */
 export function fromNeis(rows: NeisRow[]): NeisReport {
   const normalization = normalizeNeisRows(rows);
-  const canonicalKeysByDisplay = new Map<string, Set<string>>();
-  for (const row of normalization.accepted) {
-    const displayKey = `${row.classIdentity.grade}-${row.classIdentity.className}`;
-    (canonicalKeysByDisplay.get(displayKey) ?? canonicalKeysByDisplay.set(displayKey, new Set()).get(displayKey)!)
-      .add(row.classKey);
-  }
-  const engineClassKey = (row: (typeof normalization.accepted)[number]): string => {
-    const displayKey = `${row.classIdentity.grade}-${row.classIdentity.className}`;
-    return (canonicalKeysByDisplay.get(displayKey)?.size ?? 0) > 1 ? row.classKey : displayKey;
-  };
   const parsed = normalization.accepted.map((row) => ({
       date: row.date,
       day: dayOfYmd(row.date),
       period: Number(row.period) - 1,
-      klass: engineClassKey(row),
+      klass: row.classKey,
+      classLabel: `${row.classIdentity.grade}-${row.classIdentity.className}`,
       grade: row.classIdentity.grade,
       raw: row.rawSubject,
     }));
@@ -210,6 +204,7 @@ export function fromNeis(rows: NeisRow[]): NeisReport {
       day: p.day,
       period: p.period,
       klass: p.klass,
+      classLabel: p.classLabel,
       subject,
       kind: isHoliday ? '휴업' : cover ? '보강' : '수업',
       pro,

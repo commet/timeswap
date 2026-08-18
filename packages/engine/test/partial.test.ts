@@ -47,17 +47,20 @@ function school(): NeisRow[] {
 }
 
 describe('교사 표를 일부만 채웠을 때', () => {
+  const report = fromNeis(school());
+  const classKey = (label: string): string =>
+    report.cells.find((cell) => cell.classLabel === label)?.klass ?? label;
   /** 국어와 수학만 채우고 영어와 과학은 비워 둔다 */
   const partial = (): TimetableInput & { klassBusy?: Record<string, number[]> } =>
-    neisToTimetable(fromNeis(school()), (k, s) =>
-      s === '국어' || s === '수학' ? `${s}${k.split('-')[0]}` : undefined,
+    neisToTimetable(report, (_k, s) =>
+      s === '국어' || s === '수학' ? `${s}1` : undefined,
     );
 
   it('채우지 않은 자리를 차 있는 자리로 넘긴다', () => {
     const input = partial();
     // 1-1 은 3, 4교시(슬롯 2, 3)가 영어와 과학이다
-    expect(input.klassBusy?.['1-1']).toEqual([2, 3]);
-    expect(input.klassBusy?.['1-2']).toEqual([2, 3]);
+    expect(input.klassBusy?.[classKey('1-1')]).toEqual([2, 3]);
+    expect(input.klassBusy?.[classKey('1-2')]).toEqual([2, 3]);
     // 채운 것만 배정이 된다
     expect(input.assignments).toHaveLength(4);
     expect(validate(input)).toEqual([]);
@@ -79,7 +82,7 @@ describe('교사 표를 일부만 채웠을 때', () => {
 
   it('채우지 않은 자리로 옮기라는 안을 내지 않는다', () => {
     const input = partial();
-    const target = input.assignments.find((a) => a.klass === '1-1' && a.slot === 0)!;
+    const target = input.assignments.find((a) => a.klass === classKey('1-1') && a.slot === 0)!;
     const { candidates } = recommend(input, { teacher: target.teacher, slot: target.slot });
     for (const c of candidates) {
       for (const ch of c.changes) {
@@ -96,11 +99,12 @@ describe('교사 표를 일부만 채웠을 때', () => {
       row(d, '2-1', 2, '문학'),
       row(d, '2-1', 3, '수학'),
     ]);
-    const input = neisToTimetable(fromNeis(rows), (_k, s) =>
+    const report = fromNeis(rows);
+    const input = neisToTimetable(report, (_k, s) =>
       s === '전공실기(가야금)' || s === '문학' || s === '수학' ? `${s}샘` : undefined,
     );
     expect(input.assignments.map((a) => a.subject).sort()).toEqual(['문학', '수학']);
-    expect(input.klassBusy?.['2-1']).toEqual([0]);
+    expect(input.klassBusy?.[report.cells[0]!.klass]).toEqual([0]);
   });
 });
 

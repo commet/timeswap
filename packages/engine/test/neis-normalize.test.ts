@@ -7,7 +7,7 @@ import {
   normalizeNeisRows,
   type NeisRow,
 } from '../src/adapters/neis-normalize';
-import { fromNeis } from '../src/adapters/neis';
+import { fromNeis, neisToTimetable } from '../src/adapters/neis';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dataQualityFixture = JSON.parse(
@@ -98,6 +98,30 @@ describe('NEIS normalization', () => {
     expect(new Set(report.cells.map((cell) => cell.klass)).size).toBe(2);
     expect(report.normalization.accepted).toHaveLength(2);
     expect(report.normalization.quarantined).toHaveLength(1);
+  });
+
+  it('keeps canonical engine identities distinct across separate imports', () => {
+    const mechanics = fromNeis([row({ DDDEP_NM: '기계과' })]);
+    const architecture = fromNeis([row({ DDDEP_NM: '건축과' })]);
+
+    expect(mechanics.cells[0]?.klass).not.toBe(architecture.cells[0]?.klass);
+    expect(mechanics.cells[0]?.classLabel).toBe('2-1');
+    expect(architecture.cells[0]?.classLabel).toBe('2-1');
+  });
+
+  it('uses canonical identities when resolving teachers for colliding classes', () => {
+    const report = fromNeis([
+      row({ DDDEP_NM: '기계과', ITRT_CNTNT: '기계일반' }),
+      row({ DDDEP_NM: '건축과', ITRT_CNTNT: '건축일반' }),
+    ]);
+    const teacherOf = new Map(report.cells.map((cell, index) => [cell.klass, `교사${index}`]));
+
+    const input = neisToTimetable(report, (klass) => teacherOf.get(klass));
+
+    expect(input.assignments).toHaveLength(2);
+    expect(new Set(input.assignments.map((assignment) => assignment.teacher))).toEqual(
+      new Set(['교사0', '교사1']),
+    );
   });
 
   it('regresses public data quality cases without needing an API credential', () => {

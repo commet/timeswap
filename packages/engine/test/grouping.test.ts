@@ -24,6 +24,10 @@ function rows(subject: string): NeisRow[] {
 }
 
 const report = fromNeis(rows('미적분'));
+const classKey = (label: string): string =>
+  report.cells.find((cell) => cell.classLabel === label)?.klass ?? label;
+const classLabel = (key: string): string =>
+  report.cells.find((cell) => cell.klass === key)?.classLabel ?? key;
 
 describe('나이스 자료에서 동시 수업 묶기', () => {
   it('한 교사가 같은 교시에 여러 학급을 맡으면 묶는다', () => {
@@ -59,8 +63,10 @@ describe('나이스 자료에서 동시 수업 묶기', () => {
 });
 
 describe('묶이지 않은 같은 교시 같은 과목 알리기', () => {
-  const input = neisToTimetable(report, (k, s) => (s === '미적분' ? `미적_${k}` : `T${k}${s}`));
-  const mine = input.assignments.find((a) => a.subject === '미적분' && a.klass === '3-1');
+  const input = neisToTimetable(report, (k, s) =>
+    s === '미적분' ? `미적_${classLabel(k)}` : `T${k}${s}`,
+  );
+  const mine = input.assignments.find((a) => a.subject === '미적분' && a.klass === classKey('3-1'));
 
   it('교사가 다르면 자료만으로 이동수업인지 가릴 수 없어 묶지 않는다', () => {
     // 같은 시간에 같은 과목을 듣는다는 사실만으로는 이동수업이라 단정할 수 없다.
@@ -71,8 +77,8 @@ describe('묶이지 않은 같은 교시 같은 과목 알리기', () => {
   });
 
   it('짝이 늘 같으면 이동수업 후보로 알린다', () => {
-    const others = groupCandidate(input, mine!.slot, '미적분', '3-1');
-    expect(others.map((a) => a.klass).sort()).toEqual(['3-2', '3-3']);
+    const others = groupCandidate(input, mine!.slot, '미적분', classKey('3-1'));
+    expect(others.map((a) => a.klass).sort()).toEqual([classKey('3-2'), classKey('3-3')].sort());
   });
 
   it('이미 묶인 수업은 알림에서 뺀다', () => {
@@ -82,7 +88,7 @@ describe('묶이지 않은 같은 교시 같은 과목 알리기', () => {
         a.subject === '미적분' ? { ...a, group: '이동:미적분' } : a,
       ),
     };
-    expect(groupCandidate(marked, mine!.slot, '미적분', '3-1')).toEqual([]);
+    expect(groupCandidate(marked, mine!.slot, '미적분', classKey('3-1'))).toEqual([]);
   });
 
   it('짝이 교시마다 달라지면 알리지 않는다', () => {
@@ -147,6 +153,8 @@ describe('동명이인', () => {
   }
 
   const rep = fromNeis(twoSubjects());
+  const repClassKey = (label: string): string =>
+    rep.cells.find((cell) => cell.classLabel === label)?.klass ?? label;
   const input = neisToTimetable(rep, (k, s2) =>
     s2 === '국어' || s2 === '수학' ? '김영희' : `T${k}${s2}`,
   );
@@ -163,7 +171,7 @@ describe('동명이인', () => {
     const c = input.conflicts[0]!;
     expect(c.teacher).toBe('김영희');
     expect(c.subjects).toEqual(['국어', '수학']);
-    expect(c.klasses).toEqual(['3-1', '3-2']);
+    expect(c.klasses).toEqual([repClassKey('3-1'), repClassKey('3-2')]);
   });
 
   it('과목이 같으면 충돌이 아니라 합반으로 묶는다', () => {
