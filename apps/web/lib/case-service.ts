@@ -29,6 +29,7 @@ export interface CaseOperationContext {
 export interface TransitionCaseInput extends CaseOperationContext {
   to: CaseStatus;
   rejectionNote?: string;
+  supersessionAuditEventId?: string;
 }
 
 export type DeleteCaseInput = CaseOperationContext;
@@ -45,6 +46,7 @@ const PROTOTYPE_ADMIN_TASKS = [
 ] as const satisfies readonly AdminTaskKind[];
 
 export interface CreatePrototypeAdminTasksInput extends CaseOperationContext {
+  taskAuditEventId: string;
   taskIds: Record<AdminTaskKind, string>;
 }
 
@@ -214,11 +216,15 @@ export function transitionCase(
   if (superseded && superseded.status !== 'published') {
     throw new Error('A correction can supersede only its currently published source.');
   }
+  if (superseded && (!input.supersessionAuditEventId?.trim()
+    || input.supersessionAuditEventId === input.auditEventId
+    || state.audit.some((event) => event.id === input.supersessionAuditEventId))) {
+    throw new Error('A unique source supersession audit event id is required.');
+  }
 
   const details = {
     previousStatus: current.status,
     nextStatus: input.to,
-    ...(input.to === 'rejected' ? { rejectionNote: input.rejectionNote!.trim() } : {}),
     ...(superseded ? { supersededCaseId: superseded.id } : {}),
   };
   const updated: AbsenceCase = {
@@ -248,6 +254,19 @@ export function transitionCase(
         at: input.at,
         details,
       },
+      ...(superseded ? [{
+        id: input.supersessionAuditEventId!,
+        workspaceId: superseded.workspaceId,
+        caseId: superseded.id,
+        actorId: input.actorId,
+        type: 'case.superseded' as const,
+        at: input.at,
+        details: {
+          previousStatus: 'published',
+          nextStatus: 'superseded',
+          correctionCaseId: current.id,
+        },
+      }] : []),
     ],
   };
 }
@@ -290,6 +309,11 @@ export function createPrototypeAdminTasks(
   if (state.adminTasks.some((task) => task.caseId === current.id)) {
     throw new Error('Administrative tasks already exist for this case.');
   }
+  if (!input.taskAuditEventId.trim()
+    || input.taskAuditEventId === input.auditEventId
+    || state.audit.some((event) => event.id === input.taskAuditEventId)) {
+    throw new Error('A unique task-creation audit event id is required.');
+  }
   const taskIds = PROTOTYPE_ADMIN_TASKS.map((kind) => input.taskIds[kind]);
   if (taskIds.some((id) => !id.trim()) || new Set(taskIds).size !== taskIds.length) {
     throw new Error('Unique task ids are required.');
@@ -318,7 +342,27 @@ export function createPrototypeAdminTasks(
     updatedAt: input.at,
   }));
 
-  return { ...transitioned, adminTasks: [...transitioned.adminTasks, ...adminTasks] };
+  return {
+    ...transitioned,
+    adminTasks: [...transitioned.adminTasks, ...adminTasks],
+    audit: [
+      ...transitioned.audit,
+      {
+        id: input.taskAuditEventId,
+        workspaceId: current.workspaceId,
+        caseId: current.id,
+        actorId: input.actorId,
+        type: 'admin.tasks_created',
+        at: input.at,
+        details: {
+          neisTaskId: input.taskIds.neis,
+          teacherNoticeTaskId: input.taskIds.teacher_notice,
+          classPublicationTaskId: input.taskIds.class_publication,
+          internalDocumentTaskId: input.taskIds.internal_document,
+        },
+      },
+    ],
+  };
 }
 
 export function completeAdminTask(

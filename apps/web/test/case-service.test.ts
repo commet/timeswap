@@ -259,24 +259,25 @@ describe('transitionCase', () => {
   });
 
   it('stores the note when an in-review case is rejected', () => {
+    const rejectionNote = '해결안의 충돌이 해소되지 않음';
     const after = transitionCase(caseAtStatus('in_review'), {
       caseId: 'case-1',
       to: 'rejected',
       actorId: 'ops-1',
       at: '2026-08-18T02:00:00.000Z',
       auditEventId: 'audit-rejected',
-      rejectionNote: '해결안의 충돌이 해소되지 않음',
+      rejectionNote,
     });
 
     expect(after.cases[0]).toMatchObject({
       status: 'rejected',
-      rejectionNote: '해결안의 충돌이 해소되지 않음',
+      rejectionNote,
     });
     expect(after.audit.at(-1)?.details).toEqual({
       previousStatus: 'in_review',
       nextStatus: 'rejected',
-      rejectionNote: '해결안의 충돌이 해소되지 않음',
     });
+    expect(JSON.stringify(after.audit)).not.toContain(rejectionNote);
   });
 });
 
@@ -312,6 +313,7 @@ describe('prototype administrative policy', () => {
       actorId: 'ops-1',
       at: '2026-08-18T02:00:00.000Z',
       auditEventId: 'audit-admin-start',
+      taskAuditEventId: 'audit-admin-tasks-created',
       taskIds: {
         neis: 'task-neis',
         teacher_notice: 'task-teacher-notice',
@@ -327,6 +329,27 @@ describe('prototype administrative policy', () => {
       { kind: 'internal_document', required: false },
     ]);
     expect(withTasks.cases[0]!.status).toBe('admin_in_progress');
+    expect(withTasks.audit.slice(-2)).toEqual([
+      expect.objectContaining({
+        id: 'audit-admin-start',
+        type: 'case.status_changed',
+        details: {
+          previousStatus: 'resolution_approved',
+          nextStatus: 'admin_in_progress',
+        },
+      }),
+      expect.objectContaining({
+        id: 'audit-admin-tasks-created',
+        caseId: 'case-1',
+        type: 'admin.tasks_created',
+        details: {
+          neisTaskId: 'task-neis',
+          teacherNoticeTaskId: 'task-teacher-notice',
+          classPublicationTaskId: 'task-class-publication',
+          internalDocumentTaskId: 'task-internal-document',
+        },
+      }),
+    ]);
 
     const neisDone = completeAdminTask(withTasks, {
       taskId: 'task-neis',
@@ -418,6 +441,7 @@ describe('correction supersession', () => {
       actorId: 'ops-1',
       at: '2026-08-18T04:00:00.000Z',
       auditEventId: 'audit-correction-published',
+      supersessionAuditEventId: 'audit-source-superseded',
     });
 
     expect(published.cases.find((item) => item.id === 'case-1')).toMatchObject({
@@ -425,10 +449,27 @@ describe('correction supersession', () => {
       updatedAt: '2026-08-18T04:00:00.000Z',
     });
     expect(published.cases.find((item) => item.id === 'case-correction')!.status).toBe('published');
-    expect(published.audit.at(-1)?.details).toMatchObject({
-      previousStatus: 'ready_to_publish',
-      nextStatus: 'published',
-      supersededCaseId: 'case-1',
-    });
+    expect(published.audit.slice(-2)).toEqual([
+      expect.objectContaining({
+        id: 'audit-correction-published',
+        caseId: 'case-correction',
+        type: 'case.status_changed',
+        details: {
+          previousStatus: 'ready_to_publish',
+          nextStatus: 'published',
+          supersededCaseId: 'case-1',
+        },
+      }),
+      expect.objectContaining({
+        id: 'audit-source-superseded',
+        caseId: 'case-1',
+        type: 'case.superseded',
+        details: {
+          previousStatus: 'published',
+          nextStatus: 'superseded',
+          correctionCaseId: 'case-correction',
+        },
+      }),
+    ]);
   });
 });

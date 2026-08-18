@@ -131,8 +131,10 @@ export interface AuditEvent {
   type:
     | 'case.created'
     | 'case.status_changed'
+    | 'case.superseded'
     | 'case.deleted'
     | 'case.correction_created'
+    | 'admin.tasks_created'
     | 'admin.task_completed';
   at: ISOTimestamp;
   details: Record<string, AuditValue>;
