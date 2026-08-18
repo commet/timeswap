@@ -93,19 +93,18 @@ export function Landing({
   const [over, setOver] = useState(false);
 
   return (
-    <div className="landing">
+    <main className="landing">
       <div className="landing-card">
         <div className="hero">
           <div className="hero-copy">
             <h1>
-              들어가지 못하는 수업이 생겼을 때,
+              바꿔야 할 수업이 생기면,
               <br />
-              <em>바꿀 수 있는 방법</em>을 모두 찾습니다
+              <em>시간표에서 바로 요청하세요</em>
             </h1>
             <p className="lede">
-              비울 수업을 고르면 맞바꾸기와 연쇄 교체, 빈 시간 이동까지 가능한 경우를 모두 세어
-              좋은 순서로 보여 드립니다. 동료 교사께 보낼 요청 문구와 결재용 계획서도 함께
-              만듭니다.
+              가능한 교체와 보강을 한 표에서 비교하고, 일과 담당자의 승인과 나이스·공지·결재
+              마무리까지 한 흐름으로 이어집니다.
             </p>
           </div>
           <HeroArt />
@@ -135,26 +134,19 @@ export function Landing({
             if (f) onFile(f);
           }}
         >
-          <p className="dropzone-title">시간표 불러오기</p>
-          {/*
-           * 세 길이 무엇을 요구하는지 누르기 전에 밝힌다.
-           *
-           * 전에는 단추 셋이 나란히 있고 설명이 없었다. 그래서 나이스 쪽을 눌러 학교를
-           * 찾고 고른 뒤에야 인증키가 필요하다는 것을 알았다. 들인 수고가 헛되고
-           * 그 자리에서 도구를 접을 만한 순간이다.
-           */}
-          <div className="actions">
-            <button className="btn primary" onClick={onNeis} disabled={busy}>
-              학교 이름으로 찾기
-              <span className="btn-sub">무료 인증키 필요</span>
+          <p className="dropzone-title">어떻게 시작하시나요?</p>
+          <div className="entry-paths">
+            <button className="entry-path primary" onClick={() => inputRef.current?.click()} disabled={busy}>
+              <span className="entry-role">교사</span>
+              <b>받은 시간표 열기</b>
+              <small>학교에서 공유한 파일 하나면 바로 시작</small>
+              <i aria-hidden>→</i>
             </button>
-            <button className="btn" onClick={() => inputRef.current?.click()} disabled={busy}>
-              저장한 파일 열기
-              <span className="btn-sub">동료가 준 파일</span>
-            </button>
-            <button className="btn" onClick={onSample} disabled={busy}>
-              {busy ? '불러오는 중' : '예시로 살펴보기'}
-              {!busy && <span className="btn-sub">준비 없이 바로</span>}
+            <button className="entry-path" onClick={onNeis} disabled={busy}>
+              <span className="entry-role">일과 담당</span>
+              <b>학교 시간표 처음 준비하기</b>
+              <small>공식 나이스 자료로 한 번만 설정</small>
+              <i aria-hidden>→</i>
             </button>
             <input
               ref={inputRef}
@@ -168,21 +160,25 @@ export function Landing({
               }}
             />
           </div>
-          <p className="dropzone-hint">저장해 둔 파일은 이 자리에 끌어다 놓아도 열립니다.</p>
+          <div className="landing-minor">
+            <span>아직 파일이 없나요?</span>
+            <button onClick={onSample} disabled={busy}>{busy ? '불러오는 중' : '예시로 1분 체험'}</button>
+            <span>· 파일을 이 자리에 끌어다 놓아도 됩니다.</span>
+          </div>
         </div>
 
         <ol className="steps">
           <li>
-            <b>시간표 불러오기</b>
-            <span>학교 이름으로 찾거나 저장해 둔 파일을 엽니다</span>
+            <b>교사는 수업만 선택</b>
+            <span>시간표에서 바꿀 수업을 누릅니다</span>
           </li>
           <li>
-            <b>비울 수업 고르기</b>
-            <span>하루 전체는 요일 이름을, 회의 시간은 빈칸을 누릅니다</span>
+            <b>차이를 보고 요청</b>
+            <span>협조 교사와 영향이 한 표에 보입니다</span>
           </li>
           <li>
-            <b>방법 고르고 반영하기</b>
-            <span>근거를 보고 고르면 요청 문구와 계획서까지 만듭니다</span>
+            <b>담당자는 끝까지 마무리</b>
+            <span>승인, 나이스, 공지, 결재를 빠짐없이 확인합니다</span>
           </li>
         </ol>
 
@@ -190,6 +186,6 @@ export function Landing({
           불러온 시간표는 이 기기에만 저장하며 외부로 보내지 않습니다. 회원 가입도 없습니다.
         </p>
       </div>
-    </div>
+    </main>
   );
 }

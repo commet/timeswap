@@ -22,8 +22,23 @@ import { Changes } from './Changes';
 import { Sheet } from './Sheet';
 import { TeacherPick } from './TeacherPick';
 import { NeisLoader } from './NeisLoader';
+import { TeacherHome, type ScheduleFocus } from './TeacherHome';
+import { RequestStatusList } from './RequestStatusList';
+import { OpsInbox } from './OpsInbox';
 import type { NeisEvent, NeisSchool } from '../lib/neis';
 import { BRAND } from '../lib/brand';
+import {
+  createRequest,
+  createCoverRequest,
+  loadRequests,
+  saveRequests,
+  selectCandidate,
+  setChecklist,
+  transitionRequest,
+  type ChangeRequest,
+  type ChecklistKey,
+  type RequestReason,
+} from '../lib/requests';
 import {
   applyAll,
   applyTheme,
@@ -50,6 +65,7 @@ import {
   saveOffDays,
   saveRaw,
   saveUnavail,
+  weekMondayOf,
   REASON_KEY,
   TEACHER_KEY,
   THEME_LABEL,
@@ -60,6 +76,37 @@ import {
   type TeacherMap,
   type ThemeMode,
 } from '../lib/app';
+
+function localYmd(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return [year, month, day].join('-');
+}
+
+function requestEntry(request: ChangeRequest, id: number, cfg: TimetableInput['config']): AppliedEntry {
+  if (request.kind === 'cover' && request.cover) {
+    return {
+      id,
+      type: '보강',
+      title: request.cover.teacher + ' 선생님 보강 (' + slotName(request.target.slot, cfg) + ' ' + request.target.klass + ' ' + request.target.subject + ')',
+      changes: [],
+      cover: {
+        teacher: request.cover.teacher,
+        slot: request.target.slot,
+        klass: request.target.klass,
+        subject: request.target.subject,
+        absent: request.teacher,
+      },
+    };
+  }
+  return {
+    id,
+    type: request.candidate.type,
+    title: request.candidate.title,
+    changes: request.candidate.changes,
+  };
+}
 
 function defaultTeacher(input: TimetableInput): string | null {
   const count = new Map<string, number>();
@@ -108,6 +155,10 @@ export function Workbench() {
   const [noSave, setNoSave] = useState(false);
   const [todayIdx, setTodayIdx] = useState<number | null>(null);
   const [theme, setTheme] = useState<ThemeMode>('auto');
+  const [workspaceMode, setWorkspaceMode] = useState<'teacher' | 'ops'>('teacher');
+  const [scheduleFocus, setScheduleFocus] = useState<ScheduleFocus>('week');
+  const [requests, setRequests] = useState<ChangeRequest[]>([]);
+  const [printRequest, setPrintRequest] = useState<ChangeRequest | null>(null);
   const sideRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -129,8 +180,10 @@ export function Workbench() {
     setNeisKey(loadNeisKey());
     setOffDays(loadOffDays());
     setTheme(loadTheme());
+    setRequests(loadRequests());
     const wd = new Date().getDay(); // 일 0, 월 1
     setTodayIdx(wd >= 1 && wd <= 5 ? wd - 1 : null);
+    if (window.innerWidth < 700) setScheduleFocus('today');
   }, []);
 
   const base = loaded?.input ?? null;
@@ -225,6 +278,16 @@ export function Workbench() {
       return null;
     }
   }, [input, view, currentTeacher, activeSlot]);
+
+  const requestDate = useMemo(() => {
+    if (!result || !input) return localYmd(weekMondayOf());
+    const date = weekMondayOf();
+    date.setDate(date.getDate() + dayOf(result.target.slot, input.config));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (date < today) date.setDate(date.getDate() + 7);
+    return localYmd(date);
+  }, [result, input]);
 
   /**
    * 보강 후보를 언제 함께 보여 줄지.
@@ -411,11 +474,14 @@ export function Workbench() {
       setNoSave(!stored);
       setEntries([]);
       saveEntries([]);
+      setRequests([]);
+      saveRequests([]);
       setQueue([]);
       setUnavail({});
       saveUnavail({});
       setHovered(null);
       setView('teacher');
+      setWorkspaceMode('teacher');
       setAtHome(false);
       // 학교가 바뀌면 이전에 고른 성함은 뜻이 없다. 처음부터 다시 묻는다.
       setTeacher(defaultTeacher(l.input));
@@ -498,6 +564,7 @@ export function Workbench() {
         // 좁은 화면에서는 추천 패널이 격자 아래에 있어 눈에 안 띈다. 골랐으면 데려간다.
         window.setTimeout(() => {
           sideRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          sideRef.current?.focus({ preventScroll: true });
         }, 80);
       }
       return has ? q.filter((x) => x !== s) : [...q, s];
@@ -721,6 +788,208 @@ export function Workbench() {
     [input, entries, show],
   );
 
+  const onRequest = useCallback(
+    (candidate: Candidate, date: string, requestReason: RequestReason, note: string, alternatives: Candidate[]) => {
+      if (!result || !input || currentTeacher === null) return;
+      const picked = new Date(date + 'T12:00:00');
+      const expectedDay = dayOf(result.target.slot, input.config) + 1;
+      if (Number.isNaN(picked.getTime()) || picked.getDay() !== expectedDay) {
+        show((input.config.dayNames[expectedDay - 1] ?? '해당') + '요일 날짜를 골라 주세요');
+        return;
+      }
+      if (localYmd(picked) < localYmd(new Date())) {
+        show('오늘 이후 날짜를 골라 주세요');
+        return;
+      }
+      const duplicate = requests.some(
+        (request) =>
+          request.status === 'pending' &&
+          request.teacher === currentTeacher &&
+          request.date === date &&
+          request.target.slot === result.target.slot,
+      );
+      if (duplicate) {
+        show('같은 수업의 검토 중인 요청이 이미 있습니다');
+        return;
+      }
+      try {
+        const request = createRequest({
+          date,
+          teacher: currentTeacher,
+          reason: requestReason,
+          note,
+          target: result.target,
+          candidate,
+          alternatives,
+        });
+        const next = [request, ...requests];
+        setRequests(next);
+        if (!saveRequests(next)) setNoSave(true);
+        setHovered(null);
+        setQueue((current) => current.slice(1));
+        show('일과 담당자에게 변경 요청을 보냈습니다');
+        window.setTimeout(() => document.getElementById('my-requests-title')?.focus(), 80);
+      } catch (error) {
+        show(error instanceof Error ? error.message : '요청을 저장하지 못했습니다');
+      }
+    },
+    [result, input, currentTeacher, requests, show],
+  );
+
+  const onCoverRequest = useCallback(
+    (candidate: CoverCandidate, date: string, requestReason: RequestReason, note: string) => {
+      if (!result || !input || currentTeacher === null) return;
+      const picked = new Date(date + 'T12:00:00');
+      const expectedDay = dayOf(result.target.slot, input.config) + 1;
+      if (Number.isNaN(picked.getTime()) || picked.getDay() !== expectedDay) {
+        show((input.config.dayNames[expectedDay - 1] ?? '해당') + '요일 날짜를 골라 주세요');
+        return;
+      }
+      if (localYmd(picked) < localYmd(new Date())) {
+        show('오늘 이후 날짜를 골라 주세요');
+        return;
+      }
+      const duplicate = requests.some(
+        (request) =>
+          request.status === 'pending' && request.teacher === currentTeacher &&
+          request.date === date && request.target.slot === result.target.slot,
+      );
+      if (duplicate) {
+        show('같은 수업의 검토 중인 요청이 이미 있습니다');
+        return;
+      }
+      try {
+        const request = createCoverRequest({
+          date, teacher: currentTeacher, reason: requestReason, note,
+          target: result.target, cover: candidate,
+        });
+        const next = [request, ...requests];
+        setRequests(next);
+        if (!saveRequests(next)) setNoSave(true);
+        setQueue((current) => current.slice(1));
+        show(candidate.teacher + ' 선생님 보강 요청을 보냈습니다');
+        window.setTimeout(() => document.getElementById('my-requests-title')?.focus(), 80);
+      } catch (error) {
+        show(error instanceof Error ? error.message : '요청을 저장하지 못했습니다');
+      }
+    },
+    [result, input, currentTeacher, requests, show],
+  );
+
+  const onCancelRequest = useCallback(
+    (id: string) => {
+      try {
+        const next = requests.map((request) =>
+          request.id === id ? transitionRequest(request, 'cancelled') : request,
+        );
+        setRequests(next);
+        if (!saveRequests(next)) setNoSave(true);
+        show('요청을 취소했습니다');
+      } catch (error) {
+        show(error instanceof Error ? error.message : '요청을 취소하지 못했습니다');
+      }
+    },
+    [requests, show],
+  );
+
+  const onSelectRequestCandidate = useCallback(
+    (id: string, candidate: Candidate) => {
+      try {
+        const next = requests.map((request) =>
+          request.id === id ? selectCandidate(request, candidate) : request,
+        );
+        setRequests(next);
+        if (!saveRequests(next)) setNoSave(true);
+        show('승인할 교체안을 바꿨습니다');
+      } catch (error) {
+        show(error instanceof Error ? error.message : '교체안을 바꾸지 못했습니다');
+      }
+    },
+    [requests, show],
+  );
+
+  const onApproveRequest = useCallback(
+    (id: string) => {
+      if (!input) return;
+      const request = requests.find((item) => item.id === id);
+      if (!request) return;
+      if (request.kind !== 'cover') {
+        const after = applyAll(input, [
+          { id: 0, type: request.candidate.type, title: request.candidate.title, changes: request.candidate.changes },
+        ]);
+        if (validate(after).length > 0) {
+          show('그 사이 시간표가 달라져 이 안을 승인할 수 없습니다. 새 요청이 필요합니다');
+          return;
+        }
+      }
+      try {
+        const nextId = (entries[entries.length - 1]?.id ?? 0) + 1;
+        const nextEntry = requestEntry(request, nextId, input.config);
+        const nextEntries = [...entries, nextEntry];
+        const nextRequests = requests.map((item) =>
+          item.id === id ? transitionRequest(item, 'approved') : item,
+        );
+        setEntries(nextEntries);
+        if (!saveEntries(nextEntries)) setNoSave(true);
+        setRequests(nextRequests);
+        if (!saveRequests(nextRequests)) setNoSave(true);
+        show('승인했습니다. 이제 행정 마무리 세 단계를 확인해 주세요');
+        window.setTimeout(() => document.getElementById('admin-checklist-title')?.focus(), 80);
+      } catch (error) {
+        show(error instanceof Error ? error.message : '승인하지 못했습니다');
+      }
+    },
+    [input, requests, entries, show],
+  );
+
+  const onRejectRequest = useCallback(
+    (id: string, note: string) => {
+      try {
+        const next = requests.map((request) =>
+          request.id === id ? transitionRequest(request, 'rejected', note) : request,
+        );
+        setRequests(next);
+        if (!saveRequests(next)) setNoSave(true);
+        show('조정할 이유와 함께 반려했습니다');
+      } catch (error) {
+        show(error instanceof Error ? error.message : '반려하지 못했습니다');
+      }
+    },
+    [requests, show],
+  );
+
+  const onRequestChecklist = useCallback(
+    (id: string, key: ChecklistKey, checked: boolean) => {
+      try {
+        const next = requests.map((request) =>
+          request.id === id ? setChecklist(request, key, checked) : request,
+        );
+        setRequests(next);
+        if (!saveRequests(next)) setNoSave(true);
+      } catch (error) {
+        show(error instanceof Error ? error.message : '완료 상태를 저장하지 못했습니다');
+      }
+    },
+    [requests, show],
+  );
+
+  const onPublishRequest = useCallback(
+    (id: string) => {
+      try {
+        const next = requests.map((request) =>
+          request.id === id ? transitionRequest(request, 'published') : request,
+        );
+        setRequests(next);
+        if (!saveRequests(next)) setNoSave(true);
+        show('변경 시간표를 게시 완료로 표시했습니다');
+        window.setTimeout(() => document.getElementById('ops-detail-title')?.focus(), 80);
+      } catch (error) {
+        show(error instanceof Error ? error.message : '게시 완료로 바꾸지 못했습니다');
+      }
+    },
+    [requests, show],
+  );
+
   const onUndoLast = useCallback(() => {
     if (entries.length === 0) return;
     const next = entries.slice(0, -1);
@@ -735,6 +1004,8 @@ export function Workbench() {
     if (entries.length === 0) return;
     if (!window.confirm('반영한 변경을 모두 되돌리시겠습니까?')) return;
     setEntries([]);
+    setRequests([]);
+    saveRequests([]);
     saveEntries([]);
     setQueue([]);
     setHovered(null);
@@ -754,6 +1025,36 @@ export function Workbench() {
     window.print();
   }, []);
 
+  const onCopyRequestNotice = useCallback(
+    (id: string) => {
+      if (!input || !loaded) return;
+      const request = requests.find((item) => item.id === id);
+      if (!request) return;
+      void copy(buildNotice(loaded.schoolName, [requestEntry(request, 1, input.config)], input.config), '이 요청의 변경 공지를 복사했습니다');
+    },
+    [input, loaded, requests, copy],
+  );
+
+  const onCopyRequestNeisList = useCallback(
+    (id: string) => {
+      if (!input || !loaded) return;
+      const request = requests.find((item) => item.id === id);
+      if (!request) return;
+      void copy(buildNeisList(loaded.schoolName, [requestEntry(request, 1, input.config)], input.config), '이 요청의 나이스 입력 목록을 복사했습니다');
+    },
+    [input, loaded, requests, copy],
+  );
+
+  const onPrintRequest = useCallback(
+    (id: string) => {
+      const request = requests.find((item) => item.id === id);
+      if (!request) return;
+      setPrintRequest(request);
+      window.setTimeout(() => window.print(), 80);
+    },
+    [requests],
+  );
+
   const onReset = useCallback(() => {
     clearRaw();
     setLoaded(null);
@@ -761,6 +1062,7 @@ export function Workbench() {
     setEntries([]);
     setKlass(null);
     setView('teacher');
+    setWorkspaceMode('teacher');
     setQueue([]);
     setUnavail({});
     setHovered(null);
@@ -794,8 +1096,29 @@ export function Workbench() {
             {loaded.schoolName} | {loaded.source}
           </span>
         )}
-        <span className="spacer" />
         {loaded && input && !atHome && !needsPick && (
+          <nav className="workspace-switch" aria-label="작업 공간">
+            <button
+              className={workspaceMode === 'teacher' ? 'on' : ''}
+              aria-current={workspaceMode === 'teacher' ? 'page' : undefined}
+              onClick={() => setWorkspaceMode('teacher')}
+            >
+              내 시간표
+            </button>
+            <button
+              className={workspaceMode === 'ops' ? 'on' : ''}
+              aria-current={workspaceMode === 'ops' ? 'page' : undefined}
+              onClick={() => setWorkspaceMode('ops')}
+            >
+              일과 요청함
+              {requests.some((request) => request.status === 'pending') && (
+                <span>{requests.filter((request) => request.status === 'pending').length}</span>
+              )}
+            </button>
+          </nav>
+        )}
+        <span className="spacer" />
+        {loaded && input && !atHome && !needsPick && workspaceMode === 'teacher' && (
           <>
             <div className="seg" role="tablist" aria-label="보기 전환">
               <button
@@ -916,63 +1239,95 @@ export function Workbench() {
           teachers={teachers}
           onPick={commitTeacher}
         />
+      ) : workspaceMode === 'ops' ? (
+        <OpsInbox
+          requests={requests}
+          cfg={input.config}
+          onApprove={onApproveRequest}
+          onReject={onRejectRequest}
+          onChecklist={onRequestChecklist}
+          onPublish={onPublishRequest}
+          onCopyNeisList={onCopyRequestNeisList}
+          onCopyNotice={onCopyRequestNotice}
+          onPrint={onPrintRequest}
+          onSelectCandidate={onSelectRequestCandidate}
+        />
       ) : (
-        <main className="work">
-          <Grid
-            cfg={input.config}
-            mode={view}
-            owner={(view === 'teacher' ? currentTeacher : currentKlass) ?? ''}
-            lessons={lessons}
-            absentSlots={queue}
-            lockedSlots={currentTeacher !== null ? (unavail[currentTeacher] ?? []) : []}
-            todayIdx={todayIdx}
-            closures={closures}
-            preview={hovered}
-            onToggleSlot={onToggleSlot}
-            onToggleDay={onToggleDay}
-            onToggleLock={onToggleLock}
-            offDays={offDays}
-            onToggleOffDay={onToggleOffDay}
-            myOffDays={myOffDays}
-            onToggleMyOffDay={onToggleMyOffDay}
-            busySlots={
-              view === 'klass' && currentKlass !== null
-                ? (input.klassBusy?.[currentKlass] ?? [])
-                : []
-            }
-          />
-          <div className="side" ref={sideRef}>
-            <Panel
+        <main className={'teacher-work focus-' + scheduleFocus + (activeSlot !== null ? ' has-selection' : '')}>
+          {view === 'teacher' && currentTeacher !== null && (
+            <TeacherHome
+              schoolName={loaded.schoolName}
+              teacher={currentTeacher}
               cfg={input.config}
-              result={result}
-              queueLen={queue.length}
-              cover={cover}
-              hovered={hovered}
-              peers={peers}
-              electiveGrade={electiveGrade}
-              grouped={grouped}
-              onGroup={onGroup}
-              onUngroup={onUngroup}
-              onHover={setHovered}
-              onCopy={onCopy}
-              onCopyCover={onCopyCover}
-              onApplyCover={onApplyCover}
-              onApply={onApply}
-              onSkip={onSkip}
+              lessons={lessons}
+              todayIdx={todayIdx}
+              requests={requests}
+              focus={scheduleFocus}
+              onFocus={setScheduleFocus}
             />
-            <Changes
+          )}
+          {(scheduleFocus === 'week' || view === 'klass') && (
+            <div className="work">
+              <Grid
+                cfg={input.config}
+                mode={view}
+                owner={(view === 'teacher' ? currentTeacher : currentKlass) ?? ''}
+                lessons={lessons}
+                absentSlots={queue}
+                lockedSlots={currentTeacher !== null ? (unavail[currentTeacher] ?? []) : []}
+                todayIdx={todayIdx}
+                closures={closures}
+                preview={hovered}
+                onToggleSlot={onToggleSlot}
+                onToggleDay={onToggleDay}
+                onToggleLock={onToggleLock}
+                offDays={offDays}
+                onToggleOffDay={onToggleOffDay}
+                myOffDays={myOffDays}
+                onToggleMyOffDay={onToggleMyOffDay}
+                busySlots={
+                  view === 'klass' && currentKlass !== null
+                    ? (input.klassBusy?.[currentKlass] ?? [])
+                    : []
+                }
+              />
+              <div className="side" ref={sideRef} tabIndex={-1}>
+                <Panel
+                  cfg={input.config}
+                  result={result}
+                  queueLen={queue.length}
+                  cover={cover}
+                  hovered={hovered}
+                  peers={peers}
+                  electiveGrade={electiveGrade}
+                  grouped={grouped}
+                  defaultDate={requestDate}
+                  owner={currentTeacher ?? ''}
+                  onGroup={onGroup}
+                  onUngroup={onUngroup}
+                  onHover={setHovered}
+                  onCopy={onCopy}
+                  onCopyCover={onCopyCover}
+                  onApplyCover={onApplyCover}
+                  onApply={onApply}
+                  onRequest={onRequest}
+                  onCoverRequest={onCoverRequest}
+                  onSkip={onSkip}
+                  onClear={() => {
+                    setQueue([]);
+                    setHovered(null);
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          {view === 'teacher' && currentTeacher !== null && (
+            <RequestStatusList
+              requests={requests.filter((request) => request.teacher === currentTeacher)}
               cfg={input.config}
-              entries={entries}
-              helpers={helpers}
-              onUndoLast={onUndoLast}
-              onUndoAll={onUndoAll}
-              onCopyNotice={onCopyNotice}
-              onCopyNeisList={onCopyNeisList}
-              onPrint={onPrint}
-              reason={reason}
-              onReason={onReason}
+              onCancel={onCancelRequest}
             />
-          </div>
+          )}
         </main>
       )}
 
@@ -980,9 +1335,9 @@ export function Workbench() {
         <Sheet
           schoolName={loaded.schoolName}
           cfg={input.config}
-          entries={entries}
-          teacher={currentTeacher ?? ''}
-          reason={reason}
+          entries={printRequest ? [requestEntry(printRequest, 1, input.config)] : entries}
+          teacher={printRequest?.teacher ?? currentTeacher ?? ''}
+          reason={printRequest ? printRequest.reason + (printRequest.note ? ' · ' + printRequest.note : '') : reason}
         />
       )}
 

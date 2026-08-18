@@ -6,6 +6,8 @@ dist/
 .env.*
 .next/
 out/
+/artifacts/
+/tmp-shots-red/
 
 # tsc 증분 빌드 기록
 *.tsbuildinfo

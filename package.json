@@ -12,6 +12,7 @@
     "test": "npm run test -w @timeswap/engine && npm run test -w web",
     "typecheck": "tsc -p packages/engine/tsconfig.json --noEmit && npm run typecheck -w web",
     "build": "npm run build -w web",
+    "demo": "npm run demo -w @timeswap/engine --",
     "dev": "npm run dev -w web",
     "serve": "node scripts/serve-checked.mjs",
     "smoke": "node scripts/smoke.mjs",
