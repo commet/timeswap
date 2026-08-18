@@ -60,6 +60,7 @@ describe('query navigation', () => {
     expect(parseLocation('/?view=ops&school=joyul-demo&neisKey=secret')).toEqual({ view: 'landing' });
     expect(parseLocation('/internal?view=teacher&school=joyul-demo&teacher=%EA%B9%80%EC%88%98%ED%95%99'))
       .toEqual({ view: 'landing' });
+    expect(parseLocation('http://[bad')).toEqual({ view: 'landing' });
   });
 
   it('notifies views in browser back-button order', () => {

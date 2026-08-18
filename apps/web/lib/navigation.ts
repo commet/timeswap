@@ -37,9 +37,14 @@ export function formatLocation(location: AppLocation): string {
 }
 
 export function parseLocation(input: string | LocationLike): AppLocation {
-  const parsed = typeof input === 'string'
-    ? new URL(input, 'https://static-export.invalid')
-    : input;
+  let parsed: LocationLike;
+  try {
+    parsed = typeof input === 'string'
+      ? new URL(input, 'https://static-export.invalid')
+      : input;
+  } catch {
+    return { view: 'landing' };
+  }
   if (parsed.pathname !== '/') return { view: 'landing' };
   const search = parsed.search;
   const params = new URLSearchParams(search);

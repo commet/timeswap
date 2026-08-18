@@ -44,6 +44,7 @@ interface LegacyRequest {
   note?: string;
   target: LegacyAssignment;
   candidate: LegacyCandidate;
+  kind: 'change' | 'cover';
   status: LegacyStatus;
   adminNote?: string;
   checklist: { neis: boolean; notice: boolean; document: boolean };
@@ -81,6 +82,7 @@ function isLegacyRequest(value: unknown): value is LegacyRequest {
     && typeof value.date === 'string' && isISODate(value.date)
     && typeof value.teacher === 'string' && value.teacher.trim().length > 0
     && (value.reason === '업무상 부재' || value.reason === '연수·출장' || value.reason === '기타')
+    && (value.note === undefined || typeof value.note === 'string')
     && isLegacyAssignment(value.target)
     && (candidate.type === 'move' || candidate.type === 'swap2' || candidate.type === 'cycle3')
     && Array.isArray(candidate.changes)
@@ -88,8 +90,10 @@ function isLegacyRequest(value: unknown): value is LegacyRequest {
     && candidate.changes.every((change) => isRecord(change)
       && isLegacyAssignment(change.from) && typeof change.toSlot === 'number'
       && Number.isInteger(change.toSlot))
+    && (value.kind === 'change' || value.kind === 'cover')
     && (value.status === 'pending' || value.status === 'approved' || value.status === 'rejected'
       || value.status === 'cancelled' || value.status === 'published')
+    && (value.adminNote === undefined || typeof value.adminNote === 'string')
     && typeof checklist.neis === 'boolean'
     && typeof checklist.notice === 'boolean'
     && typeof checklist.document === 'boolean';
