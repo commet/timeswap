@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { fromNeis, type NeisReport, type NeisRow } from '@timeswap/engine';
 import {
   loadSchedule,
-  loadTimetable,
+  findRecentTeachingWeek,
   recentRange,
   searchSchools,
   NEIS_KEY_GUIDE,
@@ -65,9 +65,9 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
       try {
         const range = recentRange(5);
         const [tt, sch] = await Promise.all([
-          loadTimetable({ school: picked, from: range.from, to: range.to, key: neisKey || undefined }),
+          findRecentTeachingWeek({ school: picked, from: range.from, to: range.to, key: neisKey || undefined }),
           loadSchedule({ school: picked, from: range.from, to: range.to, key: neisKey || undefined }).catch(
-            () => [] as NeisEvent[],
+            () => ({ rows: [] as NeisEvent[] }),
           ),
         ]);
         if (tt.rows.length === 0) {
@@ -84,7 +84,7 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
          *
          * 그래서 여기서 멈추고 무엇이 필요한지 숫자로 알린다.
          */
-        if (tt.truncated) {
+        if (!tt.complete) {
           setError(
             `나이스가 ${tt.total.toLocaleString()}줄 가운데 ${tt.rows.length}줄만 보냈습니다. ` +
               '인증키 없는 요청은 5줄에서 끊기고 쪽 넘김도 되지 않습니다. ' +
@@ -96,7 +96,7 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
         const rep = fromNeis(tt.rows);
         setSchool(picked);
         setRows(tt.rows);
-        setEvents(sch);
+        setEvents(sch.rows);
         setRange(range);
         setReport(rep);
         setStage('배정');
@@ -211,7 +211,7 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
             {neisKey === '' ? (
               <b className="neis-need">한 번만 넣으면 됩니다</b>
             ) : (
-              <b className="neis-ok">저장됨</b>
+              <b className="neis-ok">이번 작업에서 사용 중</b>
             )}
           </span>
           <input
@@ -236,8 +236,8 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
               나이스에서 인증키 받기
             </a>
             <br />
-            받은 키를 위에 붙여 넣으십시오. 이 브라우저에만 저장하고 나이스에만 보냅니다. 다음에
-            오시면 다시 넣지 않아도 됩니다.
+            받은 키를 위에 붙여 넣으십시오. 키는 이 작업 중 메모리에만 두고 나이스에만 보냅니다.
+            새로고침하거나 탭을 닫으면 다시 넣어야 합니다.
           </span>
         </label>
 
@@ -252,6 +252,7 @@ export function NeisLoader({ neisKey, onKeyChange, onDone, onCancel }: Props) {
                   <span className="hit-name">{s.name}</span>
                   <span className="hit-meta">
                     {s.officeName} | {s.kind}
+                    {s.preview ? ' | 미리보기(인증키를 넣으면 전체 결과)' : ''}
                   </span>
                 </button>
               </li>

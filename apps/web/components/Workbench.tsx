@@ -54,14 +54,12 @@ import {
   deriveBurden,
   fromFile,
   loadEntries,
-  loadNeisKey,
   loadOffDays,
   loadRaw,
   loadTheme,
   loadUnavail,
   sampleSchool,
   saveEntries,
-  saveNeisKey,
   saveOffDays,
   saveRaw,
   saveUnavail,
@@ -76,6 +74,7 @@ import {
   type TeacherMap,
   type ThemeMode,
 } from '../lib/app';
+import { createNeisSession } from '../lib/neis-session';
 
 function localYmd(date: Date): string {
   const year = date.getFullYear();
@@ -126,6 +125,7 @@ function defaultTeacher(input: TimetableInput): string | null {
 }
 
 export function Workbench() {
+  const neisSession = useMemo(createNeisSession, []);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [showNeis, setShowNeis] = useState(false);
   /** 로고를 누르면 시작 화면으로 돌아온다. 불러온 시간표는 지우지 않는다. */
@@ -177,7 +177,6 @@ export function Workbench() {
         clearRaw();
       }
     }
-    setNeisKey(loadNeisKey());
     setOffDays(loadOffDays());
     setTheme(loadTheme());
     setRequests(loadRequests());
@@ -1216,7 +1215,7 @@ export function Workbench() {
               neisKey={neisKey}
               onKeyChange={(k) => {
                 setNeisKey(k);
-                saveNeisKey(k);
+                neisSession.setKey(k);
               }}
               onDone={onNeisDone}
               onCancel={() => setShowNeis(false)}
