@@ -8,6 +8,7 @@ dist/
 out/
 /artifacts/
 /tmp-shots-red/
+/.worktrees/
 
 # tsc 증분 빌드 기록
 *.tsbuildinfo
