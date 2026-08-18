@@ -81,7 +81,7 @@ scripts           검사 도구
 npm ci              # 잠금 파일 그대로 설치
 npm run check       # 배포 설정이 서로 맞는지
 npm run typecheck   # 엔진과 웹 앱 타입 검사
-npm test            # 엔진 145개, 웹 lib 38개
+npm test            # 엔진 152개, 웹 lib 46개
 npm run build       # 웹 정적 빌드 (결과는 apps/web/out)
 npm run demo        # 엔진 CLI 데모
 ```
