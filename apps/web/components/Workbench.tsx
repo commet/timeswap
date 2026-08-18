@@ -11,22 +11,32 @@ import {
   validate,
   type Candidate,
   type CoverCandidate,
-  type NeisRow,
   type RecommendResult,
   type TimetableInput,
 } from '@timeswap/engine';
-import { Landing } from './Landing';
+import { AppShell } from './AppShell';
 import { Grid } from './Grid';
 import { Panel } from './Panel';
 import { Changes } from './Changes';
 import { Sheet } from './Sheet';
 import { TeacherPick } from './TeacherPick';
-import { NeisLoader } from './NeisLoader';
 import { TeacherHome, type ScheduleFocus } from './TeacherHome';
 import { RequestStatusList } from './RequestStatusList';
 import { OpsInbox } from './OpsInbox';
-import type { NeisEvent, NeisSchool } from '../lib/neis';
 import { BRAND } from '../lib/brand';
+import type { WorkspaceState } from '../lib/domain';
+import {
+  parseLocation,
+  pushLocation,
+  subscribeToPopState,
+  type AppLocation,
+} from '../lib/navigation';
+import { createWorkspaceRepository, type WorkspaceRepository } from '../lib/repository';
+import {
+  RoleViewAdapterProvider,
+  type RoleViewAdapterProps,
+} from './RoleNavigation';
+import { NeisSessionProvider } from './SetupFlow';
 import {
   createRequest,
   createCoverRequest,
@@ -44,23 +54,12 @@ import {
   buildClosures,
   buildCoverPhrase,
   calendarCoversThisWeek,
-  buildFromNeis,
   buildNeisList,
   buildNotice,
   buildPhrase,
-  clearRaw,
   deriveBurden,
-  fromFile,
-  loadEntries,
   loadOffDays,
-  loadRaw,
   loadTheme,
-  loadUnavail,
-  sampleSchool,
-  saveEntries,
-  saveOffDays,
-  saveRaw,
-  saveUnavail,
   weekMondayOf,
   REASON_KEY,
   TEACHER_KEY,
@@ -69,10 +68,51 @@ import {
   toFile,
   type AppliedEntry,
   type Loaded,
-  type TeacherMap,
   type ThemeMode,
 } from '../lib/app';
 import { createNeisSession } from '../lib/neis-session';
+
+function workspaceToLoaded(state: WorkspaceState): Loaded {
+  const periods = Math.max(7, ...state.lessons.map((lesson) => Number(lesson.period) || 1));
+  const config: TimetableInput['config'] = {
+    days: 5,
+    periods,
+    dayNames: ['월', '화', '수', '목', '금'],
+  };
+  const busy = new Map<string, Set<number>>();
+  const assignments = state.lessons.flatMap((lesson) => {
+    const day = new Date(`${lesson.date}T00:00:00.000Z`).getUTCDay() - 1;
+    const period = Number(lesson.period) - 1;
+    if (day < 0 || day >= 5 || period < 0 || period >= periods) return [];
+    const slot = day * periods + period;
+    const klass = `${lesson.classIdentity.grade}-${lesson.classIdentity.className}`;
+    if (lesson.teacher.state === 'unassigned') {
+      const slots = busy.get(klass) ?? new Set<number>();
+      slots.add(slot);
+      busy.set(klass, slots);
+      return [];
+    }
+    return [{
+      teacher: lesson.teacher.teacherId,
+      klass,
+      subject: lesson.subject,
+      slot,
+      ...(lesson.parallelGroupId ? { group: lesson.parallelGroupId } : {}),
+    }];
+  });
+  return {
+    schoolName: state.workspace.name,
+    source: state.revisions[0]?.source === 'demo'
+      ? '샘플' : state.revisions[0]?.source === 'neis' ? '나이스' : '파일',
+    input: {
+      config,
+      assignments,
+      ...(busy.size ? {
+        klassBusy: Object.fromEntries([...busy].map(([klass, slots]) => [klass, [...slots]])),
+      } : {}),
+    },
+  };
+}
 
 function localYmd(date: Date): string {
   const year = date.getFullYear();
@@ -122,23 +162,24 @@ function defaultTeacher(input: TimetableInput): string | null {
   return best;
 }
 
-export function Workbench() {
-  const neisSession = useMemo(createNeisSession, []);
-  const [loaded, setLoaded] = useState<Loaded | null>(null);
-  const [showNeis, setShowNeis] = useState(false);
+function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleViewAdapterProps) {
+  const seed = useMemo(() => workspaceToLoaded(workspaceState), [workspaceState]);
+  const [loaded, setLoaded] = useState<Loaded | null>(seed);
   /** 로고를 누르면 시작 화면으로 돌아온다. 불러온 시간표는 지우지 않는다. */
   const [atHome, setAtHome] = useState(false);
-  const [neisKey, setNeisKey] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [teacher, setTeacher] = useState<string | null>(null);
+  const [teacher, setTeacher] = useState<string | null>(
+    location.view === 'teacher' ? location.teacher : defaultTeacher(seed.input),
+  );
   const [teacherInput, setTeacherInput] = useState('');
   /** 아직 본인 성함을 고르지 않았다. 처음 불러온 직후에만 참이다. */
   const [needsPick, setNeedsPick] = useState(false);
   /** 결재 문서에 들어갈 결강 사유 */
   const [reason, setReason] = useState('출장');
   const [entries, setEntries] = useState<AppliedEntry[]>([]);
-  const [view, setView] = useState<'teacher' | 'klass'>('teacher');
-  const [klass, setKlass] = useState<string | null>(null);
+  const [view, setView] = useState<'teacher' | 'klass'>(location.view === 'class' ? 'klass' : 'teacher');
+  const [klass, setKlass] = useState<string | null>(
+    location.view === 'class' ? `${location.grade}-${location.className}` : null,
+  );
   const [queue, setQueue] = useState<number[]>([]);
   const [unavail, setUnavail] = useState<Record<string, number[]>>({});
   /** 손으로 지정한 수업 없는 요일. 학사일정에 안 잡히는 정기고사와 학교 행사를 위한 것이다 */
@@ -153,35 +194,30 @@ export function Workbench() {
   const [noSave, setNoSave] = useState(false);
   const [todayIdx, setTodayIdx] = useState<number | null>(null);
   const [theme, setTheme] = useState<ThemeMode>('auto');
-  const [workspaceMode, setWorkspaceMode] = useState<'teacher' | 'ops'>('teacher');
+  const [workspaceMode, setWorkspaceMode] = useState<'teacher' | 'ops'>(location.view === 'ops' ? 'ops' : 'teacher');
   const [scheduleFocus, setScheduleFocus] = useState<ScheduleFocus>('week');
   const [requests, setRequests] = useState<ChangeRequest[]>([]);
   const [printRequest, setPrintRequest] = useState<ChangeRequest | null>(null);
   const sideRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const raw = loadRaw();
-    if (raw) {
-      try {
-        const l = fromFile(raw);
-        setLoaded(l);
-        setEntries(loadEntries());
-        setUnavail(loadUnavail());
-        const saved = localStorage.getItem(TEACHER_KEY);
-        setTeacher(saved ?? defaultTeacher(l.input));
-        if (saved === null) setNeedsPick(true);
-        setReason(localStorage.getItem(REASON_KEY) ?? '출장');
-      } catch {
-        clearRaw();
-      }
-    }
+    const next = workspaceToLoaded(workspaceState);
+    setLoaded(next);
+    setTeacher(location.view === 'teacher' ? location.teacher : defaultTeacher(next.input));
+    setView(location.view === 'class' ? 'klass' : 'teacher');
+    setKlass(location.view === 'class' ? `${location.grade}-${location.className}` : null);
+    setWorkspaceMode(location.view === 'ops' ? 'ops' : 'teacher');
+    setAtHome(false);
+    setNeedsPick(false);
+    setEntries([]);
+    setUnavail({});
+    setReason(localStorage.getItem(REASON_KEY) ?? '출장');
     setOffDays(loadOffDays());
     setTheme(loadTheme());
-    setRequests([]);
     const wd = new Date().getDay(); // 일 0, 월 1
     setTodayIdx(wd >= 1 && wd <= 5 ? wd - 1 : null);
     if (window.innerWidth < 700) setScheduleFocus('today');
-  }, []);
+  }, [location, workspaceState]);
 
   const base = loaded?.input ?? null;
 
@@ -402,7 +438,6 @@ export function Workbench() {
       },
     };
     setLoaded(next);
-    if (!saveRaw(toFile(next))) setNoSave(true);
     setHovered(null);
     const n = next.input.assignments.filter((a) => a.group === id).length;
     show(`${subject} 수업 ${n}개를 한 묶음으로 표시했습니다. 이제 함께 움직입니다`);
@@ -438,7 +473,6 @@ export function Workbench() {
       },
     };
     setLoaded(next);
-    if (!saveRaw(toFile(next))) setNoSave(true);
     setHovered(null);
     show('묶음을 해제했습니다. 이제 따로 움직입니다');
   }, [loaded, input, result, show]);
@@ -462,79 +496,6 @@ export function Workbench() {
       /* 무시 */
     }
   }, []);
-
-  /** 새 시간표를 받으면 화면과 저장소를 함께 초기화한다. */
-  const install = useCallback(
-    (l: Loaded) => {
-      setLoaded(l);
-      const stored = saveRaw(toFile(l));
-      setNoSave(!stored);
-      setEntries([]);
-      saveEntries([]);
-      setRequests([]);
-      setQueue([]);
-      setUnavail({});
-      saveUnavail({});
-      setHovered(null);
-      setView('teacher');
-      setWorkspaceMode('teacher');
-      setAtHome(false);
-      // 학교가 바뀌면 이전에 고른 성함은 뜻이 없다. 처음부터 다시 묻는다.
-      setTeacher(defaultTeacher(l.input));
-      setNeedsPick(true);
-      try {
-        localStorage.removeItem(TEACHER_KEY);
-      } catch {
-        /* 무시 */
-      }
-      show(`${l.schoolName} 시간표를 불러왔습니다`);
-    },
-    [show],
-  );
-
-  const onSample = useCallback(() => {
-    setBusy(true);
-    try {
-      install(sampleSchool());
-    } finally {
-      setBusy(false);
-    }
-  }, [install]);
-
-  const onFile = useCallback(
-    (f: File) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          install(fromFile(String(reader.result)));
-        } catch (e) {
-          show(e instanceof Error ? e.message : '불러오기에 실패했습니다');
-        }
-      };
-      reader.onerror = () => show('파일을 읽지 못했습니다');
-      reader.readAsText(f);
-    },
-    [install, show],
-  );
-
-  const onNeisDone = useCallback(
-    (
-      school: NeisSchool,
-      rows: NeisRow[],
-      events: NeisEvent[],
-      map: TeacherMap,
-      range: { from: string; to: string },
-    ) => {
-      const l = buildFromNeis(school, rows, events, map, range);
-      if (l.input.assignments.length === 0) {
-        show('담당 교사를 한 명 이상 입력해야 시간표를 만들 수 있습니다');
-        return;
-      }
-      setShowNeis(false);
-      install(l);
-    },
-    [install, show],
-  );
 
   const onSaveFile = useCallback(() => {
     if (!loaded) return;
@@ -596,7 +557,6 @@ export function Workbench() {
         const next: Record<string, number[]> = { ...u };
         if (cur.size === 0) delete next[currentTeacher];
         else next[currentTeacher] = [...cur].sort((x, y) => x - y);
-        saveUnavail(next);
         return next;
       });
     },
@@ -607,7 +567,6 @@ export function Workbench() {
     setHovered(null);
     setOffDays((cur) => {
       const next = cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d].sort((a, b) => a - b);
-      saveOffDays(next);
       return next;
     });
   }, []);
@@ -643,7 +602,6 @@ export function Workbench() {
         const next: Record<string, number[]> = { ...u };
         if (cur.size === 0) delete next[currentTeacher];
         else next[currentTeacher] = [...cur].sort((x, y) => x - y);
-        saveUnavail(next);
         return next;
       });
     },
@@ -727,7 +685,6 @@ export function Workbench() {
         },
       ];
       setEntries(next);
-      if (!saveEntries(next)) setNoSave(true);
       setHovered(null);
       setQueue((q) => {
         const rest = q.slice(1);
@@ -766,7 +723,6 @@ export function Workbench() {
       const nextId = (entries[entries.length - 1]?.id ?? 0) + 1;
       const next = [...entries, { id: nextId, type: c.type, title: c.title, changes: c.changes }];
       setEntries(next);
-      if (!saveEntries(next)) setNoSave(true);
       setHovered(null);
       setQueue((q) => {
         const rest = q.slice(1);
@@ -922,7 +878,6 @@ export function Workbench() {
           item.id === id ? transitionRequest(item, 'approved') : item,
         );
         setEntries(nextEntries);
-        if (!saveEntries(nextEntries)) setNoSave(true);
         setRequests(nextRequests);
         show('승인했습니다. 이제 행정 마무리 세 단계를 확인해 주세요');
         window.setTimeout(() => document.getElementById('admin-checklist-title')?.focus(), 80);
@@ -982,7 +937,6 @@ export function Workbench() {
     if (entries.length === 0) return;
     const next = entries.slice(0, -1);
     setEntries(next);
-    saveEntries(next);
     setQueue([]);
     setHovered(null);
     show('직전 변경을 되돌렸습니다');
@@ -993,7 +947,6 @@ export function Workbench() {
     if (!window.confirm('반영한 변경을 모두 되돌리시겠습니까?')) return;
     setEntries([]);
     setRequests([]);
-    saveEntries([]);
     setQueue([]);
     setHovered(null);
     show('변경을 모두 되돌렸습니다');
@@ -1043,23 +996,8 @@ export function Workbench() {
   );
 
   const onReset = useCallback(() => {
-    clearRaw();
-    setLoaded(null);
-    setTeacher(null);
-    setEntries([]);
-    setKlass(null);
-    setView('teacher');
-    setWorkspaceMode('teacher');
-    setQueue([]);
-    setUnavail({});
-    setHovered(null);
-    setNeedsPick(false);
-    try {
-      localStorage.removeItem(TEACHER_KEY);
-    } catch {
-      /* 무시 */
-    }
-  }, []);
+    navigate({ view: 'landing' });
+  }, [navigate]);
 
   return (
     <div className="shell">
@@ -1067,9 +1005,8 @@ export function Workbench() {
         <button
           className="wordmark"
           onClick={() => {
-            setAtHome(true);
-            setShowNeis(false);
             setHovered(null);
+            navigate({ view: 'landing' });
             window.scrollTo({ top: 0 });
           }}
           title="처음 화면으로"
@@ -1196,30 +1133,8 @@ export function Workbench() {
         )}
       </header>
 
-      {showNeis ? (
-        <main className="work single">
-          <section className="card">
-            <NeisLoader
-              neisKey={neisKey}
-              onKeyChange={(k) => {
-                setNeisKey(k);
-                neisSession.setKey(k);
-              }}
-              onDone={onNeisDone}
-              onCancel={() => setShowNeis(false)}
-            />
-          </section>
-        </main>
-      ) : !loaded || !input || atHome ? (
-        <Landing
-          onNeis={() => setShowNeis(true)}
-          onSample={onSample}
-          onFile={onFile}
-          onResume={() => setAtHome(false)}
-          hasSaved={loaded !== null && input !== null}
-          savedName={loaded?.schoolName ?? ''}
-          busy={busy}
-        />
+      {!loaded || !input ? (
+        <main className="missing-workspace"><p>학교 시간표를 읽지 못했습니다.</p></main>
       ) : needsPick ? (
         <TeacherPick
           schoolName={loaded.schoolName}
@@ -1394,5 +1309,81 @@ export function Workbench() {
         </div>
       )}
     </div>
+  );
+}
+
+function workspaceIdOf(location: AppLocation): string | null {
+  return location.view === 'teacher' || location.view === 'ops' || location.view === 'class'
+    ? location.school
+    : null;
+}
+
+export function Workbench() {
+  const repositoryRef = useRef<WorkspaceRepository | null>(null);
+  const workspaceRef = useRef<WorkspaceState | null>(null);
+  const locationRef = useRef<AppLocation>({ view: 'landing' });
+  const neisSession = useMemo(createNeisSession, []);
+  const [state, setState] = useState<WorkspaceState | null>(null);
+  const [location, setLocation] = useState<AppLocation>({ view: 'landing' });
+  const [neisKey, setNeisKey] = useState('');
+  const [saveError, setSaveError] = useState('');
+
+  const updateLocation = useCallback((next: AppLocation) => {
+    if (locationRef.current.view === 'setup' && next.view !== 'setup') {
+      neisSession.clear();
+      setNeisKey('');
+    }
+    locationRef.current = next;
+    setLocation(next);
+    const workspaceId = workspaceIdOf(next);
+    if (!workspaceId) return;
+    if (workspaceRef.current?.workspace.id === workspaceId) return;
+    const loaded = repositoryRef.current?.load(workspaceId) ?? null;
+    workspaceRef.current = loaded;
+    setState(loaded);
+  }, [neisSession]);
+
+  useEffect(() => {
+    repositoryRef.current = createWorkspaceRepository(window.localStorage);
+    const initial = parseLocation(window.location);
+    updateLocation(initial);
+    return subscribeToPopState(updateLocation);
+  }, [updateLocation]);
+
+  const saveState = useCallback((next: WorkspaceState) => {
+    workspaceRef.current = next;
+    setState(next);
+    const result = repositoryRef.current?.save(next);
+    setSaveError(result && !result.ok
+      ? result.reason === 'quota'
+        ? '브라우저 저장 공간이 부족합니다. 현재 화면은 유지되지만 내보내기 전에는 새로고침하지 마십시오.'
+        : '이 브라우저에 학교 자료를 저장할 수 없습니다. 현재 화면은 유지됩니다.'
+      : '');
+  }, []);
+
+  const navigate = useCallback((next: AppLocation) => {
+    pushLocation(next);
+    updateLocation(next);
+  }, [updateLocation]);
+
+  const sessionValue = useMemo(() => ({
+    key: neisKey,
+    setKey(next: string) {
+      neisSession.setKey(next);
+      setNeisKey(neisSession.getKey());
+    },
+    clear() {
+      neisSession.clear();
+      setNeisKey('');
+    },
+  }), [neisKey, neisSession]);
+
+  return (
+    <NeisSessionProvider value={sessionValue}>
+      <RoleViewAdapterProvider adapter={LegacyWorkbench}>
+        {saveError && <div className="warn-bar" role="alert">{saveError}</div>}
+        <AppShell state={state} location={location} saveState={saveState} navigate={navigate} />
+      </RoleViewAdapterProvider>
+    </NeisSessionProvider>
   );
 }

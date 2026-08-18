@@ -1,189 +1,90 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 
-const ART_COLS = [8, 76, 144];
-const ART_ROWS = [8, 48, 88, 128];
+import type { WorkspaceState } from '../lib/domain';
 
-/** 두 수업이 자리를 맞바꾸는 모습 */
-function HeroArt() {
+function ScheduleWindow() {
   return (
-    <svg className="hero-art" viewBox="0 0 220 168" aria-hidden="true">
-      <defs>
-        <marker
-          id="ah-a"
-          viewBox="0 0 10 10"
-          refX="8"
-          refY="5"
-          markerWidth="7"
-          markerHeight="7"
-          orient="auto-start-reverse"
-        >
-          <path d="M0 0L10 5L0 10z" fill="var(--accent)" />
-        </marker>
-        <marker
-          id="ah-w"
-          viewBox="0 0 10 10"
-          refX="8"
-          refY="5"
-          markerWidth="7"
-          markerHeight="7"
-          orient="auto-start-reverse"
-        >
-          <path d="M0 0L10 5L0 10z" fill="var(--warn)" />
-        </marker>
-      </defs>
-      {ART_ROWS.map((y, r) =>
-        ART_COLS.map((x, c) => {
-          const isA = r === 1 && c === 0;
-          const isB = r === 3 && c === 2;
-          return (
-            <rect
-              key={`${r}-${c}`}
-              x={x}
-              y={y}
-              width="60"
-              height="32"
-              rx="7"
-              fill={isA ? 'var(--accent-soft)' : isB ? 'var(--warn-soft)' : 'var(--surface-2)'}
-              stroke={isA ? 'var(--accent)' : isB ? 'var(--warn)' : 'var(--line)'}
-              strokeWidth={isA || isB ? 2 : 1}
-            />
-          );
-        }),
-      )}
-      <path
-        d="M74 60 C 120 48, 158 76, 168 120"
-        fill="none"
-        stroke="var(--accent)"
-        strokeWidth="3"
-        strokeLinecap="round"
-        markerEnd="url(#ah-a)"
-      />
-      <path
-        d="M138 148 C 92 160, 44 132, 34 92"
-        fill="none"
-        stroke="var(--warn)"
-        strokeWidth="3"
-        strokeLinecap="round"
-        markerEnd="url(#ah-w)"
-      />
-    </svg>
+    <div className="schedule-window" aria-hidden="true">
+      <div className="schedule-ruler"><span>08:40</span><span>12:30</span><span>16:10</span></div>
+      <div className="schedule-board">
+        <span className="schedule-now">지금</span>
+        <div className="schedule-line" />
+        <article className="schedule-block first"><b>3교시</b><span>기계일반</span><small>2학년 1반</small></article>
+        <article className="schedule-block moved"><b>4교시</b><span>건축일반</span><small>변경 확인</small></article>
+        <div className="schedule-swap">↕</div>
+      </div>
+    </div>
   );
 }
 
 export function Landing({
-  onNeis,
-  onSample,
-  onFile,
-  onResume,
-  hasSaved,
-  savedName,
-  busy,
+  state,
+  onOpen,
+  onSetup,
+  onDemo,
 }: {
-  onNeis: () => void;
-  onSample: () => void;
-  onFile: (file: File) => void;
-  onResume: () => void;
-  hasSaved: boolean;
-  savedName: string;
-  busy: boolean;
+  state: WorkspaceState | null;
+  onOpen(input: string): void;
+  onSetup(): void;
+  onDemo(): void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [over, setOver] = useState(false);
+  const [entry, setEntry] = useState('');
 
   return (
-    <main className="landing">
+    <main className="landing school-entry" aria-labelledby="landing-title">
       <div className="landing-card">
-        <div className="hero">
-          <div className="hero-copy">
-            <h1>
-              바꿔야 할 수업이 생기면,
-              <br />
-              <em>시간표에서 바로 요청하세요</em>
+        <header className="entry-hero">
+          <div className="entry-copy">
+            <span className="eyebrow">학교 시간표 변경을 한 흐름으로</span>
+            <h1 id="landing-title" tabIndex={-1}>
+              내 학교의 오늘을<br /><em>바로 여십시오</em>
             </h1>
-            <p className="lede">
-              가능한 교체와 보강을 한 표에서 비교하고, 일과 담당자의 승인과 나이스·공지·결재
-              마무리까지 한 흐름으로 이어집니다.
+            <p>
+              교사는 바꿀 수업을 고르고, 일과 담당자는 승인부터 게시까지 같은 시간표에서 마무리합니다.
             </p>
           </div>
-          <HeroArt />
-        </div>
+          <ScheduleWindow />
+        </header>
 
-        {hasSaved && (
-          <button className="resume" onClick={onResume}>
-            <span className="resume-label">이어서 작업하기</span>
-            <span className="resume-name">{savedName}</span>
-            <span className="resume-go" aria-hidden>
-              →
-            </span>
-          </button>
-        )}
-
-        <div
-          className={`dropzone${over ? ' on' : ''}`}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setOver(true);
-          }}
-          onDragLeave={() => setOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setOver(false);
-            const f = e.dataTransfer.files?.[0];
-            if (f) onFile(f);
-          }}
-        >
-          <p className="dropzone-title">어떻게 시작하시나요?</p>
-          <div className="entry-paths">
-            <button className="entry-path primary" onClick={() => inputRef.current?.click()} disabled={busy}>
-              <span className="entry-role">교사</span>
-              <b>받은 시간표 열기</b>
-              <small>학교에서 공유한 파일 하나면 바로 시작</small>
-              <i aria-hidden>→</i>
-            </button>
-            <button className="entry-path" onClick={onNeis} disabled={busy}>
-              <span className="entry-role">일과 담당</span>
-              <b>학교 시간표 처음 준비하기</b>
-              <small>공식 나이스 자료로 한 번만 설정</small>
-              <i aria-hidden>→</i>
-            </button>
+        <section className="school-entry-panel" aria-label="학교 진입">
+          <label htmlFor="school-entry-input">학교 이름 또는 받은 링크</label>
+          <div className="school-entry-row">
             <input
-              ref={inputRef}
-              type="file"
-              accept="application/json,.json"
-              hidden
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onFile(f);
-                e.target.value = '';
-              }}
+              id="school-entry-input"
+              className="input"
+              value={entry}
+              placeholder="학교명을 검색하거나 초대 링크를 붙여 넣으십시오"
+              onChange={(event) => setEntry(event.target.value)}
+              onKeyDown={(event) => { if (event.key === 'Enter') onOpen(entry); }}
             />
+            <button className="btn primary" onClick={() => onOpen(entry)}>
+              우리 학교 시간표 열기
+            </button>
           </div>
-          <div className="landing-minor">
-            <span>아직 파일이 없나요?</span>
-            <button onClick={onSample} disabled={busy}>{busy ? '불러오는 중' : '예시로 1분 체험'}</button>
-            <span>· 파일을 이 자리에 끌어다 놓아도 됩니다.</span>
-          </div>
+          {state && (
+            <button className="saved-school" onClick={() => onOpen(state.workspace.id)}>
+              <span>이 기기에 저장됨</span><b>{state.workspace.name}</b><i aria-hidden>→</i>
+            </button>
+          )}
+        </section>
+
+        <div className="entry-actions">
+          <button className="entry-secondary" onClick={onSetup}>
+            <span>학교에서 한 번만 설정</span>
+            <b>일과 담당자로 시작</b>
+            <i aria-hidden>→</i>
+          </button>
+          <button className="entry-demo" onClick={onDemo}>
+            <span>입력 없이 바로 확인</span>
+            <b>예시 학교 둘러보기</b>
+            <i aria-hidden>→</i>
+          </button>
         </div>
 
-        <ol className="steps">
-          <li>
-            <b>교사는 수업만 선택</b>
-            <span>시간표에서 바꿀 수업을 누릅니다</span>
-          </li>
-          <li>
-            <b>차이를 보고 요청</b>
-            <span>협조 교사와 영향이 한 표에 보입니다</span>
-          </li>
-          <li>
-            <b>담당자는 끝까지 마무리</b>
-            <span>승인, 나이스, 공지, 결재를 빠짐없이 확인합니다</span>
-          </li>
-        </ol>
-
-        <p className="privacy">
-          불러온 시간표는 이 기기에만 저장하며 외부로 보내지 않습니다. 회원 가입도 없습니다.
+        <p className="entry-trust">
+          <span aria-hidden>✓</span> 공식 나이스 공개 자료와 학교가 권한을 갖고 제공한 자료만 사용합니다.
         </p>
       </div>
     </main>

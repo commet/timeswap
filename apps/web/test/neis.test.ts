@@ -108,6 +108,7 @@ describe('timetable safety', () => {
       now: () => new Date('2026-08-18T12:00:00.000Z'),
     });
     expect(result.rows).toHaveLength(1);
+    expect(result.range).toEqual({ from: '20260810', to: '20260814' });
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 

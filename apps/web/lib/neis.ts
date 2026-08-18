@@ -37,6 +37,9 @@ export interface NeisSchool {
 
 export interface NeisCallResult<T> { rows: T[]; total: number; truncated: boolean; }
 export interface CompleteNeisResult<T> extends NeisCallResult<T> { fetchedAt: string; pageCount: number; complete: boolean; }
+export interface TeachingWeekResult extends CompleteNeisResult<NeisRow> {
+  range: { from: string; to: string };
+}
 
 interface HeadPart { head?: Array<{ list_total_count?: number; RESULT?: { CODE?: string; MESSAGE?: string } }>; }
 interface NeisResultPart { CODE?: string; MESSAGE?: string; }
@@ -139,7 +142,7 @@ export async function loadTimetable(q: TimetableQuery): Promise<CompleteNeisResu
 function ymd(d: Date): string { return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; }
 
 /** Find the most recent complete week containing rows, never an empty timetable. */
-export async function findRecentTeachingWeek(query: TimetableQuery): Promise<CompleteNeisResult<NeisRow>> {
+export async function findRecentTeachingWeek(query: TimetableQuery): Promise<TeachingWeekResult> {
   const current = new Date(query.now?.() ?? new Date());
   current.setHours(0, 0, 0, 0);
   current.setDate(current.getDate() - ((current.getDay() + 6) % 7));
@@ -147,7 +150,9 @@ export async function findRecentTeachingWeek(query: TimetableQuery): Promise<Com
     const monday = new Date(current); monday.setDate(monday.getDate() - weeksBack * 7);
     const friday = new Date(monday); friday.setDate(friday.getDate() + 4);
     const result = await fetchAllNeisRows<NeisRow>(timetableRequest(query, ymd(monday), ymd(friday)));
-    if (!result.complete || result.rows.length > 0) return result;
+    if (!result.complete || result.rows.length > 0) {
+      return { ...result, range: { from: ymd(monday), to: ymd(friday) } };
+    }
   }
   throw new NeisFailure('NO_DATA', '최근 5주에 공개된 시간표가 없습니다. 빈 시간표로 시작하지 마십시오.');
 }

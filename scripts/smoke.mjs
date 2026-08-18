@@ -2,173 +2,129 @@ import { existsSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:3100';
-const OUT = process.env.SHOT_DIR ?? '.';
+const OUT = process.env.SHOT_DIR;
 const exe = process.env.PW_CHROMIUM ?? '/opt/pw-browsers/chromium';
 const browser = await chromium.launch(existsSync(exe) ? { executablePath: exe } : {});
 const failures = [];
 
-async function startSample(page) {
-  await page.goto(BASE, { waitUntil: 'networkidle' });
-  await page.getByRole('button', { name: '예시로 1분 체험' }).click();
-  await page.waitForSelector('.pick-list');
-  await page.locator('.pick-list button').first().click();
-  await page.waitForSelector('.teacher-overview');
-}
+const shot = async (page, name) => {
+  if (OUT) await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: true });
+};
 
-async function selectWorkableLesson(page) {
-  const lessons = page.locator('button.cell.lesson');
-  for (let index = 0; index < Math.min(await lessons.count(), 16); index += 1) {
-    await lessons.nth(index).click();
-    await page.waitForTimeout(140);
-    if (await page.getByRole('button', { name: '이 안으로 요청' }).count()) return true;
-    const clear = page.getByRole('button', { name: '다른 수업' });
-    if (await clear.count()) await clear.click();
-    else await lessons.nth(index).click();
-  }
-  return false;
-}
-
-const ctx = await browser.newContext({
-  viewport: { width: 1440, height: 960 },
-  permissions: ['clipboard-read', 'clipboard-write'],
+const activeText = (page) => page.evaluate(() => {
+  const active = document.activeElement;
+  return active instanceof HTMLElement
+    ? { id: active.id, text: active.textContent?.trim() ?? '', placeholder: active.getAttribute('placeholder') ?? '' }
+    : { id: '', text: '', placeholder: '' };
 });
+
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 960 } });
 const page = await ctx.newPage();
-page.on('pageerror', (error) => failures.push('페이지 오류: ' + error.message));
+page.on('pageerror', (error) => failures.push(`페이지 오류: ${error.message}`));
 
 await page.goto(BASE, { waitUntil: 'networkidle' });
-await page.screenshot({ path: `${OUT}/shot-1-landing.png`, fullPage: true });
-if ((await page.locator('.entry-path').count()) !== 2) failures.push('랜딩 시작 경로가 두 개가 아님');
-
-await startSample(page);
-await page.screenshot({ path: `${OUT}/shot-2-teacher-home.png`, fullPage: true });
-await page.getByRole('button', { name: '변경 요청' }).click();
-await page.waitForSelector('.tt-grid');
-if (!(await selectWorkableLesson(page))) failures.push('요청할 수 있는 예시 수업을 찾지 못함');
-await page.waitForSelector('.candidate-compare');
-await page.screenshot({ path: `${OUT}/shot-3-compare.png`, fullPage: true });
-
-const primaryActions = await page.getByRole('button', { name: '이 안으로 요청' }).count();
-if (primaryActions !== 1) failures.push('비교 화면의 주요 요청 행동이 ' + primaryActions + '개임');
-await page.getByRole('button', { name: '이 안으로 요청' }).click();
-await page.waitForSelector('.request-status-list .status-pill.pending');
-await page.waitForTimeout(100);
-if ((await page.evaluate(() => document.activeElement?.id)) !== 'my-requests-title') failures.push('요청 뒤 상태 제목으로 초점이 이동하지 않음');
-if ((await page.locator('.cell.absent').count()) !== 0) failures.push('요청 후 선택한 결강 표시가 남음');
-
-await page.getByRole('button', { name: /일과 요청함/ }).click();
-await page.waitForSelector('.ops-work');
-await page.screenshot({ path: `${OUT}/shot-4-ops-inbox.png`, fullPage: true });
-const alternativeSelect = page.getByLabel('승인할 교체안');
-if (await alternativeSelect.count()) {
-  const options = await alternativeSelect.locator('option').count();
-  if (options > 1) {
-    await alternativeSelect.selectOption('1');
-    await page.waitForTimeout(100);
-    if ((await alternativeSelect.inputValue()) !== '1') failures.push('담당자가 승인할 다른 교체안을 선택하지 못함');
+await shot(page, 'task-7-landing');
+for (const action of ['우리 학교 시간표 열기', '일과 담당자로 시작', '예시 학교 둘러보기']) {
+  if ((await page.getByRole('button', { name: action }).count()) !== 1) {
+    failures.push(`랜딩 첫 화면에 ${action} 행동이 정확히 하나가 아님`);
   }
-} else failures.push('담당자에게 함께 계산된 다른 교체안이 보이지 않음');
-await page.getByRole('button', { name: '이 안으로 승인' }).click();
-await page.waitForSelector('.admin-checklist');
-await page.waitForTimeout(100);
-if ((await page.evaluate(() => document.activeElement?.id)) !== 'admin-checklist-title') failures.push('승인 뒤 행정 마무리로 초점이 이동하지 않음');
-await page.getByRole('button', { name: '입력 목록 복사' }).click();
-await page.waitForTimeout(120);
-const neisText = await page.evaluate(() => navigator.clipboard.readText());
-if (!neisText.includes('나이스 입력용')) failures.push('선택한 요청의 나이스 입력 목록 복사 실패');
-await page.getByRole('button', { name: '공지 복사' }).click();
-await page.waitForTimeout(120);
-const noticeText = await page.evaluate(() => navigator.clipboard.readText());
-if (!noticeText.includes('수업 변경 안내')) failures.push('선택한 요청의 공지 복사 실패');
-if ((await page.getByRole('button', { name: '계획서 인쇄' }).count()) !== 1) failures.push('선택한 요청의 계획서 인쇄 행동 없음');
-const checks = page.locator('.admin-checklist input[type="checkbox"]');
-for (let index = 0; index < 3; index += 1) await checks.nth(index).check();
-const publish = page.getByRole('button', { name: '변경 시간표 게시' });
-if (await publish.isDisabled()) failures.push('행정 체크 완료 뒤 게시 버튼이 비활성임');
-await publish.click();
-await page.waitForSelector('.ops-detail .status-pill.published');
-await page.waitForTimeout(100);
-if ((await page.evaluate(() => document.activeElement?.id)) !== 'ops-detail-title') failures.push('게시 뒤 요청 제목으로 초점이 이동하지 않음');
-await page.screenshot({ path: `${OUT}/shot-5-published.png`, fullPage: true });
+}
+if (await page.getByPlaceholder(/인증키/).count()) failures.push('랜딩에 API 인증키 입력이 노출됨');
+if ((await page.locator('main').innerText()).includes('JSON')) failures.push('랜딩에 파일 형식 설명이 노출됨');
+await page.waitForTimeout(50);
+if ((await activeText(page)).id !== 'landing-title') failures.push('랜딩 진입 뒤 제목으로 초점이 이동하지 않음');
 
-await page.getByRole('button', { name: '내 시간표' }).click();
-await page.waitForSelector('.latest-request.status-published');
-const latest = await page.locator('.latest-request').textContent();
-if (!latest?.includes('게시 완료')) failures.push('교사 화면에 게시 완료 상태가 안 보임');
+await page.keyboard.press('Tab');
+if (!(await activeText(page)).placeholder.includes('학교명을 검색')) failures.push('첫 Tab이 학교 진입 입력으로 가지 않음');
+await page.keyboard.press('Tab');
+if (!(await activeText(page)).text.includes('우리 학교 시간표 열기')) failures.push('학교 입력 다음 Tab이 열기 행동으로 가지 않음');
+await page.keyboard.press('Tab');
+if (!(await activeText(page)).text.includes('일과 담당자로 시작')) failures.push('랜딩 행동을 키보드 순서로 이동하지 못함');
+await page.keyboard.press('Tab');
+if (!(await activeText(page)).text.includes('예시 학교 둘러보기')) failures.push('예시 학교 행동을 키보드 순서로 이동하지 못함');
+
+await page.getByRole('button', { name: '일과 담당자로 시작' }).click();
+await page.waitForURL(/\?view=setup$/);
+await page.waitForTimeout(50);
+if ((await activeText(page)).id !== 'setup-title') failures.push('설정 진입 뒤 설정 제목으로 초점이 이동하지 않음');
+const expectedSetupStages = [
+  '학교 검색', '세션 인증키', '공식 자료 불러오기', '완전성 확인',
+  '교사 연결', '미해결 검토', '초대 링크',
+];
+const visibleSetupStages = (await page.locator('[data-setup-stage]').allTextContents())
+  .map((text) => text.replace(/^\d+/, '').trim());
+if (visibleSetupStages.join('|') !== expectedSetupStages.join('|')) {
+  failures.push(`최초 설정 단계 순서가 다름: ${visibleSetupStages.join(' → ') || '단계 없음'}`);
+}
+const invitationStep = page.getByRole('button', { name: /초대 링크/ });
+if (!(await invitationStep.isDisabled())) failures.push('자료와 교사가 미해결인데 초대 링크 단계가 열림');
+let setupFocus = await activeText(page);
+for (let index = 0; index < 5 && !setupFocus.placeholder.includes('수지고등학교'); index += 1) {
+  await page.keyboard.press('Tab');
+  setupFocus = await activeText(page);
+}
+if (!setupFocus.placeholder.includes('수지고등학교')) failures.push('설정 학교 입력에 키보드로 도달하지 못함');
+await shot(page, 'task-7-setup-locked');
+
+await page.goBack({ waitUntil: 'networkidle' });
+await page.waitForTimeout(50);
+if ((await activeText(page)).id !== 'landing-title') failures.push('설정에서 뒤로 간 뒤 랜딩 제목으로 초점이 이동하지 않음');
+
+await page.getByRole('button', { name: '예시 학교 둘러보기' }).click();
+await page.waitForURL(/\?view=ops&school=/);
+await page.waitForTimeout(80);
+await shot(page, 'task-7-demo-ops');
+if (!(await page.getByRole('navigation', { name: '체험 역할' }).count())) failures.push('체험 역할 내비게이션이 없음');
+for (const role of ['교사', '일과 담당', '학급 공개']) {
+  if (!(await page.getByRole('button', { name: role, exact: true }).count())) failures.push(`체험 역할 ${role} 보기가 없음`);
+}
+if (!(await page.locator('.role-navigation').innerText()).includes('로그인이나 권한 인증이 아닙니다')) {
+  failures.push('체험 역할을 인증으로 오해하지 않게 하는 설명이 없음');
+}
+const provenance = '공개 시간표 관측 구조 기반 · 일정·교사·사건은 예시';
+if (!(await page.locator('body').innerText()).includes(provenance)) failures.push('예시 자료 출처 문구가 정확하지 않음');
+if ((await activeText(page)).id !== 'role-page-title') failures.push('역할 화면 진입 뒤 학교 제목으로 초점이 이동하지 않음');
+const stored = await page.evaluate(() => [...Array(localStorage.length)].map((_, index) => localStorage.key(index))
+  .filter((key) => key?.startsWith('joyul:v2:workspace:'))
+  .map((key) => JSON.parse(localStorage.getItem(key))))
+if (!stored.some((state) => state.schemaVersion === 2 && state.workspace?.name === '조율 예시학교')) {
+  failures.push('예시 학교가 schema-v2 WorkspaceRepository 경계에 저장되지 않음');
+}
+if (stored.some((state) => JSON.stringify(state).includes('secret-key'))) failures.push('저장 상태에 인증키가 섞임');
+
+await page.goBack({ waitUntil: 'networkidle' });
+await page.waitForTimeout(50);
+if ((await activeText(page)).id !== 'landing-title') failures.push('역할 화면에서 뒤로 간 뒤 학교 진입 제목으로 초점이 이동하지 않음');
 
 const mobileCtx = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const mobile = await mobileCtx.newPage();
-mobile.on('pageerror', (error) => failures.push('모바일 페이지 오류: ' + error.message));
-await startSample(mobile);
-await mobile.screenshot({ path: `${OUT}/shot-6-mobile-home.png`, fullPage: true });
-if ((await mobile.getByRole('tab', { name: '오늘' }).getAttribute('aria-selected')) !== 'true') {
-  failures.push('모바일 첫 화면이 오늘 시간표가 아님');
-}
-await mobile.getByRole('button', { name: '변경 요청' }).click();
-await mobile.waitForSelector('.tt-grid');
-if (!(await selectWorkableLesson(mobile))) failures.push('모바일에서 요청할 수업을 찾지 못함');
-await mobile.waitForSelector('.candidate-compare');
-await mobile.screenshot({ path: `${OUT}/shot-7-mobile-compare.png`, fullPage: true });
-const mobileMetrics = await mobile.evaluate(() => {
-  const root = document.documentElement;
-  const small = [...document.querySelectorAll('button, input:not([type="checkbox"]), select')]
+mobile.on('pageerror', (error) => failures.push(`모바일 페이지 오류: ${error.message}`));
+await mobile.goto(BASE, { waitUntil: 'networkidle' });
+await shot(mobile, 'task-7-mobile-landing');
+const mobileMetrics = await mobile.evaluate(() => ({
+  viewport: document.documentElement.clientWidth,
+  document: document.documentElement.scrollWidth,
+  small: [...document.querySelectorAll('button, input, a')]
     .map((element) => element.getBoundingClientRect())
-    .filter((box) => box.width > 0 && box.height > 0 && box.height < 44).length;
-  return { viewport: root.clientWidth, document: root.scrollWidth, small };
-});
-if (mobileMetrics.document > mobileMetrics.viewport + 1) failures.push('모바일 문서가 가로로 밀림');
-if (mobileMetrics.small > 0) failures.push('모바일에서 높이 44px 미만 조작 요소 ' + mobileMetrics.small + '개');
+    .filter((box) => box.width > 0 && box.height > 0 && box.height < 44).length,
+}));
+if (mobileMetrics.document > mobileMetrics.viewport + 1) failures.push('390px 랜딩이 가로로 밀림');
+if (mobileMetrics.small > 0) failures.push(`390px 랜딩에 높이 44px 미만 조작 요소 ${mobileMetrics.small}개`);
 await mobile.setViewportSize({ width: 320, height: 740 });
-await mobile.waitForTimeout(100);
+await mobile.waitForTimeout(80);
 const narrowMetrics = await mobile.evaluate(() => ({
   viewport: document.documentElement.clientWidth,
   document: document.documentElement.scrollWidth,
 }));
-if (narrowMetrics.document > narrowMetrics.viewport + 1) failures.push('320px 또는 200% 확대 상당 폭에서 가로로 밀림');
+if (narrowMetrics.document > narrowMetrics.viewport + 1) failures.push('320px 랜딩이 가로로 밀림');
 
-const coverCtx = await browser.newContext({ viewport: { width: 1360, height: 900 } });
-const coverPage = await coverCtx.newPage();
-await coverPage.goto(BASE, { waitUntil: 'networkidle' });
-await coverPage.getByRole('button', { name: '예시로 1분 체험' }).click();
-await coverPage.waitForSelector('.pick-list');
-const groupTeacher = await coverPage.evaluate(() => {
-  const raw = localStorage.getItem('timeswap:v0:data');
-  const lesson = raw ? JSON.parse(raw).lessons.find((item) => item.group) : null;
-  return lesson?.teacher ?? null;
-});
-if (!groupTeacher) failures.push('보강 흐름을 검증할 묶음 수업이 없음');
-else {
-  await coverPage.getByPlaceholder('성함으로 찾기').fill(groupTeacher);
-  await coverPage.locator('.pick-list button').first().click();
-  await coverPage.waitForSelector('.teacher-overview');
-  await coverPage.getByRole('button', { name: '변경 요청' }).click();
-  const groupLesson = coverPage.locator('button.cell.lesson[title*="이동수업"]').first();
-  if (!(await groupLesson.count())) failures.push('보강 흐름의 묶음 수업 칸이 안 보임');
-  else {
-    await groupLesson.click();
-    await coverPage.waitForSelector('.candidate-compare');
-    const coverTab = coverPage.getByRole('tab', { name: /보강/ });
-    if (await coverTab.count()) await coverTab.click();
-    const coverRequest = coverPage.getByRole('button', { name: '이 분으로 보강 요청' });
-    if (!(await coverRequest.count())) failures.push('보강 후보를 요청하는 단일 행동이 없음');
-    else {
-      await coverRequest.click();
-      await coverPage.waitForSelector('.request-status-list .status-pill.pending');
-      await coverPage.getByRole('button', { name: /일과 요청함/ }).click();
-      await coverPage.getByRole('button', { name: '이 안으로 승인' }).click();
-      await coverPage.waitForSelector('.admin-checklist');
-      const coverFacts = await coverPage.locator('.ops-cover-facts').textContent();
-      if (!coverFacts?.includes('최근 협조')) failures.push('담당자 화면에 보강 부담 정보가 없음');
-    }
-  }
-}
-
-console.log('데스크톱 요청→승인→게시:', latest?.includes('게시 완료') ? '통과' : '실패');
-console.log('보강 요청→승인:', failures.some((item) => item.includes('보강')) ? '실패' : '통과');
+console.log('랜딩 행동·민감 입력 분리:', failures.some((item) => item.includes('랜딩')) ? '실패' : '통과');
+console.log('최초 설정 순서·게이트:', failures.some((item) => item.includes('설정') || item.includes('초대')) ? '실패' : '통과');
+console.log('체험 역할·출처:', failures.some((item) => item.includes('역할') || item.includes('출처')) ? '실패' : '통과');
 console.log('모바일 폭:', mobileMetrics.viewport, '문서 폭:', mobileMetrics.document, '작은 조작:', mobileMetrics.small);
-console.log('좁은 폭:', narrowMetrics.viewport, '문서 폭:', narrowMetrics.document);
 console.log('검증 결과:', failures.length ? failures : '모두 통과');
+
 await mobileCtx.close();
-await coverCtx.close();
 await ctx.close();
 await browser.close();
 process.exit(failures.length ? 1 : 0);
