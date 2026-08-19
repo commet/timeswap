@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_UNKNOWN_SHARE,
   PRO_SHARE,
   SHARED_SUBJECT_MIN,
   fromNeis,
@@ -130,19 +131,44 @@ describe('학년의 편성 모양', () => {
     expect(gradeShapes(input)[0]?.elective).toBe(false);
   });
 
-  it('담당 교사를 아직 안 채운 학급도 학년 학급 수에 센다', () => {
-    // 표를 덜 채웠다고 그 학급이 사라지면 공통도가 실제보다 낮게 나온다.
-    // 그러면 표를 덜 채웠다는 이유만으로 선택과목 구간이라는 안내가 나간다.
-    const assignments = commonGrade(1, 4, 6).filter((a) => a.klass !== '1-4');
-    const withBusy: TimetableInput = {
-      config: cfg,
-      assignments,
-      klassBusy: { '1-4': [0, 1, 2, 3, 4, 5] },
-    };
-    const without: TimetableInput = { config: cfg, assignments };
-    expect(gradeShapes(withBusy)[0]?.klasses).toBe(4);
-    expect(gradeShapes(without)[0]?.klasses).toBe(3);
-    expect(gradeShapes(withBusy)[0]?.elective).toBe(false);
+  it('표를 덜 채운 학년은 판정하지 않는다', () => {
+    // 덜 채운 자리는 "그 학급은 그 과목을 안 듣는다"로 읽혀 공통도를 끌어내린다.
+    // 전국 217곳 자료로 무작위로 덜 채워 재니 60%만 채운 학교에서 학년 셋 중 하나가
+    // 뒤집혔고 거의 전부 오탐이었다. 표를 덜 채웠다는 이유만으로 나가는 안내다.
+    const full = electiveGrade(3, 6, 0);
+    expect(gradeShapes({ config: cfg, assignments: full })[0]?.elective).toBe(true);
+
+    // 같은 학년의 절반을 담당 미상으로 돌린다
+    const kept: Assignments = [];
+    const busy: Record<string, number[]> = {};
+    full.forEach((a, i) => {
+      if (i % 2 === 0) (busy[a.klass] ??= []).push(a.slot);
+      else kept.push(a);
+    });
+    const partial: TimetableInput = { config: cfg, assignments: kept, klassBusy: busy };
+    const [shape] = gradeShapes(partial);
+    expect(shape!.unknownRate).toBeGreaterThan(MAX_UNKNOWN_SHARE);
+    expect(shape?.elective).toBe(false);
+    expect(shape?.kind).toBe('보통');
+  });
+
+  it('조금만 비어 있으면 판정을 계속한다', () => {
+    // 다 채워야만 도는 도구는 아무도 못 쓴다. 아는 만큼 채우고 시작하기 때문이다.
+    const full = electiveGrade(3, 6, 0);
+    const kept: Assignments = [];
+    const busy: Record<string, number[]> = {};
+    full.forEach((a, i) => {
+      if (i % 10 === 0) (busy[a.klass] ??= []).push(a.slot);
+      else kept.push(a);
+    });
+    const [shape] = gradeShapes({ config: cfg, assignments: kept, klassBusy: busy });
+    expect(shape!.unknownRate).toBeLessThan(MAX_UNKNOWN_SHARE);
+    expect(shape?.elective).toBe(true);
+  });
+
+  it('다 채운 학년의 담당 미상 몫은 0 이다', () => {
+    const [shape] = gradeShapes({ config: cfg, assignments: commonGrade(1, 10, 6) });
+    expect(shape?.unknownRate).toBe(0);
   });
 
   it('기준값이 실측한 두 무리 사이에 있다', () => {

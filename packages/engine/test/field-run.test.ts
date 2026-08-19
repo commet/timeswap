@@ -147,8 +147,34 @@ describe.skipIf(!PATH || !existsSync(PATH))('전국 표본 통과', () => {
             if (totalHoles(after) > holes0) worse++;
           }
         }
+        // 교사 표를 덜 채운 상태에서 학년 판정이 억제되는지 본다.
+        // 사람은 아는 만큼 채우고 쓰기 시작한다. 다 채운 상태만 재면 그 자리를 놓친다.
+        let looseFP = 0;
+        let looseAll = 0;
+        let guardedFP = 0;
+        let suppressed = 0;
+        {
+          const pairs = [...table.keys()].sort();
+          const half = new Map(pairs.filter((_, i) => i % 10 >= 3).map((k) => [k, table.get(k)!]));
+          const partial = neisToTimetable(report, (k, sub) => half.get(pairKey(k, sub)));
+          const before = new Map(shapes.map((x) => [x.grade, x.elective]));
+          for (const x of gradeShapes(partial)) {
+            const was = before.get(x.grade);
+            if (was === undefined) continue;
+            looseAll++;
+            const wouldFire = x.subjects >= 3 && x.sharedRate < 0.65;
+            if (wouldFire && was === false) looseFP++;
+            if (x.elective && was === false) guardedFP++;
+            if (wouldFire && !x.elective) suppressed++;
+          }
+        }
+
         stats.push({
           name,
+          looseAll,
+          looseFP,
+          guardedFP,
+          suppressed,
           kind: entry.school.HS_SC_NM,
           gnrl: entry.school.HS_GNRL_BUSNS_SC_NM,
           klasses: new Set(input.assignments.map((a) => a.klass)).size,

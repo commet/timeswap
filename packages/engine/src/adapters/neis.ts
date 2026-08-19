@@ -531,7 +531,18 @@ export interface GradeShape {
   sharedRate: number;
   /** 그 가운데 전문교과 실습 과목 종수 */
   proSubjects: number;
-  /** 교체 상대를 찾기 어려운 학년으로 볼 만한지 */
+  /**
+   * 그 학년 수업 가운데 담당 교사를 아직 모르는 몫.
+   *
+   * 이 값이 크면 공통도를 믿을 수 없다. 덜 채운 자리가 "그 학급은 그 과목을 안 듣는다"로
+   * 읽혀 공통도를 끌어내리기 때문이다.
+   */
+  unknownRate: number;
+  /**
+   * 교체 상대를 찾기 어려운 학년으로 볼 만한지.
+   *
+   * 자료가 얇거나 표를 덜 채웠으면 참으로 두지 않는다. 모르는 것을 근거로 삼지 않는다.
+   */
   elective: boolean;
   /**
    * 과목이 많은 까닭. 화면에 다른 문장이 나간다.
@@ -580,6 +591,40 @@ export interface GradeShape {
  * 못 믿게 만든다.
  */
 export const SHARED_SUBJECT_MIN = 0.65;
+
+/**
+ * 학년의 수업 가운데 담당을 모르는 몫이 이 값을 넘으면 판정을 내지 않는다.
+ *
+ * 교사 표는 사람이 채운다. 학교 하나에 (학급, 과목) 짝이 수백 개라 처음부터 다 채우고
+ * 시작하는 사람은 없다. 그런데 덜 채우면 공통도가 실제보다 낮게 나온다. 한 과목을
+ * 학급 넷이 다 듣는데 둘만 채워 두면 그 과목은 0.5 로 계산되기 때문이다.
+ *
+ * 전국 217곳 자료로 표를 무작위로 덜 채워 가며 재었다. 판정이 뒤집힌 몫이다.
+ *
+ * | 채운 비율 | 뒤집힘 | 그중 오탐 |
+ * |---|---|---|
+ * | 100% | 0.0% | 0.0% |
+ * | 90% | 5.4% | 5.4% |
+ * | 80% | 10.6% | 10.6% |
+ * | 70% | 22.1% | 21.9% |
+ * | 60% | 32.6% | 32.4% |
+ *
+ * **뒤집힘이 거의 전부 오탐이다.** 덜 채운 학교가 "선택과목이라 교체가 어렵다"는
+ * 틀린 안내를 받는다. 표를 덜 채웠다는 이유만으로 나가는 안내다.
+ *
+ * 그래서 담당을 모르는 몫으로 억제한다. 억제 기준별로 남는 오탐이다.
+ *
+ * | 억제 기준 | 억제된 몫 | 남은 오탐 | 제대로 뜬 안내 |
+ * |---|---|---|---|
+ * | 없음 | 0.0% | 14.6% | 56.5% |
+ * | 0.35 | 24.8% | 6.2% | 42.2% |
+ * | **0.25** | **37.3%** | **3.2%** | **35.2%** |
+ * | 0.15 | 55.8% | 1.3% | 24.7% |
+ *
+ * 0.25 를 골랐다. 지표 자체의 오탐이 3% 라서다. 지키려는 것보다 헐거운 보호 장치는
+ * 약한 고리가 된다. 더 조이면 제대로 뜰 안내까지 절반이 사라진다.
+ */
+export const MAX_UNKNOWN_SHARE = 0.25;
 
 /**
  * 학교 전체 과목 가운데 이 몫 넘게 전문교과이면 전공 편성으로 과목이 많은 학교로 본다.
@@ -651,14 +696,6 @@ export function gradeShapes(input: TimetableInput): GradeShape[] {
     const perGrade = takers.get(g) ?? takers.set(g, new Map()).get(g)!;
     (perGrade.get(a.subject) ?? perGrade.set(a.subject, new Set()).get(a.subject)!).add(a.klass);
   }
-  // 담당 교사를 아직 안 채운 자리도 학급이 그 과목을 듣는다는 사실은 알려 준다.
-  // 배정만 세면 표를 덜 채운 학교에서 공통도가 실제보다 낮게 나와 선택과목으로 오인된다.
-  for (const [klass, slots] of Object.entries(input.klassBusy ?? {})) {
-    if (slots.length === 0) continue;
-    const g = gradeOf(klass, input.klassGrade);
-    if (g === undefined) continue;
-    (klasses.get(g) ?? klasses.set(g, new Set()).get(g)!).add(klass);
-  }
   // 학교 전체의 전문교과 몫. 학년마다 센 것을 더해 나눈다.
   let allSubjects = 0;
   let allPro = 0;
@@ -667,6 +704,21 @@ export function gradeShapes(input: TimetableInput): GradeShape[] {
     allPro += proSubjects.get(g)?.size ?? 0;
   }
   const vocational = allSubjects > 0 && allPro / allSubjects >= PRO_SHARE;
+
+  // 학년마다 아는 자리와 모르는 자리를 센다. 단위를 (학급, 슬롯)으로 맞춘다.
+  // 한 칸에 강좌가 둘인 분반이 있어 배정 수를 그대로 세면 klassBusy 와 단위가 어긋난다.
+  const knownCells = new Map<number, Set<string>>();
+  const unknownCells = new Map<number, number>();
+  for (const a of input.assignments) {
+    const g = gradeOf(a.klass, input.klassGrade);
+    if (g === undefined) continue;
+    (knownCells.get(g) ?? knownCells.set(g, new Set()).get(g)!).add(`${a.klass}|${a.slot}`);
+  }
+  for (const [klass, slots] of Object.entries(input.klassBusy ?? {})) {
+    const g = gradeOf(klass, input.klassGrade);
+    if (g === undefined) continue;
+    unknownCells.set(g, (unknownCells.get(g) ?? 0) + slots.length);
+  }
 
   const out: GradeShape[] = [];
   for (const [g, ks] of klasses) {
@@ -683,13 +735,18 @@ export function gradeShapes(input: TimetableInput): GradeShape[] {
     }
     // 과목이 하나뿐인 학년은 표본이 아니라 자료가 얇은 것이다. 단정하지 않는다.
     const enough = ss >= 3;
-    const elective = enough && sharedRate < SHARED_SUBJECT_MIN;
+    const known = knownCells.get(g)?.size ?? 0;
+    const unknown = unknownCells.get(g) ?? 0;
+    const unknownRate = known + unknown === 0 ? 0 : unknown / (known + unknown);
+    const trustworthy = unknownRate <= MAX_UNKNOWN_SHARE;
+    const elective = enough && trustworthy && sharedRate < SHARED_SUBJECT_MIN;
     out.push({
       grade: g,
       klasses: ks.size,
       subjects: ss,
       ratio,
       sharedRate,
+      unknownRate,
       proSubjects: ps,
       elective,
       kind: !elective ? '보통' : vocational ? '전공실습' : '선택과목',
