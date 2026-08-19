@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs';
 import { chromium } from 'playwright';
 import { AxeBuilder } from '@axe-core/playwright';
+import { runJourneys } from './journeys.mjs';
+import { runFailureFlows } from './failure-flows.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:3100';
 const OUT = process.env.SHOT_DIR;
@@ -872,12 +874,21 @@ if (reducedMetrics.live === 0) failures.push('동작 줄이기 화면에 알림 
 await reducedCtx.close();
 await a11yCtx.close();
 
+
+// Task 13 — 다섯 핵심 여정을 세 폭에서 끝까지 걷는다.
+await runJourneys(browser, BASE, failures, shot);
+
+// Task 13 — 학교에서 실제로 겪는 실패 세 가지에서 화면이 무엇을 말하는지 잰다.
+await runFailureFlows(browser, BASE, failures, shot);
+
 console.log('랜딩 행동·민감 입력 분리:', failures.some((item) => item.includes('랜딩')) ? '실패' : '통과');
 console.log('최초 설정 순서·게이트:', failures.some((item) => item.includes('설정') || item.includes('초대')) ? '실패' : '통과');
 console.log('체험 역할·출처:', failures.some((item) => item.includes('역할') || item.includes('출처')) ? '실패' : '통과');
 console.log('모바일 폭:', mobileMetrics.viewport, '문서 폭:', mobileMetrics.document, '작은 조작:', mobileMetrics.small);
 console.log('교사 오늘·변경 요청:', failures.some((item) => item.includes('교사') || item.includes('변경 요청')) ? '실패' : '통과');
 console.log('접근성·키보드:', failures.some((item) => item.includes('접근성') || item.includes('초점') || item.includes('건너뛰기') || item.includes('44px')) ? '실패' : '통과');
+console.log('핵심 여정 5개:', failures.some((item) => item.includes('여정')) ? '실패' : '통과');
+console.log('운영 실패 흐름:', failures.some((item) => /한도|네트워크|총계/.test(item)) ? '실패' : '통과');
 console.log('검증 결과:', failures.length ? failures : '모두 통과');
 
 await mobileCtx.close();

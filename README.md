@@ -47,6 +47,9 @@
 2. 입력은 공식 개방 자료이거나 학교가 처리 권한을 가진 자체 자료만 받는다.
 3. 시간표는 이용자 브라우저에만 둔다. 우리 서버는 없다.
 4. 나이스 호출은 이용자 브라우저가 직접 하고, 인증키도 이용자 것을 쓴다.
+5. 인증키는 세션 메모리에만 둔다. 저장소에도 로그에도 남기지 않는다.
+6. 학급 공개 시간표에는 게시된 사실만 나간다. 부재 사유, 교사 식별자, 후보 점수,
+   보강 부담, 감사 행위자는 투영 단계에서 걸러진다.
 
 현재 요청함은 한 브라우저 안에서 전체 여정을 검증하는 로컬 프로토타입이다. 학교 여러 기기의
 실데이터를 연결하는 운영 서비스가 아니다. 서버형 공유 공간은 인증, 학교별 격리, 보유·파기 정책을
@@ -61,17 +64,32 @@ packages/engine   프레임워크에 매이지 않는 탐색 엔진 (TypeScript)
   src/score.ts      소프트 점수와 근거 트레이스
   src/cover.ts      교체가 없을 때의 보강 후보와 순위 근거
   src/synthetic.ts  구성적 학교 생성기 (이분 그래프 간선 색칠)
-  src/adapters/neis.ts  나이스 개방 자료 해석과 변경 이력 복원
+  src/adapters/neis.ts            나이스 개방 자료 해석과 변경 이력 복원
+  src/adapters/neis-normalize.ts  필수 항목 검증, 전체 학급 식별자, 병렬 강좌 묶음
 apps/web          Next.js 정적 내보내기
-  lib/brand.ts      제품 이름 한 곳
-  lib/app.ts        저장 형식, 학사일정 변환, 문구 생성
-  lib/neis.ts       나이스 개방 포털 클라이언트
-  lib/requests.ts   요청 저장과 승인·반려·게시 상태 전이
-  test/             lib 아래 순수 함수 시험
+  lib/domain.ts         변경 사건, 행정 과업, 게시본, 감사 기록의 타입
+  lib/case-service.ts   사건 상태 기계. 상태를 바꾸는 유일한 통로
+  lib/resolution.ts     해결안 후보 계산과 비교 행
+  lib/projections.ts    역할별 읽기 모델과 사건 전체 충돌 검증
+  lib/publication.ts    게시 규칙, 나이스 입력 목록, 교사 안내, 학급 미리보기
+  lib/publication-center.ts  행정 마감 화면의 읽기 모델
+  lib/ops-command-center.ts  관제판 우선순위와 교시 흐름
+  lib/repository.ts     브라우저 저장 경계. 실패를 삼키지 않는다
+  lib/navigation.ts     URL 상태. 정적 배포에서 화면을 주소로 가리킨다
+  lib/demo.ts           실제 구조를 따르는 시연 자료와 회귀 시나리오 10개
+  lib/neis.ts           나이스 개방 포털 클라이언트
+  lib/brand.ts          제품 이름 한 곳
+  styles/               토큰, 껍데기, 시간표, 업무 흐름, 화면 폭
+  test/                 lib 아래 순수 함수 시험
 scripts           검사 도구
-  check-config.mjs  배포 설정이 서로 어긋났는지
-  serve-checked.mjs 배포와 같은 응답 헤더로 띄우기
-  smoke.mjs         브라우저 전 과정 점검
+  check-config.mjs    배포 설정과 자료 경계
+  serve-checked.mjs   배포와 같은 응답 헤더로 띄우기
+  smoke.mjs           브라우저 전 과정 점검의 입구
+  journeys.mjs        핵심 여정 5개
+  failure-flows.mjs   호출 한도, 네트워크 끊김, 총계 불일치
+  visual-review.mjs   여섯 화면 × 세 폭 스크린샷
+  css-usage.mjs       화면에서 사라진 선택자 찾기
+  css-fingerprint.mjs 스타일 정리 전후의 계산된 값 비교
 ```
 
 ## 문서
@@ -85,25 +103,76 @@ scripts           검사 도구
 | [05-field-measurement.md](05-field-measurement.md) | 실제 학교 자료를 받아 우리 규칙을 재어 본 기록 |
 | [docs/data-and-privacy-boundary.md](docs/data-and-privacy-boundary.md) | 공식 데이터와 학교 개인정보의 사용 경계 |
 
+## 써 보기
+
+설치 없이 예시 학교로 전체 여정을 걸을 수 있다.
+
+```bash
+npm ci
+npm run build
+npm run serve        # 3100 포트
+```
+
+진입 화면의 **예시 학교 둘러보기** 를 누르면 세 역할을 바로 오갈 수 있다.
+
+| 역할 | 하는 일 |
+|---|---|
+| 교사 | 오늘 수업에서 부재를 고르고, 해결안을 비교해 한 번에 요청 |
+| 일과 담당 | 우선순위로 사건을 보고 대안을 바꾸거나 승인, 반려, 재계산 |
+| 학급 공개 | 학생과 학부모가 보는 읽기 전용 시간표 |
+
+관제판 오른쪽 위의 **현실 사례 바꾸기** 로 회귀 시나리오 7개를 열 수 있다. 하루 부재,
+선택과목 블록, 연속 실습, 휴업일 충돌, 불완전 API, 동시 요청, 게시 후 수정이다.
+누를 때마다 그 시나리오의 저장 자료를 지우고 처음 상태로 되돌린다.
+
+### 실제 학교 자료로 열기
+
+진입 화면의 **일과 담당자로 시작** 에서 학교를 찾고 나이스 인증키를 넣으면 공식 시간표를
+직접 불러온다. 읽기 전용이며 나이스에 쓰지 않는다.
+
+인증키는 React 세션 메모리에만 둔다. 코드, 시험 자료, 문서, URL 예시, 로그, Git,
+`localStorage` 어디에도 남기지 않으며, 설정 화면을 벗어나면 지운다. `npm run check` 가
+추적 파일에 인증키나 저장 흔적이 들어갔는지 배포 전에 막는다.
+
+### 프로토타입의 한계
+
+시간표와 사건 기록은 이 브라우저의 `localStorage` 에만 있다. 기기를 옮기면 따라오지 않고
+동료와 공유되지 않는다. 학교 여러 기기를 잇는 운영 서비스는 인증, 학교별 격리, 보유와 파기
+정책을 갖춘 별도 단계다.
+
 ## 개발
 
 ```bash
-npm ci              # 잠금 파일 그대로 설치
-npm run check       # 배포 설정이 서로 맞는지
-npm run typecheck   # 엔진과 웹 앱 타입 검사
-npm test            # 엔진과 웹 도메인 단위 테스트
-npm run build       # 웹 정적 빌드 (결과는 apps/web/out)
-npm run demo        # 엔진 CLI 데모
+npm ci                 # 잠금 파일 그대로 설치
+npm run check          # 배포 설정과 자료 경계
+npm run typecheck      # 엔진과 웹 앱 타입 검사
+npm test               # 엔진 160개, 웹 236개, 합계 396개
+npm run build          # 웹 정적 빌드 (결과는 apps/web/out)
+npm audit --omit=dev   # 운영 의존성 취약점
+npm run demo           # 엔진 CLI 데모
 ```
 
-배포와 같은 조건으로 확인하려면 응답 헤더를 씌워 띄운다.
+브라우저 점검은 배포와 같은 응답 헤더를 씌운 뒤 다른 창에서 돌린다.
 
 ```bash
-npm run serve       # vercel.json 의 헤더를 그대로 적용해 3100 포트로 띄운다
-npm run smoke       # 다른 창에서 브라우저 전 과정 점검
+npm run serve          # vercel.json 의 헤더를 그대로 적용해 3100 포트로 띄운다
+npm run smoke          # 진입, 설정, 교사, 접근성, 핵심 여정 5개, 운영 실패 3종
+npm run visual-review  # 여섯 화면을 1440, 390, 320 으로 찍어 눈으로 볼 자리를 좁힌다
+npm run css-usage      # 화면에서 사라진 선택자 목록
 ```
 
-푸시와 풀 리퀘스트마다 GitHub Actions 가 위 전부를 다시 돌린다.
+`npm run smoke` 가 재는 것은 다음과 같다.
+
+- 진입 행동과 민감 입력 분리, 최초 설정 단계 순서와 잠금
+- 교사 오늘 화면과 변경 요청, 해결안 비교 표
+- Axe 로 여섯 화면의 WCAG 2.1 AA 위반. serious 와 critical 은 0건이어야 한다
+- 1440, 390, 320 에서 조작 44px 과 가로 넘침
+- 키보드만으로 승인부터 게시까지
+- 핵심 여정 5개. 게시 판정은 늘 새로 연 페이지가 한다
+- 호출 한도, 네트워크 끊김, 총계 불일치에서 원인과 다음 행동
+
+GitHub Actions 가 푸시와 풀 리퀘스트마다 같은 관문을 돌리도록 되어 있다. 다만 지금은
+계정 결제 문제로 작업이 시작되지 않으므로, 병합 전 검증은 위 명령을 직접 돌려서 한다.
 자세한 구성은 [04-operations.md](04-operations.md) 에 있다.
 
 ## 다음 단계

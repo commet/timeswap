@@ -99,7 +99,12 @@ export async function fetchAllNeisRows<T>(request: NeisRequest): Promise<Complet
     const next = await page<T>(request, pageCount + 1);
     pageCount += 1;
     if (next.total !== first.total || next.rows.length === 0 || samePage(previous, next.rows)) {
-      throw new NeisFailure('INCOMPLETE_PAGE_SET', '나이스 페이지 묶음이 온전하지 않습니다. 부분 시간표는 사용하지 않습니다.');
+      // 얼마나 모자란지를 말하지 않으면 담당자는 다시 시도할지 학교에 물을지 정할 수 없다.
+      throw new NeisFailure(
+        'INCOMPLETE_PAGE_SET',
+        `나이스가 알려 준 ${first.total}건 가운데 ${rows.length}건만 받았습니다.`
+        + ' 부분 시간표는 사용하지 않습니다. 잠시 뒤 다시 불러오거나 학교 담당자에게 자료를 요청하십시오.',
+      );
     }
     rows.push(...next.rows);
     previous = next.rows;
