@@ -40,6 +40,7 @@ export function Panel({
     grade: number;
     klasses: number;
     subjects: number;
+    sharedRate: number;
     kind: '보통' | '선택과목' | '전공실습';
   } | null;
   grouped: boolean;
@@ -91,8 +92,9 @@ export function Panel({
         <div className="context-note">
           <b>{electiveGrade.grade}학년 {electiveGrade.kind === '전공실습' ? '전공 편성' : '선택과목 구간'}</b>
           <span>
-            학급 {electiveGrade.klasses}개에 과목 {electiveGrade.subjects}종이 있어
-            교체보다 보강이 현실적인 자리일 수 있습니다.
+            한 과목을 함께 듣는 학급이 학년 {electiveGrade.klasses}개 가운데 평균{' '}
+            {Math.max(1, Math.round(electiveGrade.sharedRate * electiveGrade.klasses))}개입니다.
+            교체 상대가 적어 교체보다 보강이 현실적인 자리일 수 있습니다.
           </span>
         </div>
       )}
