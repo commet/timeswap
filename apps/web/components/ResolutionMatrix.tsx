@@ -154,6 +154,15 @@ export function ResolutionMatrix({
             {detail.warningReasons.map((reason) => <li key={reason}>{reason}</li>)}
           </ul>
         )}
+        {detail.engineScore !== undefined && (
+          <section className="resolution-engine-trace" aria-label="엔진 검토 근거">
+            <b>엔진 검토 근거</b>
+            <p>추천 점수 {detail.engineScore}</p>
+            <ul>
+              {detail.engineTrace.map((entry, index) => <li key={`${entry.kind}:${index}`}>{entry.text}</li>)}
+            </ul>
+          </section>
+        )}
         {validationMessage && <p className="resolution-validation" role="status">{validationMessage}</p>}
       </section>
 

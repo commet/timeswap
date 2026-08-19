@@ -188,11 +188,17 @@ if ((await matrix.count()) !== 1) {
 }
 await page.reload({ waitUntil: 'networkidle' });
 await page.locator('.period-rail-lesson').first().click();
-await page.getByRole('button', { name: '변경 요청 제출' }).click();
-if (!(await page.locator('[role="alert"]').filter({ hasText: '기존 요청을 확인' }).count())) {
-  failures.push('중복 교사 요청에 실행 가능한 안내가 없음');
+await page.getByRole('button', { name: '후보 계산으로 전달' }).click();
+await page.getByRole('button', { name: '이 해결안 선택', exact: true }).click();
+await page.waitForTimeout(100);
+const duplicateStored = await page.evaluate(() => JSON.parse(localStorage.getItem('joyul:v2:workspace:simple-swap:workspace')));
+if (duplicateStored.cases.filter((item) => item.status === 'submitted').length !== 1) {
+  failures.push('반복 매트릭스 확정이 두 번째 submitted 사례를 만들었음');
 }
-await page.getByRole('button', { name: '닫기' }).click();
+const duplicateMessage = page.locator('.resolution-validation');
+if (!(await duplicateMessage.count()) || !(await duplicateMessage.innerText()).includes('기존 요청을 확인')) {
+  failures.push('반복 매트릭스 확정에 기존 사례를 안내하는 실행 가능한 메시지가 없음');
+}
 await page.evaluate(() => {
   const key = 'joyul:v2:workspace:simple-swap:workspace';
   const state = JSON.parse(localStorage.getItem(key));
@@ -222,7 +228,8 @@ await casePage.getByRole('button', { name: '예시 학교 둘러보기' }).click
 await casePage.evaluate(() => {
   const key = 'joyul:v2:workspace:simple-swap:workspace';
   const state = JSON.parse(localStorage.getItem(key));
-  const identity = state.lessons[0].classIdentity;
+  const target = state.lessons[0];
+  const identity = target.classIdentity;
   state.cases = [];
   state.audit = [];
   state.publications = [];
@@ -253,17 +260,33 @@ if (!(await casePage.locator('.resolution-validation').innerText()).includes('�
 await casePage.evaluate(() => {
   const key = 'joyul:v2:workspace:simple-swap:workspace';
   const state = JSON.parse(localStorage.getItem(key));
-  const identity = state.lessons[0].classIdentity;
+  const target = state.lessons[0];
+  const identity = target.classIdentity;
   state.cases = [];
   state.audit = [];
   state.publications = [];
   state.atomicLessonGroups = [];
   state.lessons = [
-    { ...state.lessons[0], id: 'elective-target', period: '5', subject: '데이터과학', parallelGroupId: 'elective-group' },
-    { ...state.lessons[0], id: 'elective-peer-1', period: '5', subject: '로봇공학', classIdentity: { ...identity, className: '2' }, teacher: { state: 'assigned', teacherId: 'member:elective-1' }, parallelGroupId: 'elective-group' },
-    { ...state.lessons[0], id: 'elective-peer-2', period: '5', subject: '제품디자인', classIdentity: { ...identity, className: '3' }, teacher: { state: 'assigned', teacherId: 'member:elective-2' }, parallelGroupId: 'elective-group' },
-    { ...state.lessons[0], id: 'elective-cover-availability', period: '6', subject: '데이터과학', classIdentity: { ...identity, grade: '1', className: '1' }, teacher: { state: 'assigned', teacherId: 'member:elective-cover' } },
+    { ...target, id: 'elective-target', period: '5', subject: '데이터과학', parallelGroupId: 'elective-group' },
+    { ...target, id: 'elective-peer-1', period: '5', subject: '로봇공학', classIdentity: { ...identity, className: '2' }, teacher: { state: 'assigned', teacherId: 'member:elective-1' }, parallelGroupId: 'elective-group' },
+    { ...target, id: 'elective-peer-2', period: '5', subject: '제품디자인', classIdentity: { ...identity, className: '3' }, teacher: { state: 'assigned', teacherId: 'member:elective-2' }, parallelGroupId: 'elective-group' },
+    { ...target, id: 'elective-cover-availability', period: '6', subject: '데이터과학', classIdentity: { ...identity, grade: '1', className: '1' }, teacher: { state: 'assigned', teacherId: 'member:elective-cover' } },
   ];
+  for (const period of ['1', '2', '3', '4', '6', '7']) {
+    state.lessons.push({
+      ...target, id: `elective-known-busy-${period}`, period, subject: '교사 배정 수업',
+      classIdentity: { ...identity, grade: '1', className: '9' },
+    });
+  }
+  state.revisions[0] = {
+    ...state.revisions[0],
+    closures: [
+      { date: '2026-08-17', reason: '휴업일' },
+      { date: '2026-08-19', reason: '휴업일' },
+      { date: '2026-08-20', reason: '휴업일' },
+      { date: '2026-08-21', reason: '휴업일' },
+    ],
+  };
   state.teacherLabels = {
     ...state.teacherLabels,
     'member:elective-1': '선택과목 담당 1',
@@ -274,7 +297,7 @@ await casePage.evaluate(() => {
 });
 await casePage.goto(`${BASE}/?view=teacher&school=simple-swap%3Aworkspace&teacher=teacher%3Aseo-jun`, { waitUntil: 'networkidle' });
 await casePage.getByRole('button', { name: '변경 요청', exact: true }).click();
-await casePage.locator('.period-rail-lesson').first().click();
+await casePage.locator('.period-rail-lesson').filter({ hasText: '데이터과학' }).click();
 await casePage.getByRole('button', { name: '후보 계산으로 전달' }).click();
 if (!(await casePage.locator('.resolution-atomic-note').innerText()).includes('선택과목 묶음 3개 수업')) {
   failures.push('교환 불가 선택과목 묶음의 전체 보강 제약이 설명되지 않음');
@@ -355,6 +378,7 @@ if ((await mobileMatrix.count()) !== 1) {
     const action = document.querySelector('.resolution-action');
     const lastDetail = document.querySelector('.resolution-detail-list > div:last-child');
     const primary = document.querySelector('.resolution-action .btn');
+    lastDetail?.scrollIntoView({ block: 'end' });
     return {
       viewport: document.documentElement.clientWidth,
       document: document.documentElement.scrollWidth,

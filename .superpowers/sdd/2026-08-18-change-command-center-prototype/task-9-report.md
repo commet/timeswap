@@ -43,3 +43,37 @@ Each behavior began with a focused failure before the smallest implementation ch
 The matrix only derives display values from canonical workspace data, retains Task 8 save-failure behavior, and does not disclose raw `member:*` values. Ops command-center and publication flows were not redesigned.
 
 The retired legacy `Panel` comparison area now directs users to the canonical teacher timetable route. No remaining Task 9 blocker or known defect remains.
+
+## Review fix round 1
+
+### Corrected behavior
+
+- Removed ad-hoc move, swap, and cycle generation. The active target-week adapter now builds `TimetableInput` from canonical lessons and calls engine `recommend` for generated exchange rows.
+- The adapter carries full class identity, parallel and atomic group ids, unknown-teacher `klassBusy` slots, and active-revision closures. Generated rows preserve engine order and retain redacted score and trace facts in the selected detail.
+- Existing exchange items remain visible only when active revision validation accepts them. They are not used to fabricate generated candidates.
+- Matrix confirmation now performs canonical duplicate detection before persistence and keeps the matrix open with an actionable existing-request message instead of creating a second submitted case.
+- Teacher grid dates and numeric periods now union the selected preview destination, so an otherwise empty destination cell is rendered and marked.
+- Blank or opaque stored collaborator labels fall back to `협조 교사`; the matrix never renders the stored opaque value.
+
+### Review TDD record
+
+| Behavior | Observed RED | GREEN evidence |
+| --- | --- | --- |
+| Engine class-unit constraints | An unrelated class produced `맞교환` | Engine-backed rows omit unrelated swap and cycle candidates. |
+| Engine ranking evidence | Generated row count with `engineScore` was zero | Engine-ranked rows carry descending score and trace. |
+| Selected engine detail | `엔진 검토 근거` was absent | Matrix renders selected score and redacted trace. |
+| Opaque collaborator label | `MEMBER:han-sol` rendered in row detail | Row and detail render `협조 교사`. |
+| Empty preview destination | Period 1 was absent when the teacher only had period 3 | The grid includes and marks the empty period 1 destination. |
+| Matrix duplicate confirmation | Browser smoke created two submitted cases and showed no guidance | One submitted case remains and the matrix names the existing-request next action. |
+| Mobile sticky detail | Final detail bottom was 844.34 while action top was 777 | Sticky-scroll margin keeps the final detail row clear at 390px. |
+
+### Review verification
+
+- Focused web suite: 4 files, 61 tests passed.
+- `npm test`: 19 engine files, 160 tests passed. 16 web files, 210 tests passed. Total 370 tests passed.
+- `npm run typecheck`: passed.
+- `npm run build`: passed.
+- Checked production smoke: passed at 1440px, 390px, and 320px.
+- `git diff --check`: passed.
+
+One earlier parallel full-suite attempt hit the existing engine scale-test runner timeout despite reporting a 64.3ms per-recommendation average. A clean final `npm test` passed all 370 tests without changing engine code.

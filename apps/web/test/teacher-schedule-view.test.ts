@@ -96,4 +96,21 @@ describe('teacher schedule view helpers', () => {
     expect(html).toContain('data-resolution-from="true"');
     expect(html).toContain('data-resolution-to="true"');
   });
+
+  it('adds an empty preview destination period to the teacher grid axes', () => {
+    const html = renderToStaticMarkup(createElement(Grid.TeacherScheduleGrid, {
+      lessons: [view('lesson-source', '3', '수학')],
+      onSelectLesson: () => undefined,
+      resolutionPreview: {
+        changes: [{
+          lessonId: 'lesson-source',
+          next: { date: '2026-08-24', period: '1', subject: '수학', className: '2-1', room: '수학실', teacher: '담당 교사' },
+        }],
+      },
+    }));
+
+    expect(html).toContain('1교시');
+    expect(html).toContain('data-resolution-to="true"');
+    expect(html).toContain('2026-08-24 1교시 공강');
+  });
 });

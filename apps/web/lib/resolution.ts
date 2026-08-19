@@ -5,6 +5,12 @@ import type {
   ResolutionItem,
   WorkspaceState,
 } from './domain';
+import {
+  recommend,
+  type Assignment,
+  type TimetableInput,
+  type TraceEntry,
+} from '@timeswap/engine';
 import { validateCasePlan } from './projections';
 
 export interface ResolutionRow {
@@ -19,12 +25,17 @@ export interface ResolutionRow {
   /** Canonical facts used by the selected detail and repository action. */
   resolution: ResolutionItem;
   warningReasons: string[];
+  /** Engine ordering evidence for generated exchange rows. */
+  engineScore?: number;
+  engineTrace?: TraceEntry[];
 }
 
 export interface ResolutionDetail {
   groupedUnitCount: number;
   collaborators: string[];
   warningReasons: string[];
+  engineScore?: number;
+  engineTrace: TraceEntry[];
   changes: Array<{
     lessonId: string;
     original: {
@@ -83,7 +94,7 @@ function activeLessons(state: WorkspaceState): Lesson[] {
 
 function teacherLabel(state: WorkspaceState, teacherId: string): string {
   const label = state.teacherLabels?.[teacherId]?.trim();
-  return label || '담당 교사';
+  return label && !/^(?:member|teacher):/i.test(label) ? label : '협조 교사';
 }
 
 function isAssigned(change: ResolutionChange): change is ResolutionChange & { teacher: { state: 'assigned'; teacherId: string } } {
@@ -162,78 +173,183 @@ function coverCandidates(
   }));
 }
 
-function exchangeCandidates(
-  state: WorkspaceState,
-  lesson: Lesson,
-): ResolutionItem[] {
-  const owner = lesson.teacher;
-  if (owner.state !== 'assigned' || lesson.parallelGroupId) return [];
-  const lessons = activeLessons(state);
-  const sameDate = lessons.filter((current) => current.date === lesson.date);
-  const maxPeriod = Math.max(...sameDate.map((current) => Number(current.period)), Number(lesson.period));
-  const move = Array.from({ length: maxPeriod }, (_, index) => String(index + 1))
-    .filter((period) => period !== lesson.period)
-    .map((period) => ({
-      id: `candidate:move:${lesson.id}:${period}`,
-      lessonId: lesson.id,
-      kind: 'move' as const,
-      computedAgainstRevisionId: state.workspace.activeRevisionId,
-      changes: [{
-        lessonId: lesson.id,
-        toDate: lesson.date,
-        toPeriod: period,
-        teacher: owner,
-      }],
-    }));
-  const counterparts = sameDate.filter((current) => current.id !== lesson.id
-    && current.teacher.state === 'assigned'
-    && current.teacher.teacherId !== owner.teacherId
-    && current.period !== lesson.period);
-  const swaps = counterparts.map((counterpart) => ({
-    id: `candidate:swap:${lesson.id}:${counterpart.id}`,
-    lessonId: lesson.id,
-    kind: 'swap2' as const,
-    computedAgainstRevisionId: state.workspace.activeRevisionId,
-    changes: [{
-      lessonId: lesson.id,
-      toDate: lesson.date,
-      toPeriod: counterpart.period,
-      teacher: owner,
-    }, {
-      lessonId: counterpart.id,
-      toDate: counterpart.date,
-      toPeriod: lesson.period,
-      teacher: counterpart.teacher,
-    }],
+interface EngineCandidateFacts {
+  item: ResolutionItem;
+  engineScore: number;
+  engineTrace: TraceEntry[];
+}
+
+interface ResolutionCandidate {
+  item: ResolutionItem;
+  engineScore?: number;
+  engineTrace?: TraceEntry[];
+}
+
+interface TargetWeekInput {
+  input: TimetableInput;
+  lessonByAssignment: Map<Assignment, Lesson>;
+  assignmentByLessonId: Map<string, Assignment>;
+  monday: string;
+}
+
+function dateAtUtcOffset(date: string, offset: number): string {
+  const value = new Date(`${date}T00:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() + offset);
+  return value.toISOString().slice(0, 10);
+}
+
+function mondayOf(date: string): string {
+  const value = new Date(`${date}T00:00:00.000Z`);
+  const day = value.getUTCDay();
+  return dateAtUtcOffset(date, day === 0 ? -6 : 1 - day);
+}
+
+function dayIndex(date: string, monday: string): number {
+  return Math.round((Date.parse(`${date}T00:00:00.000Z`) - Date.parse(`${monday}T00:00:00.000Z`)) / 86_400_000);
+}
+
+function classKey(lesson: Pick<Lesson, 'classIdentity'>): string {
+  const identity = lesson.classIdentity;
+  return [
+    identity.schoolCode,
+    identity.academicYear,
+    identity.dayCourse,
+    identity.affiliation,
+    identity.major,
+    identity.grade,
+    identity.className,
+  ].join('\u0001');
+}
+
+/** Unifies parallel and atomic relationships into engine-recognized unit ids. */
+function engineGroupIds(state: WorkspaceState, lessons: readonly Lesson[]): Map<string, string> {
+  const lessonIds = new Set(lessons.map((lesson) => lesson.id));
+  const parent = new Map([...lessonIds].map((lessonId) => [lessonId, lessonId]));
+  const grouped = new Set<string>();
+  const rootOf = (lessonId: string): string => {
+    const parentId = parent.get(lessonId);
+    if (!parentId || parentId === lessonId) return lessonId;
+    const root = rootOf(parentId);
+    parent.set(lessonId, root);
+    return root;
+  };
+  const join = (lessonIdsToJoin: readonly string[]) => {
+    const visible = lessonIdsToJoin.filter((lessonId) => lessonIds.has(lessonId));
+    if (!visible.length) return;
+    for (const lessonId of visible) grouped.add(lessonId);
+    for (const lessonId of visible.slice(1)) parent.set(rootOf(lessonId), rootOf(visible[0]!));
+  };
+  for (const lesson of lessons) {
+    if (!lesson.parallelGroupId) continue;
+    join(lessons.filter((item) => item.parallelGroupId === lesson.parallelGroupId).map((item) => item.id));
+  }
+  for (const group of state.atomicLessonGroups ?? []) {
+    if (group.workspaceId === state.workspace.id && group.revisionId === state.workspace.activeRevisionId) {
+      join(group.lessonIds);
+    }
+  }
+  return new Map([...grouped].map((lessonId) => [lessonId, `canonical:${rootOf(lessonId)}`]));
+}
+
+/** Builds the active calendar week without turning unknown teacher rows into free class time. */
+function targetWeekInput(state: WorkspaceState, targetDate: string): TargetWeekInput {
+  const monday = mondayOf(targetDate);
+  const lessons = activeLessons(state).filter((lesson) => {
+    const day = dayIndex(lesson.date, monday);
+    return day >= 0 && day < 5;
+  });
+  const periods = Math.max(7, ...lessons.map((lesson) => Number(lesson.period) || 1));
+  const input: TimetableInput = {
+    config: { days: 5, periods, dayNames: ['월', '화', '수', '목', '금'] },
+    assignments: [],
+  };
+  const groups = engineGroupIds(state, lessons);
+  const lessonByAssignment = new Map<Assignment, Lesson>();
+  const assignmentByLessonId = new Map<string, Assignment>();
+  const busy = new Map<string, Set<number>>();
+  for (const lesson of lessons) {
+    const day = dayIndex(lesson.date, monday);
+    const period = Number(lesson.period) - 1;
+    if (period < 0 || period >= periods) continue;
+    const slot = day * periods + period;
+    const klass = classKey(lesson);
+    if (lesson.teacher.state === 'unassigned') {
+      const slots = busy.get(klass) ?? new Set<number>();
+      slots.add(slot);
+      busy.set(klass, slots);
+      continue;
+    }
+    const assignment: Assignment = {
+      teacher: lesson.teacher.teacherId,
+      klass,
+      subject: lesson.subject,
+      slot,
+      ...(groups.has(lesson.id) ? { group: groups.get(lesson.id) } : {}),
+    };
+    input.assignments.push(assignment);
+    lessonByAssignment.set(assignment, lesson);
+    assignmentByLessonId.set(lesson.id, assignment);
+  }
+  if (busy.size) {
+    input.klassBusy = Object.fromEntries([...busy].map(([klass, slots]) => [klass, [...slots]]));
+  }
+  const activeRevision = state.revisions.find((revision) => revision.id === state.workspace.activeRevisionId);
+  const closures = (activeRevision?.closures ?? []).flatMap((closure) => {
+    const day = dayIndex(closure.date, monday);
+    if (day < 0 || day >= 5) return [];
+    const klasses = closure.classIdentities?.map((identity) => classKey({ classIdentity: identity }));
+    return [{ day, reason: closure.reason, ...(klasses?.length ? { klasses } : {}) }];
+  });
+  if (closures.length) input.closures = closures;
+  return { input, lessonByAssignment, assignmentByLessonId, monday };
+}
+
+function redactedTrace(state: WorkspaceState, trace: readonly TraceEntry[]): TraceEntry[] {
+  const teachers = [...new Set(activeLessons(state).flatMap((lesson) =>
+    lesson.teacher.state === 'assigned' ? [lesson.teacher.teacherId] : []))]
+    .sort((left, right) => right.length - left.length);
+  return trace.map((entry) => ({
+    ...entry,
+    text: teachers.reduce((text, teacherId) => text.replaceAll(teacherId, teacherLabel(state, teacherId)), entry.text),
   }));
-  const cycles = counterparts.flatMap((first, firstIndex) => counterparts
-    .slice(firstIndex + 1)
-    .filter((second) => second.teacher.state === 'assigned'
-      && first.teacher.state === 'assigned'
-      && second.teacher.teacherId !== first.teacher.teacherId)
-    .map((second) => ({
-      id: `candidate:cycle:${lesson.id}:${first.id}:${second.id}`,
-      lessonId: lesson.id,
-      kind: 'cycle3' as const,
-      computedAgainstRevisionId: state.workspace.activeRevisionId,
-      changes: [{
-        lessonId: lesson.id,
-        toDate: lesson.date,
-        toPeriod: first.period,
-        teacher: owner,
-      }, {
-        lessonId: first.id,
-        toDate: first.date,
-        toPeriod: second.period,
-        teacher: first.teacher,
-      }, {
-        lessonId: second.id,
-        toDate: second.date,
-        toPeriod: lesson.period,
-        teacher: second.teacher,
-      }],
-    })));
-  return [...move, ...swaps, ...cycles];
+}
+
+function engineExchangeCandidates(state: WorkspaceState, lesson: Lesson): EngineCandidateFacts[] {
+  if (lesson.teacher.state !== 'assigned') return [];
+  const week = targetWeekInput(state, lesson.date);
+  const target = week.assignmentByLessonId.get(lesson.id);
+  if (!target) return [];
+  try {
+    return recommend(week.input, { teacher: target.teacher, slot: target.slot }, { max: 5 }).candidates.flatMap((candidate) => {
+      const changes = candidate.changes.flatMap((change) => {
+        const source = week.lessonByAssignment.get(change.from);
+        const day = Math.floor(change.toSlot / week.input.config.periods);
+        if (!source || day < 0 || day >= 5) return [];
+        return [{
+          lessonId: source.id,
+          toDate: dateAtUtcOffset(week.monday, day),
+          toPeriod: String((change.toSlot % week.input.config.periods) + 1),
+          teacher: source.teacher,
+        }];
+      });
+      if (changes.length !== candidate.changes.length) return [];
+      const fingerprint = changes.map((change) =>
+        `${change.lessonId}:${change.toDate}:${change.toPeriod}`).join('|');
+      return [{
+        item: {
+          id: `candidate:engine:${lesson.id}:${candidate.type}:${fingerprint}`,
+          lessonId: lesson.id,
+          kind: candidate.type,
+          computedAgainstRevisionId: state.workspace.activeRevisionId,
+          changes,
+        },
+        engineScore: candidate.score,
+        engineTrace: redactedTrace(state, candidate.trace),
+      }];
+    });
+  } catch {
+    return [];
+  }
 }
 
 function warningReasons(state: WorkspaceState, lesson: Lesson, item: ResolutionItem): string[] {
@@ -271,7 +387,12 @@ function burden(state: WorkspaceState, lesson: Lesson, item: ResolutionItem): st
   return `당일 수업 ${dayLessons}시간`;
 }
 
-function toRow(state: WorkspaceState, lesson: Lesson, item: ResolutionItem): ResolutionRow {
+function toRow(
+  state: WorkspaceState,
+  lesson: Lesson,
+  candidate: ResolutionCandidate,
+): ResolutionRow {
+  const { item } = candidate;
   const collaborators = [...new Set(item.changes
     .filter(isAssigned)
     .map((change) => change.teacher.teacherId)
@@ -288,6 +409,10 @@ function toRow(state: WorkspaceState, lesson: Lesson, item: ResolutionItem): Res
     state: warnings.length ? 'warning' : 'valid',
     resolution: item,
     warningReasons: warnings,
+    ...(candidate.engineScore === undefined ? {} : {
+      engineScore: candidate.engineScore,
+      engineTrace: candidate.engineTrace ?? [],
+    }),
   };
 }
 
@@ -305,27 +430,29 @@ export function resolutionRowsForLesson(
   const lesson = activeLessons(state).find((item) => item.id === lessonId);
   if (!absenceCase || !lesson) return [];
 
-  const existingExchange = absenceCase.resolutionItems.filter((item) => item.lessonId === lessonId
-    && (item.kind === 'move' || item.kind === 'swap2' || item.kind === 'cycle3'));
-  const generatedExchange = existingExchange.length ? [] : exchangeCandidates(state, lesson);
-  const cover = absenceCase.resolutionItems.filter((item) => item.lessonId === lessonId && item.kind === 'cover');
-  const validExchange = [...existingExchange, ...generatedExchange]
-    .filter((item) => !hardInvalid(state, absenceCase, item));
-  const preferredExchange = (['move', 'swap2', 'cycle3'] as const).flatMap((kind) =>
-    validExchange.filter((item) => item.kind === kind).slice(0, 1));
-  const candidates = [...preferredExchange, ...cover, ...coverCandidates(state, absenceCase, lesson)];
-  const unique = new Map<string, ResolutionItem>();
-  for (const item of candidates) {
-    const key = JSON.stringify([item.kind, item.changes]);
-    if (!unique.has(key)) unique.set(key, item);
+  const generatedExchange = engineExchangeCandidates(state, lesson);
+  const existingExchange = absenceCase.resolutionItems
+    .filter((item) => item.lessonId === lessonId
+      && (item.kind === 'move' || item.kind === 'swap2' || item.kind === 'cycle3'))
+    .map((item) => ({ item }));
+  const existingCover = absenceCase.resolutionItems
+    .filter((item) => item.lessonId === lessonId && item.kind === 'cover')
+    .map((item) => ({ item }));
+  const generatedCover = coverCandidates(state, absenceCase, lesson).map((item) => ({ item }));
+  const candidates: ResolutionCandidate[] = [
+    ...existingExchange,
+    ...generatedExchange,
+    ...existingCover,
+    ...generatedCover,
+  ];
+  const unique = new Map<string, ResolutionCandidate>();
+  for (const candidate of candidates) {
+    const key = JSON.stringify([candidate.item.kind, candidate.item.changes]);
+    if (!unique.has(key)) unique.set(key, candidate);
   }
   const rows = [...unique.values()]
-    .filter((item) => !hardInvalid(state, absenceCase, item))
-    .map((item) => toRow(state, lesson, item))
-    .sort((left, right) => {
-      const rank = (row: ResolutionRow) => ['빈 교시 이동', '맞교환', '연쇄 교환', '보강'].indexOf(row.method);
-      return rank(left) - rank(right) || left.id.localeCompare(right.id);
-    })
+    .filter((candidate) => !hardInvalid(state, absenceCase, candidate.item))
+    .map((candidate) => toRow(state, lesson, candidate))
     .slice(0, 5);
   if (rows[0] && rows[0].state === 'valid') rows[0] = { ...rows[0], state: 'recommended' };
   return rows;
@@ -355,6 +482,8 @@ export function resolutionDetailForRow(state: WorkspaceState, row: ResolutionRow
     groupedUnitCount: row.resolution.changes.length,
     collaborators: row.collaborators,
     warningReasons: row.warningReasons,
+    engineTrace: row.engineTrace ?? [],
+    ...(row.engineScore === undefined ? {} : { engineScore: row.engineScore }),
     changes: row.resolution.changes.flatMap((change) => {
       const lesson = lessonsById.get(change.lessonId);
       if (!lesson) return [];

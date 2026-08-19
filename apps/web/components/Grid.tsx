@@ -439,17 +439,25 @@ export function TeacherScheduleGrid({
   onSelectLesson(lessonId: string): void;
   resolutionPreview?: TimetableResolutionPreview;
 }) {
-  const dates = [...new Set(lessons.map((lesson) => {
+  const previewChanges = resolutionPreview?.changes ?? [];
+  const dates = [...new Set([
+    ...lessons.map((lesson) => {
     const value = teacherScheduleValue(lesson);
     return value.date;
-  }))].sort();
-  const periods = [...new Set(lessons.map((lesson) => {
+    }),
+    ...previewChanges.map((change) => change.next.date),
+  ])].sort();
+  const periods = [...new Set([
+    ...lessons.map((lesson) => {
     const value = teacherScheduleValue(lesson);
     return value.period;
-  }))].sort((left, right) => Number(left) - Number(right));
+    }),
+    ...previewChanges.map((change) => change.next.period)
+      .filter((period) => Number.isFinite(Number(period)) && Number(period) > 0),
+  ])].sort((left, right) => Number(left) - Number(right));
   const bySlot = teacherWeekSlots(lessons);
-  const resolutionSources = new Set(resolutionPreview?.changes.map((change) => change.lessonId) ?? []);
-  const resolutionDestinations = new Set(resolutionPreview?.changes.map((change) =>
+  const resolutionSources = new Set(previewChanges.map((change) => change.lessonId));
+  const resolutionDestinations = new Set(previewChanges.map((change) =>
     `${change.next.date}\u0000${change.next.period}`) ?? []);
 
   return (

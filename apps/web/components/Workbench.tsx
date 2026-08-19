@@ -1407,6 +1407,16 @@ function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleVi
     if (!handoff || !preview || !selectedRow || !selectedPreview) return;
     const selectedCase = selectedPreview.state.cases.find((item) => item.id === preview.caseId);
     if (!selectedCase) return;
+    const duplicate = findDuplicateAbsenceCase(state, {
+      requesterTeacherId: teacherId,
+      fromDate: handoff.fromDate,
+      toDate: handoff.toDate,
+      lessonIds: selectedCase.lessonIds,
+    });
+    if (duplicate) {
+      setResolutionMessage('같은 기간과 수업으로 이미 제출된 요청이 있습니다. 기존 요청을 확인하거나 날짜 또는 수업 선택을 바꾸십시오.');
+      return;
+    }
     const part = caseIdPart();
     const at = new Date().toISOString();
     try {
