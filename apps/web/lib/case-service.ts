@@ -3,6 +3,7 @@ import type {
   AdminTask,
   AdminTaskKind,
   CaseStatus,
+  Lesson,
   WorkspaceState,
 } from './domain';
 import { validateCasePlan } from './projections';
@@ -67,6 +68,39 @@ export interface CreateCorrectionCaseInput {
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * The canonical base schedule owns absence selection.  Publication and
+ * approval projections may change what a teacher sees, but they must never
+ * make an unassigned or another teacher's lesson claimable in a new case.
+ */
+export function lessonsAffectedByAbsence(
+  lessons: Lesson[],
+  teacherId: string,
+  fromDate: string,
+  toDate: string,
+): Lesson[] {
+  return lessons
+    .filter((lesson) => lesson.teacher.state === 'assigned'
+      && lesson.teacher.teacherId === teacherId
+      && lesson.date >= fromDate
+      && lesson.date <= toDate)
+    .sort((left, right) => left.date.localeCompare(right.date)
+      || Number(left.period) - Number(right.period)
+      || left.id.localeCompare(right.id));
+}
+
+export function findDuplicateAbsenceCase(
+  state: WorkspaceState,
+  input: Pick<CreateAbsenceCaseInput, 'requesterTeacherId' | 'fromDate' | 'toDate' | 'lessonIds'>,
+): AbsenceCase | undefined {
+  const selected = [...input.lessonIds].sort();
+  return state.cases.find((item) => item.requesterTeacherId === input.requesterTeacherId
+    && item.fromDate === input.fromDate
+    && item.toDate === input.toDate
+    && item.lessonIds.length === selected.length
+    && [...item.lessonIds].sort().every((lessonId, index) => lessonId === selected[index]));
+}
 
 function isISODate(value: string): boolean {
   if (!ISO_DATE.test(value)) return false;

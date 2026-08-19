@@ -8,6 +8,7 @@ import type { AppLocation } from '../lib/navigation';
 export interface RoleViewAdapterProps {
   state: WorkspaceState;
   location: Exclude<AppLocation, { view: 'landing' | 'setup' }>;
+  saveState(next: WorkspaceState): void;
   navigate(next: AppLocation): void;
 }
 

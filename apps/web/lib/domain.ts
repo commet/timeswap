@@ -161,6 +161,8 @@ export interface AuditEvent {
 export interface WorkspaceState {
   schemaVersion: 2;
   workspace: SchoolWorkspace;
+  /** Display-only names are intentionally separate from stable invitation ids. */
+  teacherLabels?: Record<string, string>;
   revisions: BaseScheduleRevision[];
   lessons: Lesson[];
   atomicLessonGroups?: AtomicLessonGroup[];

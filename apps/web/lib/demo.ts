@@ -115,6 +115,20 @@ export const DEMO_SCENARIOS = [
 
 export const DEMO_PROVENANCE_LABEL = '공개 시간표 관측 구조 기반 · 일정·교사·사건은 예시';
 
+const DEMO_TEACHER_LABELS: Readonly<Record<string, string>> = {
+  'teacher:seo-jun': '김서준',
+  'teacher:han-sol': '한솔',
+  'teacher:cover-elective': '선택과목 협조 교사',
+  'teacher:cover-practice': '실습 협조 교사',
+};
+
+function demoTeacherLabel(teacherId: string): string {
+  if (DEMO_TEACHER_LABELS[teacherId]) return DEMO_TEACHER_LABELS[teacherId];
+  if (teacherId.startsWith('teacher:counterpart-')) return '맞교환 협조 교사';
+  if (teacherId.startsWith('teacher:elective-')) return '선택과목 담당 교사';
+  return '예시 교사';
+}
+
 interface DemoFactSourceBase {
   retrievedAt: '2026-08-18';
   credentialIncluded: false;
@@ -386,6 +400,9 @@ function buildState(
     },
     revisions: [revision],
     lessons: input.lessons.map((item) => lesson(workspaceId, revisionId, item)),
+    teacherLabels: Object.fromEntries([...new Set(input.lessons.flatMap((item) =>
+      item.teacherId ? [item.teacherId] : []))]
+      .map((teacherId) => [teacherId, demoTeacherLabel(teacherId)])),
     ...(input.atomicLessonGroups ? {
       atomicLessonGroups: input.atomicLessonGroups.map((group) => ({
         ...group,

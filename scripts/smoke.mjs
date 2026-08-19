@@ -119,6 +119,66 @@ await page.goBack({ waitUntil: 'networkidle' });
 await page.waitForTimeout(50);
 if ((await activeText(page)).id !== 'landing-title') failures.push('역할 화면에서 뒤로 간 뒤 학교 진입 제목으로 초점이 이동하지 않음');
 
+await page.goto(`${BASE}/?view=teacher&school=simple-swap%3Aworkspace&teacher=teacher%3Aseo-jun`, { waitUntil: 'networkidle' });
+await shot(page, 'task-8-teacher-desktop');
+if (!(await page.locator('[data-teacher-home]').count())) failures.push('교사 링크가 canonical 교사 시간표를 열지 않음');
+if ((await page.getByRole('tab', { name: '오늘', exact: true }).getAttribute('aria-selected')) !== 'true') {
+  failures.push('교사 시간표가 오늘 탭으로 시작하지 않음');
+}
+for (const selector of ['[data-now-next]', '[data-today-change-count]']) {
+  if (!(await page.locator(selector).count())) failures.push(`교사 첫 화면에 ${selector} 정보가 없음`);
+}
+if (!(await page.getByRole('button', { name: '변경 요청', exact: true }).count())) failures.push('교사 첫 화면에 변경 요청 행동이 없음');
+if ((await page.locator('body').innerText()).includes('teacher:seo-jun')) failures.push('교사 화면에 내부 교사 ID가 이름처럼 노출됨');
+
+await page.evaluate(() => {
+  const key = 'joyul:v2:workspace:simple-swap:workspace';
+  const state = JSON.parse(localStorage.getItem(key));
+  state.cases = [];
+  state.audit = [];
+  state.publications = [];
+  localStorage.setItem(key, JSON.stringify(state));
+});
+await page.reload({ waitUntil: 'networkidle' });
+await page.locator('.period-rail-lesson').first().click();
+if ((await page.locator('.affected-lessons input:checked').count()) !== 1) failures.push('수업 선택이 부재 날짜와 영향 수업을 미리 채우지 않음');
+await page.getByRole('button', { name: '후보 계산으로 전달' }).click();
+if (!(await page.locator('[data-candidate-handoff]').count())) failures.push('후보 비교 handoff 상태가 노출되지 않음');
+await page.getByRole('button', { name: '변경 요청 제출' }).click();
+await page.waitForTimeout(100);
+await page.getByRole('heading', { name: '요청을 제출했습니다' }).waitFor({ state: 'visible', timeout: 1_000 }).catch(() => undefined);
+if ((await activeText(page)).id !== 'case-status-heading') failures.push('요청 제출 뒤 사례 상태 제목으로 초점이 이동하지 않음');
+if (await page.locator('.affected-lessons input').count()) failures.push('요청 제출 뒤 일시적인 부재 선택 표시가 남음');
+const teacherStored = await page.evaluate(() => JSON.parse(localStorage.getItem('joyul:v2:workspace:simple-swap:workspace')));
+if (!teacherStored.cases.some((item) => item.status === 'submitted')) failures.push('교사 요청이 canonical WorkspaceRepository에 제출되지 않음');
+await page.getByRole('button', { name: '시간표로 돌아가기' }).click();
+await page.locator('.period-rail-lesson').first().click();
+await page.getByRole('button', { name: '변경 요청 제출' }).click();
+if (!(await page.locator('[role="alert"]').filter({ hasText: '기존 요청을 확인' }).count())) {
+  failures.push('중복 교사 요청에 실행 가능한 안내가 없음');
+}
+await page.getByRole('button', { name: '닫기' }).click();
+await page.evaluate(() => {
+  const key = 'joyul:v2:workspace:simple-swap:workspace';
+  const state = JSON.parse(localStorage.getItem(key));
+  state.revisions[0].complete = false;
+  state.revisions[0].query = { receivedRows: '1', expectedRows: '2' };
+  delete state.teacherLabels['teacher:han-sol'];
+  localStorage.setItem(key, JSON.stringify(state));
+});
+await page.reload({ waitUntil: 'networkidle' });
+await page.locator('.period-rail-lesson').first().click();
+if (!(await page.getByRole('button', { name: '후보 계산으로 전달' }).isDisabled())) {
+  failures.push('불완전 자료에서 후보 계산 handoff가 비활성화되지 않음');
+}
+const unavailableCopy = await page.locator('.source-unavailable').innerText();
+if (!unavailableCopy.includes('공식 시간표 1/2건') || !unavailableCopy.includes('교사 연결 1/2명')) {
+  failures.push('불완전 자료의 known/expected 진단 수치가 정확하지 않음');
+}
+if (!(await page.getByRole('button', { name: '진단 보고서 내보내기' }).count())) {
+  failures.push('불완전 자료에서 진단 보고서 export 행동이 없음');
+}
+
 const mobileCtx = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const mobile = await mobileCtx.newPage();
 mobile.on('pageerror', (error) => failures.push(`모바일 페이지 오류: ${error.message}`));
@@ -141,10 +201,37 @@ const narrowMetrics = await mobile.evaluate(() => ({
 }));
 if (narrowMetrics.document > narrowMetrics.viewport + 1) failures.push('320px 랜딩이 가로로 밀림');
 
+await mobile.setViewportSize({ width: 390, height: 844 });
+await mobile.getByRole('button', { name: '예시 학교 둘러보기' }).click();
+await mobile.waitForURL(/\?view=ops&school=/);
+await mobile.goto(`${BASE}/?view=teacher&school=simple-swap%3Aworkspace&teacher=teacher%3Aseo-jun`, { waitUntil: 'networkidle' });
+await shot(mobile, 'task-8-teacher-mobile');
+const teacherFirstViewport = await mobile.evaluate(() => {
+  const selectors = ['[data-now-next]', '[data-today-change-count]', '[data-teacher-home] .teacher-request-button'];
+  return Object.fromEntries(selectors.map((selector) => {
+    const node = document.querySelector(selector);
+    const box = node?.getBoundingClientRect();
+    return [selector, box ? { top: box.top, bottom: box.bottom } : null];
+  }));
+});
+for (const [selector, box] of Object.entries(teacherFirstViewport)) {
+  if (!box || box.top < 0 || box.bottom > 844) failures.push(`390px 첫 화면에 ${selector}가 보이지 않음`);
+}
+if ((await mobile.getByRole('tab', { name: '오늘', exact: true }).getAttribute('aria-selected')) !== 'true') {
+  failures.push('390px 교사 시간표가 오늘 탭으로 시작하지 않음');
+}
+if (await mobile.locator('[data-teacher-week]').count()) failures.push('390px 첫 화면에서 주간 시간표가 오늘 흐름보다 먼저 노출됨');
+const teacherMobileMetrics = await mobile.evaluate(() => ({
+  viewport: document.documentElement.clientWidth,
+  document: document.documentElement.scrollWidth,
+}));
+if (teacherMobileMetrics.document > teacherMobileMetrics.viewport + 1) failures.push('390px 교사 시간표가 가로로 밀림');
+
 console.log('랜딩 행동·민감 입력 분리:', failures.some((item) => item.includes('랜딩')) ? '실패' : '통과');
 console.log('최초 설정 순서·게이트:', failures.some((item) => item.includes('설정') || item.includes('초대')) ? '실패' : '통과');
 console.log('체험 역할·출처:', failures.some((item) => item.includes('역할') || item.includes('출처')) ? '실패' : '통과');
 console.log('모바일 폭:', mobileMetrics.viewport, '문서 폭:', mobileMetrics.document, '작은 조작:', mobileMetrics.small);
+console.log('교사 오늘·변경 요청:', failures.some((item) => item.includes('교사') || item.includes('변경 요청')) ? '실패' : '통과');
 console.log('검증 결과:', failures.length ? failures : '모두 통과');
 
 await mobileCtx.close();

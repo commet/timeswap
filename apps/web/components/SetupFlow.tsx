@@ -90,6 +90,7 @@ export function createWorkspaceFromNeis(
   const normalization = bundle.report.normalization;
   const groupByRow = new Map(normalization.parallelGroups.flatMap((group, index) =>
     group.rowIds.map((rowId) => [rowId, `${revisionId}:parallel:${index + 1}`] as const)));
+  const teacherLabels: Record<string, string> = {};
   const lessons = normalization.accepted.map((row) => {
     const label = classLabel(row.classIdentity.grade, row.classIdentity.className);
     const teacherReference = teacherMap[mapKey(row.classKey, row.subject)]
@@ -97,6 +98,7 @@ export function createWorkspaceFromNeis(
     const teacherId = teacherReference
       ? memberIdFor(workspaceId, teacherReference)
       : null;
+    if (teacherId && teacherReference) teacherLabels[teacherId] = teacherReference;
     return {
       id: `${revisionId}:lesson:${row.id}`,
       workspaceId,
@@ -153,6 +155,7 @@ export function createWorkspaceFromNeis(
       ...(closures.length ? { closures } : {}),
     }],
     lessons,
+    teacherLabels,
     cases: [], adminTasks: [], publications: [], audit: [],
   };
 }
@@ -182,7 +185,7 @@ export interface InvitationLink { id: string; label: string; href: string; }
 export function createInvitationLinks(
   state: WorkspaceState,
   origin: string,
-  teacherLabels: Readonly<Record<string, string>> = {},
+  teacherLabels: Readonly<Record<string, string>> = state.teacherLabels ?? {},
 ): { teachers: InvitationLink[]; classes: InvitationLink[] } {
   const teachers = [...new Set(state.lessons.flatMap((lesson) =>
     lesson.teacher.state === 'assigned' ? [lesson.teacher.teacherId] : []))]

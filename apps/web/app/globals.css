@@ -1110,3 +1110,101 @@ button.cell.empty:hover { border-color: var(--muted); }
   .setup-actions { flex-direction: column-reverse; }
   .setup-actions .btn { width: 100%; }
 }
+
+/* Task 8 — teacher request path.  This is deliberately separate from the legacy ops grid. */
+.teacher-command { width: min(1120px, calc(100% - 40px)); margin: 30px auto 56px; display: grid; gap: 16px; }
+.teacher-command-intro, .teacher-today, .absence-composer, .teacher-projection-grid { border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: 0 1px 2px rgb(23 32 51 / .04); }
+.teacher-command-intro { padding: clamp(20px, 4vw, 34px); display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; }
+.teacher-command h1, .teacher-command h2 { margin: 0; letter-spacing: -.04em; }
+.teacher-command h1 { font-size: clamp(27px, 4vw, 43px); }
+.teacher-command-intro p, .teacher-today p, .teacher-projection-grid header p { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+.teacher-request-button { flex: none; min-height: 50px; min-width: 116px; }
+.teacher-today { overflow: hidden; }
+.teacher-today-head { padding: 20px 24px 12px; display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
+.teacher-today-head h2 { font-size: 24px; }
+.teacher-today-head > p { flex: none; margin: 0; padding: 7px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 800; }
+.teacher-today-head > p b { font-size: 16px; }
+.teacher-focus-tabs { padding: 0 24px; display: flex; gap: 5px; border-bottom: 1px solid var(--line); }
+.teacher-focus-tabs button { min-height: 42px; padding: 7px 13px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); font-weight: 800; }
+.teacher-focus-tabs button.on { border-color: var(--accent); color: var(--accent); }
+.period-rail { padding: 16px 24px 22px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 9px; }
+.now-next, .period-rail-lesson { min-height: 88px; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); text-align: left; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.now-next > span, .period-rail-lesson > span { color: var(--muted); font-size: 11px; font-weight: 850; }
+.now-next b, .period-rail-lesson b { font-size: 15px; }
+.period-rail-lesson { background: var(--surface); }
+.period-rail-lesson:hover { border-color: var(--accent); }
+.period-rail-lesson.planned, .teacher-grid-lesson.planned { border-style: dashed; border-color: var(--accent); background: var(--accent-soft); }
+.period-rail-lesson em, .teacher-grid-lesson em { color: var(--accent); font-size: 10px; font-style: normal; font-weight: 850; }
+.period-rail-lesson small, .teacher-grid-lesson small { color: var(--muted); font-size: 11px; }
+.absence-composer { padding: clamp(20px, 4vw, 34px); }
+.absence-composer > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
+.absence-composer h2 { font-size: clamp(23px, 3vw, 31px); }
+.absence-composer header p { max-width: 680px; margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+.absence-dates { margin-top: 22px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; gap: 10px; align-items: end; }
+.absence-dates label, .coordination-note { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 800; }
+.absence-dates .input { min-height: 44px; }
+.whole-day { min-height: 44px; flex-direction: row !important; align-items: center; white-space: nowrap; color: var(--ink) !important; }
+.affected-lessons, .absence-reason { margin: 18px 0 0; padding: 15px; border: 1px solid var(--line); border-radius: 13px; }
+.affected-lessons legend, .absence-reason legend { padding: 0 5px; font-weight: 850; }
+.affected-lessons > label { min-height: 42px; display: flex; align-items: center; gap: 9px; border-top: 1px solid var(--line); font-size: 13px; }
+.affected-lessons > label:first-of-type { border-top: 0; }
+.affected-lessons > p { color: var(--muted); font-size: 13px; }
+.absence-facts { margin-top: 11px; display: flex; gap: 8px; flex-wrap: wrap; }
+.absence-facts span { padding: 7px 10px; border-radius: 999px; background: var(--surface-2); font-size: 12px; }
+.absence-facts b { color: var(--accent); font-size: 16px; }
+.atomic-warning, .composer-message { margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-size: 13px; }
+.absence-reason { display: flex; flex-wrap: wrap; gap: 9px 14px; }
+.absence-reason > label:not(.coordination-note) { min-height: 34px; display: flex; align-items: center; gap: 5px; font-size: 13px; }
+.absence-reason .coordination-note { width: 100%; margin-top: 4px; }
+.absence-reason textarea { min-height: 76px; padding: 10px; resize: vertical; }
+.source-unavailable { margin-top: 17px; padding: 15px; border-radius: 13px; background: var(--warn-soft); color: var(--warn); }
+.source-unavailable p { margin: 5px 0; font-size: 13px; }
+.source-unavailable .btn { margin-top: 6px; }
+.absence-composer > footer { margin-top: 19px; display: flex; justify-content: flex-end; gap: 8px; }
+.case-submitted { max-width: 680px; }
+.case-submitted p { color: var(--muted); }
+.teacher-projection-grid { overflow: hidden; }
+.teacher-projection-grid > header { padding: 21px 24px 15px; display: flex; align-items: end; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--line); }
+.teacher-projection-grid h2 { font-size: 24px; }
+.teacher-grid-scroll { overflow-x: auto; }
+.teacher-grid { min-width: 100%; display: grid; gap: 1px; background: var(--line); }
+.teacher-grid-corner, .teacher-grid-day, .teacher-grid-period, .teacher-grid-empty-cell, .teacher-grid-lesson { min-height: 92px; background: var(--surface); }
+.teacher-grid-day { padding: 14px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-weight: 850; }
+.teacher-grid-day small { color: var(--muted); font-size: 10px; }
+.teacher-grid-row { display: contents; }
+.teacher-grid-period { display: grid; place-items: center; color: var(--muted); font-size: 11px; font-weight: 850; }
+.teacher-grid-empty-cell { background: var(--surface-2); }
+.teacher-grid-lesson { padding: 12px; border: 0; text-align: left; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.teacher-grid-lesson:hover { background: var(--accent-soft); }
+.teacher-grid-lesson.planned { outline: 1px dashed var(--accent); outline-offset: -5px; }
+.teacher-grid-lesson.published { background: var(--success-soft); }
+.teacher-grid-lesson b { font-size: 14px; }
+.teacher-grid-lesson span { color: var(--muted); font-size: 11px; }
+.teacher-grid-empty { padding: 30px; color: var(--muted); }
+.candidate-handoff { width: min(1120px, calc(100% - 40px)); margin: -4px auto 22px; padding: 10px 13px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-size: 13px; }
+
+@media (max-width: 620px) {
+  .teacher-command { width: calc(100% - 20px); margin: 12px auto 34px; gap: 10px; }
+  .teacher-command-intro { padding: 17px 15px; gap: 12px; flex-direction: column; }
+  .teacher-command h1 { font-size: 25px; }
+  .teacher-request-button { position: sticky; bottom: 10px; z-index: 2; width: 100%; }
+  .teacher-today-head { padding: 17px 15px 9px; }
+  .teacher-today-head h2 { font-size: 20px; }
+  .teacher-focus-tabs { padding: 0 15px; }
+  .teacher-focus-tabs button { flex: 1; min-height: 44px; }
+  .period-rail { padding: 12px 15px 16px; grid-template-columns: 1fr 1fr; }
+  .now-next, .period-rail-lesson { min-height: 78px; padding: 10px; }
+  .period-rail-lesson { grid-column: span 1; }
+  .absence-composer { padding: 18px 15px; }
+  .absence-composer > header { flex-direction: column; }
+  .absence-composer > header .btn { width: 100%; }
+  .absence-dates { grid-template-columns: 1fr; }
+  .whole-day { min-height: 38px; }
+  .absence-reason { flex-direction: column; }
+  .absence-composer > footer { flex-direction: column; }
+  .absence-composer > footer .btn { width: 100%; }
+  .teacher-projection-grid > header { padding: 18px 15px 12px; align-items: flex-start; flex-direction: column; }
+  .teacher-projection-grid h2 { font-size: 21px; }
+  .teacher-grid { min-width: 460px; }
+  .candidate-handoff { width: calc(100% - 20px); }
+}

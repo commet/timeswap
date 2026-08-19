@@ -68,6 +68,8 @@ describe('demo scenario inventory', () => {
 
     expect(first).toEqual(second);
     expect(first.demo.scenarioId).toBe('simple-swap');
+    expect(first.teacherLabels?.['teacher:seo-jun']).toBe('김서준');
+    expect(first.teacherLabels?.['teacher:han-sol']).toBe('한솔');
     expect(first.demo.initialView).toBe('일과 담당 · 간단한 맞교환 상세');
     expect(entityIds(first).every((id) => id.trim() !== '')).toBe(true);
     expect(new Set(entityIds(first)).size).toBe(entityIds(first).length);

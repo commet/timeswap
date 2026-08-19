@@ -6,6 +6,8 @@ import {
   createCorrectionCase,
   createPrototypeAdminTasks,
   deleteCase,
+  findDuplicateAbsenceCase,
+  lessonsAffectedByAbsence,
   transitionCase,
 } from '../lib/case-service';
 import type { ClassIdentity } from '@timeswap/engine';
@@ -158,6 +160,79 @@ describe('createAbsenceCase', () => {
     expect(before.audit).toEqual([]);
     expect(after.cases).not.toBe(before.cases);
     expect(after.audit).not.toBe(before.audit);
+  });
+});
+
+describe('lessonsAffectedByAbsence', () => {
+  const selectorLessons: Lesson[] = [
+    { ...lessons[2]!, id: 'day-two-period-3', date: '2026-08-25', period: '3' },
+    { ...lessons[0]!, id: 'day-one-period-1', date: '2026-08-24', period: '1' },
+    { ...lessons[1]!, id: 'day-one-period-2', date: '2026-08-24', period: '2' },
+    { ...lessons[3]!, id: 'day-one-period-4', date: '2026-08-24', period: '4', parallelGroupId: 'practice-block' },
+    { ...lessons[0]!, id: 'day-one-period-3', date: '2026-08-24', period: '3' },
+    { ...lessons[0]!, id: 'published-substitute', date: '2026-08-24', period: '5', teacher: { state: 'assigned', teacherId: 'teacher-cover' } },
+    { ...lessons[0]!, id: 'unassigned-period-6', date: '2026-08-24', period: '6', teacher: { state: 'unassigned' } },
+  ];
+
+  it('selects one assigned period and keeps its stable id', () => {
+    expect(lessonsAffectedByAbsence(selectorLessons, 'teacher-1', '2026-08-25', '2026-08-25')
+      .map((lesson) => lesson.id)).toEqual(['day-two-period-3']);
+  });
+
+  it('selects and orders every assigned lesson across one day', () => {
+    expect(lessonsAffectedByAbsence(selectorLessons, 'teacher-1', '2026-08-24', '2026-08-24')
+      .map((lesson) => [lesson.id, lesson.parallelGroupId ?? null])).toEqual([
+      ['day-one-period-1', null],
+      ['day-one-period-2', null],
+      ['day-one-period-3', null],
+      ['day-one-period-4', 'practice-block'],
+    ]);
+  });
+
+  it('includes both bounds of a multi-day absence', () => {
+    expect(lessonsAffectedByAbsence(selectorLessons, 'teacher-1', '2026-08-24', '2026-08-25')
+      .map((lesson) => lesson.id)).toEqual([
+      'day-one-period-1', 'day-one-period-2', 'day-one-period-3', 'day-one-period-4', 'day-two-period-3',
+    ]);
+  });
+
+  it('does not claim a lesson whose published replacement belongs to another teacher', () => {
+    expect(lessonsAffectedByAbsence(selectorLessons, 'teacher-1', '2026-08-24', '2026-08-24')
+      .map((lesson) => lesson.id)).not.toContain('published-substitute');
+  });
+
+  it('does not claim an unassigned lesson', () => {
+    expect(lessonsAffectedByAbsence(selectorLessons, 'teacher-1', '2026-08-24', '2026-08-24')
+      .map((lesson) => lesson.id)).not.toContain('unassigned-period-6');
+  });
+});
+
+describe('findDuplicateAbsenceCase', () => {
+  it('finds an existing request only when teacher, date range, and lesson set all match', () => {
+    const state = createAbsenceCase(initialState(), {
+      id: 'case-existing',
+      auditEventId: 'audit-existing',
+      workspaceId: 'workspace-1',
+      requesterTeacherId: 'teacher-1',
+      fromDate: '2026-08-24',
+      toDate: '2026-08-24',
+      reason: '업무상 부재',
+      lessonIds: ['lesson-1', 'lesson-2'],
+      at: '2026-08-18T01:00:00.000Z',
+    });
+
+    expect(findDuplicateAbsenceCase(state, {
+      requesterTeacherId: 'teacher-1',
+      fromDate: '2026-08-24',
+      toDate: '2026-08-24',
+      lessonIds: ['lesson-2', 'lesson-1'],
+    })?.id).toBe('case-existing');
+    expect(findDuplicateAbsenceCase(state, {
+      requesterTeacherId: 'teacher-1',
+      fromDate: '2026-08-24',
+      toDate: '2026-08-25',
+      lessonIds: ['lesson-1', 'lesson-2'],
+    })).toBeUndefined();
   });
 });
 

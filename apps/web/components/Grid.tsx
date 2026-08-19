@@ -9,6 +9,7 @@ import {
   type ScheduleConfig,
 } from "@timeswap/engine";
 import { subjectHue } from "../lib/app";
+import type { TeacherScheduleLessonView } from '../lib/projections';
 import type { CSSProperties } from "react";
 
 interface Props {
@@ -392,5 +393,76 @@ function Row({
         );
       })}
     </>
+  );
+}
+
+function koreanDay(date: string): string {
+  return new Intl.DateTimeFormat('ko-KR', { weekday: 'short', timeZone: 'UTC' })
+    .format(new Date(`${date}T00:00:00.000Z`));
+}
+
+/** Canonical teacher projection grid.  The legacy interaction grid above stays for ops until Task 10. */
+export function TeacherScheduleGrid({
+  lessons,
+  onSelectLesson,
+}: {
+  lessons: TeacherScheduleLessonView[];
+  onSelectLesson(lessonId: string): void;
+}) {
+  const dates = [...new Set(lessons.map((lesson) => {
+    const value = lesson.pending ?? lesson.published ?? lesson.base;
+    return value.date;
+  }))].sort();
+  const periods = [...new Set(lessons.map((lesson) => {
+    const value = lesson.pending ?? lesson.published ?? lesson.base;
+    return value.period;
+  }))].sort((left, right) => Number(left) - Number(right));
+  const bySlot = new Map(lessons.map((lesson) => {
+    const value = lesson.pending ?? lesson.published ?? lesson.base;
+    return [`${value.date}\u0000${value.period}`, lesson] as const;
+  }));
+
+  return (
+    <section className="teacher-projection-grid" data-teacher-week aria-labelledby="teacher-week-title">
+      <header>
+        <div>
+          <span className="eyebrow">주간 시간표</span>
+          <h2 id="teacher-week-title">이번 주 수업</h2>
+        </div>
+        <p>수업을 누르면 해당 날짜와 교시로 변경 요청을 시작합니다.</p>
+      </header>
+      {!dates.length ? <p className="teacher-grid-empty">표시할 수업이 없습니다.</p> : (
+        <div className="teacher-grid-scroll">
+          <div className="teacher-grid" style={{ gridTemplateColumns: `54px repeat(${dates.length}, minmax(128px, 1fr))` }}>
+            <span className="teacher-grid-corner" aria-hidden />
+            {dates.map((date) => <span className="teacher-grid-day" key={date}>{koreanDay(date)}<small>{date.slice(5)}</small></span>)}
+            {periods.map((period) => (
+              <div className="teacher-grid-row" key={period}>
+                <span className="teacher-grid-period">{period}교시</span>
+                {dates.map((date) => {
+                  const lesson = bySlot.get(`${date}\u0000${period}`);
+                  if (!lesson) return <span className="teacher-grid-empty-cell" key={date} aria-label={`${date} ${period}교시 공강`} />;
+                  const changed = lesson.status !== 'base';
+                  return (
+                    <button
+                      key={date}
+                      className={`teacher-grid-lesson${changed ? ` ${lesson.status === 'published' ? 'published' : 'planned'}` : ''}`}
+                      onClick={() => onSelectLesson(lesson.lessonId)}
+                      aria-label={`${date} ${period}교시 ${lesson.subject} 변경 요청`}
+                    >
+                      {lesson.status === '변경 예정' && <em>변경 예정</em>}
+                      {lesson.status === 'published' && <em>게시됨</em>}
+                      <b>{lesson.subject}</b>
+                      {lesson.status === 'published' && <small>원래 {lesson.subject}</small>}
+                      <span>{lesson.classIdentity.grade}-{lesson.classIdentity.className} · {lesson.room}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }

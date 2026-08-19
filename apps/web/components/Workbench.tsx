@@ -20,11 +20,17 @@ import { Panel } from './Panel';
 import { Changes } from './Changes';
 import { Sheet } from './Sheet';
 import { TeacherPick } from './TeacherPick';
-import { TeacherHome, type ScheduleFocus } from './TeacherHome';
+import { TeacherHome } from './TeacherHome';
+import type { AbsenceComposerSubmission, CandidateHandoff } from './AbsenceComposer';
 import { RequestStatusList } from './RequestStatusList';
 import { OpsInbox } from './OpsInbox';
 import { BRAND } from '../lib/brand';
 import type { WorkspaceState } from '../lib/domain';
+import {
+  createAbsenceCase,
+  findDuplicateAbsenceCase,
+  transitionCase,
+} from '../lib/case-service';
 import {
   parseLocation,
   pushLocation,
@@ -195,7 +201,7 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
   const [todayIdx, setTodayIdx] = useState<number | null>(null);
   const [theme, setTheme] = useState<ThemeMode>('auto');
   const [workspaceMode, setWorkspaceMode] = useState<'teacher' | 'ops'>(location.view === 'ops' ? 'ops' : 'teacher');
-  const [scheduleFocus, setScheduleFocus] = useState<ScheduleFocus>('week');
+  const [scheduleFocus, setScheduleFocus] = useState<'today' | 'week'>('week');
   const [requests, setRequests] = useState<ChangeRequest[]>([]);
   const [printRequest, setPrintRequest] = useState<ChangeRequest | null>(null);
   const sideRef = useRef<HTMLDivElement>(null);
@@ -1156,18 +1162,6 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
         />
       ) : (
         <main className={'teacher-work focus-' + scheduleFocus + (activeSlot !== null ? ' has-selection' : '')}>
-          {view === 'teacher' && currentTeacher !== null && (
-            <TeacherHome
-              schoolName={loaded.schoolName}
-              teacher={currentTeacher}
-              cfg={input.config}
-              lessons={lessons}
-              todayIdx={todayIdx}
-              requests={requests}
-              focus={scheduleFocus}
-              onFocus={setScheduleFocus}
-            />
-          )}
           {(scheduleFocus === 'week' || view === 'klass') && (
             <div className="work">
               <Grid
@@ -1318,6 +1312,103 @@ function workspaceIdOf(location: AppLocation): string | null {
     : null;
 }
 
+function downloadDiagnostic(state: WorkspaceState): void {
+  const generatedAt = new Date().toISOString();
+  const blob = new Blob([JSON.stringify({
+    kind: 'teacher-absence-diagnostic',
+    generatedAt,
+    workspace: state,
+  }, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${state.workspace.name}-변경요청-진단.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function caseIdPart(): string {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+type TeacherRoleViewAdapterProps = Omit<RoleViewAdapterProps, 'location'> & {
+  location: Extract<AppLocation, { view: 'teacher' }>;
+};
+
+function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleViewAdapterProps) {
+  const teacherId = location.teacher;
+  const [handoff, setHandoff] = useState<CandidateHandoff | null>(null);
+
+  function submit(input: AbsenceComposerSubmission): { caseId?: string; error?: string } {
+    const duplicate = findDuplicateAbsenceCase(state, {
+      requesterTeacherId: teacherId,
+      fromDate: input.fromDate,
+      toDate: input.toDate,
+      lessonIds: input.lessonIds,
+    });
+    if (duplicate) {
+      return { error: `같은 기간과 수업으로 ${duplicate.status} 상태의 요청이 이미 있습니다. 기존 요청을 확인하거나 날짜 또는 수업 선택을 바꾸십시오.` };
+    }
+    const part = caseIdPart();
+    const at = new Date().toISOString();
+    const caseId = `case:${part}`;
+    try {
+      const created = createAbsenceCase(state, {
+        id: caseId,
+        auditEventId: `audit:${part}:created`,
+        workspaceId: state.workspace.id,
+        requesterTeacherId: teacherId,
+        ...input,
+        at,
+      });
+      const submitted = transitionCase(created, {
+        caseId,
+        to: 'submitted',
+        actorId: teacherId,
+        at,
+        auditEventId: `audit:${part}:submitted`,
+      });
+      saveState(submitted);
+      return { caseId };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : '요청을 저장하지 못했습니다.' };
+    }
+  }
+
+  return (
+    <>
+      <TeacherHome
+        state={state}
+        teacherId={teacherId}
+        onSubmit={submit}
+        onExportDiagnostic={() => downloadDiagnostic(state)}
+        onCandidateHandoff={setHandoff}
+      />
+      {handoff && (
+        <p className="candidate-handoff" data-candidate-handoff role="status">
+          {handoff.lessonIds.length}개 수업을 후보 비교로 전달했습니다. 후보 비교는 다음 단계에서 계속됩니다.
+        </p>
+      )}
+    </>
+  );
+}
+
+function RoleWorkbench(props: RoleViewAdapterProps) {
+  if (props.location.view === 'teacher') return (
+    <CanonicalTeacherWorkbench
+      state={props.state}
+      location={props.location}
+      saveState={props.saveState}
+      navigate={props.navigate}
+    />
+  );
+  return <LegacyWorkbench {...props} />;
+}
+
 export function Workbench() {
   const repositoryRef = useRef<WorkspaceRepository | null>(null);
   const workspaceRef = useRef<WorkspaceState | null>(null);
@@ -1380,7 +1471,7 @@ export function Workbench() {
 
   return (
     <NeisSessionProvider value={sessionValue}>
-      <RoleViewAdapterProvider adapter={LegacyWorkbench}>
+      <RoleViewAdapterProvider adapter={RoleWorkbench}>
         {saveError && <div className="warn-bar" role="alert">{saveError}</div>}
         <AppShell state={state} location={location} saveState={saveState} navigate={navigate} />
       </RoleViewAdapterProvider>

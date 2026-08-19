@@ -69,6 +69,9 @@ describe('school setup boundary', () => {
         },
       }),
     ]);
+    const assignedTeacher = state.lessons[0]!.teacher;
+    if (assignedTeacher.state !== 'assigned') throw new Error('teacher must be assigned');
+    expect(state.teacherLabels).toEqual({ [assignedTeacher.teacherId]: 'teacher:seo-jun' });
   });
 
   it('keeps invitations locked until the official page set and every teacher are resolved', () => {
