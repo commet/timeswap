@@ -425,6 +425,17 @@ export interface PumasiFile {
    * 저장했다 여는 것만으로 조용히 되돌아가는 종류의 잘못이라 파일에 함께 담는다.
    */
   busy?: Record<string, number[]>;
+  /**
+   * 학급이 몇 학년인지.
+   *
+   * 이것을 안 담으면 파일로 저장했다 열 때 학년 판정이 통째로 죽는다.
+   * 나이스에서 온 학급 키는 `["7010084","2026","주간","","","1","1"]` 처럼
+   * 학교 코드로 시작해서, 키에서 학년을 캐낼 수 없기 때문이다.
+   * busy 와 같은 종류의 잘못이다. 저장했다 여는 것만으로 조용히 되돌아간다.
+   *
+   * 옛 파일에는 없다. 없으면 학급 이름 앞머리 숫자로 되돌아간다.
+   */
+  grades?: Record<string, number>;
 }
 
 export function toFile(loaded: Loaded): string {
@@ -443,6 +454,7 @@ export function toFile(loaded: Loaded): string {
     })),
     ...(loaded.calendar ? { calendar: loaded.calendar } : {}),
     ...(loaded.input.klassBusy ? { busy: loaded.input.klassBusy } : {}),
+    ...(loaded.input.klassGrade ? { grades: loaded.input.klassGrade } : {}),
   };
   return JSON.stringify(doc, null, 1);
 }
@@ -506,6 +518,16 @@ export function fromFile(raw: string): Loaded {
                 ])
                 .filter(([, v]) => (v as number[]).length > 0),
             ) as Record<string, number[]>,
+          }
+        : {}),
+      // 학년 표. 1에서 12 사이가 아닌 값은 버린다. 손상된 파일이 학년을 어긋내는 것을 막는다.
+      ...(doc.grades && typeof doc.grades === 'object'
+        ? {
+            klassGrade: Object.fromEntries(
+              Object.entries(doc.grades).filter(
+                ([, g]) => Number.isInteger(g) && (g as number) >= 1 && (g as number) <= 12,
+              ),
+            ) as Record<string, number>,
           }
         : {}),
     },

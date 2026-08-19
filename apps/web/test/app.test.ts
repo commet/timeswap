@@ -18,6 +18,7 @@ import {
 } from '../lib/app';
 import type { NeisEvent } from '../lib/neis';
 import { createNeisSession } from '../lib/neis-session';
+import { gradeShapes } from '@timeswap/engine';
 import type { ScheduleConfig, TimetableInput } from '@timeswap/engine';
 
 const cfg = { days: 5, periods: 7, dayNames: ['월', '화', '수', '목', '금'] };
@@ -165,6 +166,38 @@ describe('저장 형식', () => {
       },
     };
     expect(fromFile(toFile(withPro)).input.assignments[0]?.pro).toBe(true);
+  });
+
+  it('학년 표도 함께 살아남는다', () => {
+    // 이것이 빠지면 저장했다 여는 것만으로 학년 판정이 통째로 죽는다.
+    // 나이스 학급 키는 학교 코드로 시작해서 키에서 학년을 캐낼 수 없기 때문이다.
+    // klassBusy 와 같은 종류의 잘못이라 같은 자리에서 잠근다.
+    const neisKlass = '["7010084","2026","주간","","","3","7"]';
+    const withGrade = {
+      ...loaded,
+      input: {
+        ...loaded.input,
+        assignments: [{ teacher: '김국어', klass: neisKlass, subject: '국어', slot: 0 }],
+        klassGrade: { [neisKlass]: 3 },
+      },
+    };
+    const back = fromFile(toFile(withGrade));
+    expect(back.input.klassGrade).toEqual({ [neisKlass]: 3 });
+    expect(gradeShapes(back.input).map((x) => x.grade)).toEqual([3]);
+  });
+
+  it('학년 표가 없는 옛 파일은 학급 이름으로 되돌아간다', () => {
+    const doc = JSON.parse(toFile(loaded)) as Record<string, unknown>;
+    delete doc.grades;
+    const back = fromFile(JSON.stringify(doc));
+    expect(back.input.klassGrade).toBeUndefined();
+    expect(gradeShapes(back.input).map((x) => x.grade)).toEqual([1]);
+  });
+
+  it('학년으로 볼 수 없는 값은 버린다', () => {
+    const doc = JSON.parse(toFile(loaded)) as Record<string, unknown>;
+    doc.grades = { '1-1': 7010084, '1-2': 1, '1-3': 0 };
+    expect(fromFile(JSON.stringify(doc)).input.klassGrade).toEqual({ '1-2': 1 });
   });
 
   it('칸 밖으로 나간 담당 미상 자리는 버린다', () => {
