@@ -181,9 +181,70 @@ describe('resolution rows', () => {
     const cover = rows.find((row) => row.method === '보강');
 
     expect(rows.filter((row) => row.method !== '보강')).toEqual([]);
-    expect(cover).toMatchObject({ movedUnitCount: 3, collaborators: expect.arrayContaining(['선택과목 보강 교사']) });
+    expect(cover).toMatchObject({
+      movedUnitCount: 3,
+      collaborators: expect.arrayContaining(['선택과목 보강 교사']),
+      engineScore: expect.any(Number),
+      engineTrace: expect.any(Array),
+    });
     expect(cover && selectResolutionForCase(state, absenceCase.id, cover).validation.valid).toBe(true);
     expect(resolutionConstraintForLesson(state, targetLessonId, rows)).toContain('선택과목 묶음 3개 수업');
+  });
+
+  it('ranks generated cover rows by engine score instead of canonical lesson insertion order', () => {
+    const state = loadDemoScenario('simple-swap');
+    const absenceCase = state.cases[0]!;
+    const targetLessonId = absenceCase.lessonIds[0]!;
+    const target = state.lessons[0]!;
+    state.cases[0] = { ...absenceCase, resolutionItems: [] };
+    const busyClass = { ...target.classIdentity, className: '9' };
+    const heavyClass = { ...target.classIdentity, className: '8' };
+    const lightClass = { ...target.classIdentity, className: '7' };
+    for (const period of ['1', '2', '4', '5', '6', '7']) {
+      state.lessons.push({
+        ...target,
+        id: `requester-busy-${period}`,
+        period,
+        subject: '교사 배정 수업',
+        classIdentity: busyClass,
+      });
+      state.lessons.push({
+        ...target,
+        id: `heavy-cover-${period}`,
+        period,
+        classIdentity: heavyClass,
+        teacher: { state: 'assigned', teacherId: 'member:heavy-cover' },
+      });
+    }
+    state.lessons.push({
+      ...target,
+      id: 'light-cover-1',
+      period: '1',
+      classIdentity: lightClass,
+      teacher: { state: 'assigned', teacherId: 'member:light-cover' },
+    });
+    state.revisions[0] = {
+      ...state.revisions[0]!,
+      closures: [
+        { date: '2026-08-17', reason: '휴업일' },
+        { date: '2026-08-19', reason: '휴업일' },
+        { date: '2026-08-20', reason: '휴업일' },
+        { date: '2026-08-21', reason: '휴업일' },
+      ],
+    };
+    state.teacherLabels = {
+      ...state.teacherLabels,
+      'member:heavy-cover': '부담이 큰 보강 교사',
+      'member:light-cover': '가벼운 보강 교사',
+    };
+
+    const coverRows = resolutionRowsForLesson(state, absenceCase.id, targetLessonId)
+      .filter((row) => row.method === '보강');
+    const first = coverRows[0] as typeof coverRows[number] & { engineScore: number; engineTrace: unknown[] };
+
+    expect(first.collaborators).toEqual(['가벼운 보강 교사']);
+    expect(first.engineScore).toBeGreaterThan(0);
+    expect(first.engineTrace.length).toBeGreaterThan(0);
   });
 
   it('preserves engine-ranked exchange facts from the canonical target week', () => {
@@ -204,7 +265,7 @@ describe('resolution rows', () => {
     state.teacherLabels = { ...state.teacherLabels, 'member:available': '윤지원' };
 
     const rows = resolutionRowsForLesson(state, absenceCase.id, targetLessonId);
-    const generated = rows.filter((row) => 'engineScore' in row) as Array<typeof rows[number] & {
+    const generated = rows.filter((row) => row.method !== '보강' && 'engineScore' in row) as Array<typeof rows[number] & {
       engineScore: number;
       engineTrace: unknown[];
     }>;

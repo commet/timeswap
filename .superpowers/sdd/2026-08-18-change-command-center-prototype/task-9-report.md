@@ -77,3 +77,30 @@ The retired legacy `Panel` comparison area now directs users to the canonical te
 - `git diff --check`: passed.
 
 One earlier parallel full-suite attempt hit the existing engine scale-test runner timeout despite reporting a 64.3ms per-recommendation average. A clean final `npm test` passed all 370 tests without changing engine code.
+
+## Review fix round 2
+
+### Corrected behavior
+
+- Replaced the web-only cover picker with `@timeswap/engine` `coverCandidates` using the existing active target-week adapter and the absent requester id.
+- Generated cover rows now retain engine score, ranked notes as redacted trace facts, and burden notes as warnings in both the row and selected detail.
+- Parallel and atomic groups intersect engine-ranked candidates for every grouped lesson slot, sum the per-slot scores deterministically, and retain the canonical whole-group resolution item.
+- Generated scored covers follow valid exchanges and precede any retained unscored canonical cover, with canonical-change deduplication preserving the engine-ranked item.
+
+### Review TDD record
+
+| Behavior | Observed RED | GREEN evidence |
+| --- | --- | --- |
+| Engine cover ranking | The local picker put `한솔` ahead of the lighter same-subject cover teacher. | The engine-ranked row puts `가벼운 보강 교사` first with positive score and trace. |
+| Whole-group cover facts | A zero-exchange elective cover had no engine score or trace. | The valid 3-lesson cover includes engine score and trace while remaining a single atomic selection. |
+
+### Review verification
+
+- Focused `resolution.test.ts`: 11 tests passed.
+- `npm test`: 19 engine files, 160 tests passed. 16 web files, 211 tests passed. Total 371 tests passed.
+- `npm run typecheck`: passed.
+- `npm run build`: passed.
+- Checked production smoke: passed at 1440px, 390px, and 320px, including the matrix keyboard flow, grouped cover, and mobile layout.
+- `git diff --check`: passed.
+
+No Task 10 or Task 11 surface was changed. No known blocker remains.

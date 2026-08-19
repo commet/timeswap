@@ -6,8 +6,10 @@ import type {
   WorkspaceState,
 } from './domain';
 import {
+  coverCandidates as rankedCoverCandidates,
   recommend,
   type Assignment,
+  type CoverCandidate,
   type TimetableInput,
   type TraceEntry,
 } from '@timeswap/engine';
@@ -25,7 +27,7 @@ export interface ResolutionRow {
   /** Canonical facts used by the selected detail and repository action. */
   resolution: ResolutionItem;
   warningReasons: string[];
-  /** Engine ordering evidence for generated exchange rows. */
+  /** Engine ordering evidence for generated exchange or cover rows. */
   engineScore?: number;
   engineTrace?: TraceEntry[];
 }
@@ -134,11 +136,15 @@ function hardInvalid(state: WorkspaceState, absenceCase: AbsenceCase, item: Reso
   return !validateCasePlan(candidateState, absenceCase.id).valid;
 }
 
-function coverCandidates(
+interface CoverGroup {
+  lessons: Lesson[];
+  atomic: boolean;
+}
+
+function coverGroup(
   state: WorkspaceState,
-  absenceCase: AbsenceCase,
   lesson: Lesson,
-): ResolutionItem[] {
+): CoverGroup {
   const lessons = activeLessons(state);
   const lessonById = new Map(lessons.map((current) => [current.id, current]));
   const atomicGroup = (state.atomicLessonGroups ?? []).find((group) =>
@@ -150,39 +156,21 @@ function coverCandidates(
     : lesson.parallelGroupId
       ? lessons.filter((current) => current.parallelGroupId === lesson.parallelGroupId)
       : [lesson];
-  const unavailable = new Set(lessons
-    .filter((current) => current.date === lesson.date && current.period === lesson.period)
-    .flatMap((current) => current.teacher.state === 'assigned' ? [current.teacher.teacherId] : []));
-  const teacherIds = [...new Set(lessons.flatMap((current) =>
-    current.teacher.state === 'assigned' ? [current.teacher.teacherId] : []))]
-    .filter((teacherId) => teacherId !== absenceCase.requesterTeacherId && !unavailable.has(teacherId));
-
-  return teacherIds.map((teacherId) => ({
-    id: `candidate:cover:${lesson.id}:${teacherId}`,
-    lessonId: lesson.id,
-    kind: 'cover' as const,
-    computedAgainstRevisionId: state.workspace.activeRevisionId,
-    changes: groupedLessons.map((grouped) => ({
-      lessonId: grouped.id,
-      toDate: grouped.date,
-      toPeriod: grouped.period,
-      teacher: grouped.id === lesson.id || atomicGroup
-        ? { state: 'assigned' as const, teacherId }
-        : grouped.teacher,
-    })),
-  }));
+  return { lessons: groupedLessons, atomic: Boolean(atomicGroup) };
 }
 
 interface EngineCandidateFacts {
   item: ResolutionItem;
   engineScore: number;
   engineTrace: TraceEntry[];
+  warningReasons?: string[];
 }
 
 interface ResolutionCandidate {
   item: ResolutionItem;
   engineScore?: number;
   engineTrace?: TraceEntry[];
+  warningReasons?: string[];
 }
 
 interface TargetWeekInput {
@@ -352,6 +340,82 @@ function engineExchangeCandidates(state: WorkspaceState, lesson: Lesson): Engine
   }
 }
 
+function coverWarningReasons(candidates: readonly CoverCandidate[]): string[] {
+  return [...new Set(candidates.flatMap((candidate) => candidate.notes.filter((note) =>
+    (candidate.dayLessons > 4 && note.includes('이미'))
+    || (candidate.runAfter >= 3 && note.includes('내리'))
+    || (candidate.recentBurden > 0 && note.includes('최근'))
+    || (!candidate.proTeacher && note.includes('어렵')),
+  )))];
+}
+
+function coverTrace(state: WorkspaceState, candidates: readonly CoverCandidate[]): TraceEntry[] {
+  const notes = new Map<string, TraceEntry>();
+  for (const candidate of candidates) {
+    for (const text of candidate.notes) {
+      if (notes.has(text)) continue;
+      const warning = coverWarningReasons([candidate]).includes(text);
+      notes.set(text, {
+        kind: warning ? '감점' : candidate.sameSubject ? '가점' : '조건',
+        text,
+      });
+    }
+  }
+  return redactedTrace(state, [...notes.values()]);
+}
+
+/** Uses the same target-week engine input as exchanges so cover ranking stays canonical. */
+function engineCoverCandidates(
+  state: WorkspaceState,
+  absenceCase: AbsenceCase,
+  lesson: Lesson,
+): EngineCandidateFacts[] {
+  const week = targetWeekInput(state, lesson.date);
+  const group = coverGroup(state, lesson);
+  const candidateLists = group.lessons.map((grouped) => {
+    const assignment = week.assignmentByLessonId.get(grouped.id);
+    if (!assignment) return [];
+    return rankedCoverCandidates(
+      week.input,
+      assignment.slot,
+      grouped.subject,
+      Math.max(8, week.input.assignments.length),
+      absenceCase.requesterTeacherId,
+    );
+  });
+  if (!candidateLists.length || candidateLists.some((candidates) => !candidates.length)) return [];
+
+  const candidatesByTeacher = candidateLists.map((candidates) =>
+    new Map(candidates.map((candidate) => [candidate.teacher, candidate])));
+  const sharedTeachers = candidateLists[0]!
+    .map((candidate) => candidate.teacher)
+    .filter((teacherId) => candidatesByTeacher.every((candidates) => candidates.has(teacherId)));
+
+  return sharedTeachers.map((teacherId) => {
+    const ranked = candidatesByTeacher.map((candidates) => candidates.get(teacherId)!);
+    return {
+      item: {
+        id: `candidate:engine-cover:${lesson.id}:${teacherId}`,
+        lessonId: lesson.id,
+        kind: 'cover' as const,
+        computedAgainstRevisionId: state.workspace.activeRevisionId,
+        changes: group.lessons.map((grouped) => ({
+          lessonId: grouped.id,
+          toDate: grouped.date,
+          toPeriod: grouped.period,
+          teacher: grouped.id === lesson.id || group.atomic
+            ? { state: 'assigned' as const, teacherId }
+            : grouped.teacher,
+        })),
+      },
+      engineScore: ranked.reduce((score, candidate) => score + candidate.score, 0),
+      engineTrace: coverTrace(state, ranked),
+      warningReasons: coverWarningReasons(ranked),
+    };
+  }).sort((left, right) => right.engineScore - left.engineScore
+    || left.item.id.localeCompare(right.item.id, 'ko'));
+}
+
 function warningReasons(state: WorkspaceState, lesson: Lesson, item: ResolutionItem): string[] {
   const reasons: string[] = [];
   if (item.kind === 'cover') {
@@ -398,7 +462,10 @@ function toRow(
     .map((change) => change.teacher.teacherId)
     .filter((teacherId) => lesson.teacher.state !== 'assigned' || teacherId !== lesson.teacher.teacherId))]
     .map((teacherId) => teacherLabel(state, teacherId));
-  const warnings = warningReasons(state, lesson, item);
+  const warnings = [...new Set([
+    ...warningReasons(state, lesson, item),
+    ...(candidate.warningReasons ?? []),
+  ])];
   return {
     id: item.id,
     method: METHOD[item.kind as Exclude<ResolutionItem['kind'], 'unresolved' | 'manual'>],
@@ -438,12 +505,16 @@ export function resolutionRowsForLesson(
   const existingCover = absenceCase.resolutionItems
     .filter((item) => item.lessonId === lessonId && item.kind === 'cover')
     .map((item) => ({ item }));
-  const generatedCover = coverCandidates(state, absenceCase, lesson).map((item) => ({ item }));
+  const validExchanges = [...existingExchange, ...generatedExchange]
+    .filter((candidate) => !hardInvalid(state, absenceCase, candidate.item));
+  const generatedCover = validExchanges.length < 3
+    ? engineCoverCandidates(state, absenceCase, lesson)
+    : [];
+  const retainedExistingCover = validExchanges.length < 3 ? existingCover : [];
   const candidates: ResolutionCandidate[] = [
-    ...existingExchange,
-    ...generatedExchange,
-    ...existingCover,
+    ...validExchanges,
     ...generatedCover,
+    ...retainedExistingCover,
   ];
   const unique = new Map<string, ResolutionCandidate>();
   for (const candidate of candidates) {
