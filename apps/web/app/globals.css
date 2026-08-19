@@ -1184,6 +1184,59 @@ button.cell.empty:hover { border-color: var(--muted); }
 .teacher-grid-empty { padding: 30px; color: var(--muted); }
 .candidate-handoff { width: min(1120px, calc(100% - 40px)); margin: -4px auto 22px; padding: 10px 13px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-size: 13px; }
 
+/* Task 9.  One comparison surface owns row selection; its only action is below the detail. */
+.resolution-matrix { width: min(1120px, calc(100% - 40px)); margin: 0 auto 56px; border: 1px solid var(--line); border-radius: 18px; overflow: clip; background: var(--surface); box-shadow: 0 1px 2px rgb(23 32 51 / .04); }
+.resolution-matrix.empty { padding: 26px; }
+.resolution-matrix.empty h2 { margin: 0; }
+.resolution-matrix.empty p { color: var(--muted); }
+.resolution-matrix-head { padding: 22px 24px 17px; display: flex; align-items: end; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--line); }
+.resolution-matrix-head h2, .resolution-detail h3 { margin: 0; letter-spacing: -.035em; }
+.resolution-matrix-head h2 { font-size: clamp(22px, 3vw, 29px); }
+.resolution-matrix-head p { max-width: 300px; margin: 0; color: var(--muted); font-size: 12px; text-align: right; }
+.resolution-progress { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; margin: 0; padding: 1px; list-style: none; background: var(--line); }
+.resolution-progress li { min-height: 48px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; gap: 9px; background: var(--surface); font-size: 12px; }
+.resolution-progress b { padding: 2px 7px; border-radius: 999px; font-size: 10px; }
+.resolution-progress .해결 b { background: var(--success-soft); color: var(--success); }
+.resolution-progress .주의 b, .resolution-progress .미해결 b { background: var(--warn-soft); color: var(--warn); }
+.resolution-atomic-note { margin: 0; padding: 11px 15px; background: var(--warn-soft); color: var(--warn); font-size: 13px; }
+.resolution-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.resolution-table th { padding: 10px 13px; border-bottom: 1px solid var(--line); color: var(--muted); background: var(--surface-2); font-size: 11px; font-weight: 850; text-align: left; }
+.resolution-table th:first-child { width: 19%; }
+.resolution-table th:nth-child(2) { width: 18%; }
+.resolution-table th:nth-child(3) { width: 12%; }
+.resolution-table th:nth-child(4) { width: 19%; }
+.resolution-table th:nth-child(5) { width: 17%; }
+.resolution-table th:last-child { width: 15%; }
+.resolution-table td { padding: 10px 13px; border-bottom: 1px solid var(--line); color: var(--ink); font-size: 13px; vertical-align: middle; }
+.resolution-table tbody tr { background: var(--surface); }
+.resolution-table tbody tr:hover, .resolution-table tbody tr.selected { background: var(--accent-soft); }
+.resolution-choice { min-height: 44px; display: flex; align-items: center; gap: 9px; font-weight: 850; cursor: pointer; }
+.resolution-choice input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
+.resolution-state { display: inline-flex; min-height: 26px; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 850; white-space: nowrap; }
+.resolution-state.recommended { background: var(--accent); color: var(--on-accent); }
+.resolution-state.valid { background: var(--success-soft); color: var(--success); }
+.resolution-state.warning { background: var(--warn-soft); color: var(--warn); }
+.resolution-detail { padding: 22px 24px; background: var(--surface-2); }
+.resolution-detail-head p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+.resolution-detail-list { margin: 15px 0 0; }
+.resolution-detail-list > div { display: grid; grid-template-columns: 124px minmax(0, 1fr); gap: 12px; padding: 11px 0; border-top: 1px solid var(--line); }
+.resolution-detail-list dt { color: var(--muted); font-size: 12px; font-weight: 850; }
+.resolution-detail-list dd { margin: 0; display: flex; align-items: flex-start; gap: 9px; font-size: 13px; }
+.resolution-detail-list dd b { color: var(--accent); }
+.resolution-collaborators, .resolution-validation { margin: 13px 0 0; font-size: 13px; }
+.resolution-collaborators b { margin-right: 8px; color: var(--muted); }
+.resolution-validation { padding: 9px 11px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); }
+.resolution-warnings { margin: 13px 0 0; padding: 10px 12px 10px 29px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-size: 13px; }
+.resolution-warnings li + li { margin-top: 4px; }
+.resolution-action { padding: 16px 24px; display: flex; justify-content: flex-end; border-top: 1px solid var(--line); background: var(--surface); }
+.resolution-action .btn { min-height: 44px; min-width: 164px; }
+.teacher-grid-lesson[data-resolution-from='true'] { outline: 2px solid var(--warn); outline-offset: -4px; background: var(--warn-soft); animation: resolution-slot 720ms ease-out both; }
+.teacher-grid-slot[data-resolution-to='true'], .teacher-grid-empty-cell[data-resolution-to='true'] { outline: 2px solid var(--accent); outline-offset: -4px; background: var(--accent-soft); animation: resolution-slot 720ms ease-out both; }
+@keyframes resolution-slot { from { filter: brightness(1.12); } to { filter: brightness(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .teacher-grid-lesson[data-resolution-from='true'], .teacher-grid-slot[data-resolution-to='true'], .teacher-grid-empty-cell[data-resolution-to='true'] { animation: none; }
+}
+
 @media (max-width: 620px) {
   .teacher-command { width: calc(100% - 20px); margin: 12px auto 34px; gap: 10px; }
   .teacher-command-intro { padding: 17px 15px; gap: 12px; flex-direction: column; }
@@ -1208,4 +1261,24 @@ button.cell.empty:hover { border-color: var(--muted); }
   .teacher-projection-grid h2 { font-size: 21px; }
   .teacher-grid { min-width: 460px; }
   .candidate-handoff { width: calc(100% - 20px); }
+  .resolution-matrix { width: calc(100% - 20px); margin-bottom: 34px; overflow: visible; }
+  .resolution-matrix-head { padding: 18px 15px 14px; align-items: flex-start; flex-direction: column; }
+  .resolution-matrix-head h2 { font-size: 21px; }
+  .resolution-matrix-head p { max-width: none; text-align: left; }
+  .resolution-progress { grid-template-columns: 1fr; }
+  .resolution-table, .resolution-table tbody, .resolution-table tr, .resolution-table td { display: block; width: 100%; }
+  .resolution-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .resolution-table tbody { border-top: 1px solid var(--line); }
+  .resolution-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .resolution-table tbody tr:last-child { border-bottom: 0; }
+  .resolution-table td { min-height: 44px; padding: 7px 12px; display: grid; grid-template-columns: 63px minmax(0, 1fr); align-items: center; gap: 7px; border: 0; font-size: 12px; }
+  .resolution-table td::before { content: attr(data-label); color: var(--muted); font-size: 10px; font-weight: 850; }
+  .resolution-table td:first-child { grid-column: 1 / -1; }
+  .resolution-choice { min-height: 44px; }
+  .resolution-detail { padding: 18px 15px 82px; }
+  .resolution-detail-list > div { grid-template-columns: 1fr; gap: 4px; padding: 12px 0; }
+  .resolution-detail-list dd { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 8px; }
+  .resolution-detail-list dd span:last-child { grid-column: 1 / -1; }
+  .resolution-action { position: sticky; bottom: 0; z-index: 4; margin-top: -62px; padding: 9px 15px calc(9px + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--surface) 95%, transparent); box-shadow: 0 -7px 16px rgb(23 32 51 / .09); }
+  .resolution-action .btn { width: 100%; min-height: 48px; }
 }

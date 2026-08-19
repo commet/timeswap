@@ -4,6 +4,7 @@ import type {
   AdminTaskKind,
   CaseStatus,
   Lesson,
+  ResolutionItem,
   WorkspaceState,
 } from './domain';
 import type { SaveResult } from './repository';
@@ -19,6 +20,7 @@ export interface CreateAbsenceCaseInput {
   reason: AbsenceCase['reason'];
   note?: string;
   lessonIds: string[];
+  resolutionItems?: ResolutionItem[];
   at: string;
 }
 
@@ -178,7 +180,10 @@ export function createAbsenceCase(
     reason: input.reason,
     ...(input.note === undefined ? {} : { note: input.note }),
     lessonIds: [...input.lessonIds],
-    resolutionItems: [],
+    resolutionItems: input.resolutionItems?.map((item) => ({
+      ...item,
+      changes: item.changes.map((change) => ({ ...change, teacher: { ...change.teacher } })),
+    })) ?? [],
     status: 'draft',
     createdAt: input.at,
     updatedAt: input.at,

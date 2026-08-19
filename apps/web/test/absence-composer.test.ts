@@ -6,6 +6,7 @@ import * as Composer from '../components/AbsenceComposer';
 
 import {
   atomicSelectionWarnings,
+  candidateHandoffData,
   composerReadiness,
   fullDayLessonIds,
   toggleLessonSelection,
@@ -61,6 +62,23 @@ function stateForComposer(): WorkspaceState {
 }
 
 describe('absence composer helpers', () => {
+  it('keeps the selected reason and coordination note in the canonical candidate handoff', () => {
+    expect(candidateHandoffData({
+      fromDate: '2026-08-24',
+      toDate: '2026-08-24',
+      lessonIds: ['lesson-1'],
+      reason: '학교 행사',
+      note: '실습실 점검 전까지 이동이 어렵습니다.',
+    }, ['실습 묶음을 함께 확인합니다.'])).toEqual({
+      fromDate: '2026-08-24',
+      toDate: '2026-08-24',
+      lessonIds: ['lesson-1'],
+      reason: '학교 행사',
+      note: '실습실 점검 전까지 이동이 어렵습니다.',
+      atomicWarnings: ['실습 묶음을 함께 확인합니다.'],
+    });
+  });
+
   it('selects every assigned teacher lesson when a day is marked whole-day', () => {
     expect(fullDayLessonIds(stateForComposer(), 'member:teacher-1', '2026-08-24')).toEqual([
       'lesson-1', 'lesson-2',

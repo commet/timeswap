@@ -22,11 +22,15 @@ export interface AbsenceComposerSubmission {
   lessonIds: string[];
 }
 
-export interface CandidateHandoff {
-  lessonIds: string[];
-  fromDate: string;
-  toDate: string;
+export interface CandidateHandoff extends AbsenceComposerSubmission {
   atomicWarnings: string[];
+}
+
+export function candidateHandoffData(
+  submission: AbsenceComposerSubmission,
+  atomicWarnings: string[],
+): CandidateHandoff {
+  return { ...submission, atomicWarnings };
 }
 
 export interface TeacherDiagnosticProjection {
@@ -323,7 +327,10 @@ export function AbsenceComposer({
         <button className="btn primary" onClick={submit}>변경 요청 제출</button>
         <button className="btn ghost" disabled={!readiness.readyForCandidates || !selected.length}
           onClick={() => onCandidateHandoff?.({
-            lessonIds: selected.map((lesson) => lesson.id), fromDate, toDate, atomicWarnings,
+            ...candidateHandoffData({
+              lessonIds: selected.map((lesson) => lesson.id), fromDate, toDate, reason,
+              ...(note.trim() ? { note: note.trim() } : {}),
+            }, atomicWarnings),
           })}>후보 계산으로 전달</button>
         <button className="btn ghost" onClick={onExportDiagnostic}>진단 보고서 내보내기</button>
       </footer>

@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import type {
   Assignment,
   Candidate,
@@ -10,8 +9,6 @@ import type {
 } from '@timeswap/engine';
 import { slotName } from '@timeswap/engine';
 import type { RequestReason } from '../lib/request-workflow';
-import { CandidateCompare } from './CandidateCompare';
-import { CoverCompare } from './CoverCompare';
 
 export function Panel({
   cfg,
@@ -62,12 +59,6 @@ export function Panel({
 }) {
   const hasChange = (result?.candidates.length ?? 0) > 0;
   const hasCover = (cover?.length ?? 0) > 0;
-  const [method, setMethod] = useState<'change' | 'cover'>('change');
-
-  useEffect(() => {
-    setMethod(hasChange ? 'change' : 'cover');
-  }, [result?.target.slot, result?.target.klass, hasChange]);
-
   return (
     <aside className="panel" aria-label="교체 방법">
       <div className="panel-titlebar">
@@ -119,30 +110,11 @@ export function Panel({
         </div>
       )}
 
-      {result && hasChange && hasCover && (
-        <div className="method-switch" role="tablist" aria-label="변경 방식">
-          <button role="tab" aria-selected={method === 'change'} className={method === 'change' ? 'on' : ''} onClick={() => setMethod('change')}>
-            시간 교체 <span>{result.candidates.length}</span>
-          </button>
-          <button role="tab" aria-selected={method === 'cover'} className={method === 'cover' ? 'on' : ''} onClick={() => setMethod('cover')}>
-            보강 <span>{cover?.length ?? 0}</span>
-          </button>
+      {result && (hasChange || hasCover) && (
+        <div className="panel-empty" role="status">
+          <b>이전 비교 화면은 종료했습니다</b>
+          <span>교사 초대 링크에서 시간표 기반 해결안 비교를 사용하십시오.</span>
         </div>
-      )}
-
-      {result && hasChange && method === 'change' && (
-        <CandidateCompare
-          candidates={result.candidates}
-          cfg={cfg}
-          owner={owner}
-          defaultDate={defaultDate}
-          onPreview={onHover}
-          onRequest={onRequest}
-        />
-      )}
-
-      {result && hasCover && method === 'cover' && cover && (
-        <CoverCompare candidates={cover} defaultDate={defaultDate} onRequest={onCoverRequest} />
       )}
 
       {result && !hasChange && !hasCover && (

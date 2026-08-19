@@ -78,4 +78,22 @@ describe('teacher schedule view helpers', () => {
     expect(html).toContain('수학');
     expect(html).toContain('과학');
   });
+
+  it('marks the selected resolution source and destination slots in the timetable', () => {
+    const lessons = [view('lesson-source', '2', '수학'), view('lesson-destination', '5', '과학')];
+    const html = renderToStaticMarkup(createElement(Grid.TeacherScheduleGrid, {
+      lessons,
+      onSelectLesson: () => undefined,
+      resolutionPreview: {
+        changes: [{
+          lessonId: 'lesson-source',
+          original: { date: '2026-08-24', period: '2', subject: '수학', className: '2-1', room: '수학실' },
+          next: { date: '2026-08-24', period: '5', subject: '수학', className: '2-1', room: '수학실', teacher: '담당 교사' },
+        }],
+      },
+    }));
+
+    expect(html).toContain('data-resolution-from="true"');
+    expect(html).toContain('data-resolution-to="true"');
+  });
 });

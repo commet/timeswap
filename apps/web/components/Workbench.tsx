@@ -21,6 +21,7 @@ import { Changes } from './Changes';
 import { Sheet } from './Sheet';
 import { TeacherPick } from './TeacherPick';
 import { TeacherHome } from './TeacherHome';
+import { ResolutionMatrix } from './ResolutionMatrix';
 import {
   projectTeacherDiagnostic,
   type AbsenceComposerSubmission,
@@ -31,6 +32,14 @@ import { OpsInbox } from './OpsInbox';
 import { BRAND } from '../lib/brand';
 import type { WorkspaceState } from '../lib/domain';
 import { findDuplicateAbsenceCase, persistSubmittedAbsenceCase } from '../lib/case-service';
+import {
+  resolutionPreviewForHandoff,
+  resolutionProgressForCase,
+  resolutionRowsForLesson,
+  resolutionDetailForRow,
+  resolutionConstraintForLesson,
+  selectResolutionForCase,
+} from '../lib/resolution';
 import {
   parseLocation,
   pushLocation,
@@ -1341,6 +1350,30 @@ type TeacherRoleViewAdapterProps = Omit<RoleViewAdapterProps, 'location'> & {
 function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleViewAdapterProps) {
   const teacherId = location.teacher;
   const [handoff, setHandoff] = useState<CandidateHandoff | null>(null);
+  const [selectedResolutionId, setSelectedResolutionId] = useState<string | null>(null);
+  const [resolutionMessage, setResolutionMessage] = useState('');
+  const preview = useMemo(() => handoff
+    ? resolutionPreviewForHandoff(state, teacherId, handoff)
+    : null, [handoff, state, teacherId]);
+  const previewLessonId = handoff?.lessonIds[0] ?? null;
+  const rows = useMemo(() => preview && previewLessonId
+    ? resolutionRowsForLesson(preview.state, preview.caseId, previewLessonId)
+    : [], [preview, previewLessonId]);
+  const selectedRow = rows.find((row) => row.id === selectedResolutionId) ?? rows[0] ?? null;
+  const constraintMessage = useMemo(() => previewLessonId
+    ? resolutionConstraintForLesson(state, previewLessonId, rows)
+    : undefined, [previewLessonId, rows, state]);
+  const selectedPreview = useMemo(() => preview && selectedRow
+    ? selectResolutionForCase(preview.state, preview.caseId, selectedRow)
+    : null, [preview, selectedRow]);
+  const timetablePreview = useMemo(() => selectedRow
+    ? resolutionDetailForRow(state, selectedRow)
+    : undefined, [selectedRow, state]);
+
+  useEffect(() => {
+    setSelectedResolutionId(rows[0]?.id ?? null);
+    setResolutionMessage('');
+  }, [handoff, rows]);
 
   function submit(input: AbsenceComposerSubmission): { caseId?: string; error?: string } {
     const duplicate = findDuplicateAbsenceCase(state, {
@@ -1370,6 +1403,43 @@ function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleVi
     }
   }
 
+  function confirmResolution() {
+    if (!handoff || !preview || !selectedRow || !selectedPreview) return;
+    const selectedCase = selectedPreview.state.cases.find((item) => item.id === preview.caseId);
+    if (!selectedCase) return;
+    const part = caseIdPart();
+    const at = new Date().toISOString();
+    try {
+      const result = persistSubmittedAbsenceCase(state, {
+        id: `case:${part}`,
+        auditEventId: `audit:${part}:created`,
+        submissionAuditEventId: `audit:${part}:submitted`,
+        workspaceId: state.workspace.id,
+        requesterTeacherId: teacherId,
+        fromDate: handoff.fromDate,
+        toDate: handoff.toDate,
+        reason: handoff.reason,
+        ...(handoff.note ? { note: handoff.note } : {}),
+        lessonIds: selectedCase.lessonIds,
+        resolutionItems: selectedCase.resolutionItems,
+        at,
+      }, saveState);
+      if ('error' in result) {
+        setResolutionMessage(result.error);
+        return;
+      }
+      setHandoff(null);
+    } catch (error) {
+      setResolutionMessage(error instanceof Error ? error.message : '해결안을 저장하지 못했습니다.');
+    }
+  }
+
+  const validationMessage = selectedPreview
+    ? selectedPreview.validation.valid
+      ? '사건 전체 충돌 검사를 통과했습니다.'
+      : selectedPreview.validation.conflicts[0]?.message ?? '사건 전체 충돌 검사가 필요합니다.'
+    : resolutionMessage;
+
   return (
     <>
       <TeacherHome
@@ -1378,11 +1448,19 @@ function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleVi
         onSubmit={submit}
         onExportDiagnostic={() => downloadDiagnostic(state)}
         onCandidateHandoff={setHandoff}
+        resolutionPreview={timetablePreview}
       />
-      {handoff && (
-        <p className="candidate-handoff" data-candidate-handoff role="status">
-          {handoff.lessonIds.length}개 수업을 후보 비교로 전달했습니다. 후보 비교는 다음 단계에서 계속됩니다.
-        </p>
+      {handoff && preview && (
+        <ResolutionMatrix
+          state={selectedPreview?.state ?? preview.state}
+          rows={rows}
+          selectedId={selectedRow?.id ?? null}
+          onSelect={setSelectedResolutionId}
+          onConfirm={confirmResolution}
+          progress={resolutionProgressForCase(selectedPreview?.state ?? preview.state, preview.caseId)}
+          validationMessage={resolutionMessage || validationMessage}
+          atomicMessage={handoff.atomicWarnings[0] ?? constraintMessage}
+        />
       )}
     </>
   );

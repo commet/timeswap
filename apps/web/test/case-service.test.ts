@@ -226,6 +226,49 @@ describe('persistSubmittedAbsenceCase', () => {
     expect(result).toEqual({ caseId: 'case-saved' });
     expect(saves[0]?.cases).toEqual([expect.objectContaining({ id: 'case-saved', status: 'submitted' })]);
   });
+
+  it('persists the selected canonical resolution in the same save as the new submitted case', () => {
+    const persist = (CaseService as unknown as {
+      persistSubmittedAbsenceCase?: (
+        state: WorkspaceState,
+        input: {
+          id: string; auditEventId: string; submissionAuditEventId: string; workspaceId: string;
+          requesterTeacherId: string; fromDate: string; toDate: string; reason: '업무상 부재';
+          lessonIds: string[]; at: string;
+          resolutionItems: Array<{
+            id: string; lessonId: string; kind: 'cover'; computedAgainstRevisionId: string;
+            changes: Array<{ lessonId: string; toDate: string; toPeriod: string; teacher: { state: 'assigned'; teacherId: string } }>;
+          }>;
+        },
+        save: (next: WorkspaceState) => { ok: true } | { ok: false; reason: 'quota' | 'unavailable' },
+      ) => { caseId?: string; error?: string };
+    }).persistSubmittedAbsenceCase;
+    const saves: WorkspaceState[] = [];
+    const selected = {
+      id: 'resolution-cover', lessonId: 'lesson-1', kind: 'cover' as const,
+      computedAgainstRevisionId: 'revision-1',
+      changes: [{
+        lessonId: 'lesson-1', toDate: '2026-08-24', toPeriod: '1',
+        teacher: { state: 'assigned' as const, teacherId: 'teacher-cover' },
+      }],
+    };
+
+    expect(persist).toBeTypeOf('function');
+    if (typeof persist !== 'function') return;
+    const result = persist(initialState(), {
+      id: 'case-with-resolution', auditEventId: 'audit-created-resolution',
+      submissionAuditEventId: 'audit-submitted-resolution', workspaceId: 'workspace-1',
+      requesterTeacherId: 'teacher-1', fromDate: '2026-08-24', toDate: '2026-08-24',
+      reason: '업무상 부재', lessonIds: ['lesson-1'], at: '2026-08-18T01:00:00.000Z',
+      resolutionItems: [selected],
+    }, (next) => {
+      saves.push(next);
+      return { ok: true };
+    });
+
+    expect(result).toEqual({ caseId: 'case-with-resolution' });
+    expect(saves[0]?.cases[0]?.resolutionItems).toEqual([selected]);
+  });
 });
 
 describe('lessonsAffectedByAbsence', () => {

@@ -7,7 +7,7 @@ import {
   type AbsenceComposerSubmission,
   type CandidateHandoff,
 } from './AbsenceComposer';
-import { TeacherScheduleGrid } from './Grid';
+import { TeacherScheduleGrid, type TimetableResolutionPreview } from './Grid';
 import type { WorkspaceState } from '../lib/domain';
 import { projectTeacherSchedule, type TeacherScheduleLessonView } from '../lib/projections';
 
@@ -44,12 +44,14 @@ export function TeacherHome({
   onSubmit,
   onExportDiagnostic,
   onCandidateHandoff,
+  resolutionPreview,
 }: {
   state: WorkspaceState;
   teacherId: string;
   onSubmit(input: AbsenceComposerSubmission): { caseId?: string; error?: string };
   onExportDiagnostic(): void;
   onCandidateHandoff?(handoff: CandidateHandoff): void;
+  resolutionPreview?: TimetableResolutionPreview;
 }) {
   const [focus, setFocus] = useState<ScheduleFocus>('today');
   const [composerOpen, setComposerOpen] = useState(false);
@@ -131,7 +133,11 @@ export function TeacherHome({
           teacherId={teacherId}
           initialLessonId={initialLessonId}
           onSubmit={onSubmit}
-          onCandidateHandoff={onCandidateHandoff}
+          onCandidateHandoff={(handoff) => {
+            setInitialLessonId(undefined);
+            setComposerOpen(false);
+            onCandidateHandoff?.(handoff);
+          }}
           onExportDiagnostic={onExportDiagnostic}
           onDismiss={() => {
             setInitialLessonId(undefined);
@@ -141,7 +147,8 @@ export function TeacherHome({
       )}
 
       {focus === 'week' && (
-        <TeacherScheduleGrid lessons={schedule.lessons} onSelectLesson={openComposer} />
+        <TeacherScheduleGrid lessons={schedule.lessons} onSelectLesson={openComposer}
+          resolutionPreview={resolutionPreview} />
       )}
     </main>
   );
