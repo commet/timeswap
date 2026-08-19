@@ -22,13 +22,14 @@ import { Sheet } from './Sheet';
 import { TeacherPick } from './TeacherPick';
 import { TeacherHome } from './TeacherHome';
 import { ResolutionMatrix } from './ResolutionMatrix';
+import { OpsCommandCenter } from './OpsCommandCenter';
+import { CaseDetail } from './CaseDetail';
 import {
   projectTeacherDiagnostic,
   type AbsenceComposerSubmission,
   type CandidateHandoff,
 } from './AbsenceComposer';
 import { RequestStatusList } from './RequestStatusList';
-import { OpsInbox } from './OpsInbox';
 import { BRAND } from '../lib/brand';
 import type { WorkspaceState } from '../lib/domain';
 import { findDuplicateAbsenceCase, persistSubmittedAbsenceCase } from '../lib/case-service';
@@ -40,6 +41,10 @@ import {
   resolutionConstraintForLesson,
   selectResolutionForCase,
 } from '../lib/resolution';
+import {
+  canResetDemoWorkspace,
+  projectOpsCommandCenter,
+} from '../lib/ops-command-center';
 import {
   parseLocation,
   pushLocation,
@@ -86,6 +91,7 @@ import {
   type ThemeMode,
 } from '../lib/app';
 import { createNeisSession } from '../lib/neis-session';
+import { loadDemoScenario, type DemoScenarioId } from '../lib/demo';
 
 function workspaceToLoaded(state: WorkspaceState): Loaded {
   const periods = Math.max(7, ...state.lessons.map((lesson) => Number(lesson.period) || 1));
@@ -1157,18 +1163,10 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
           onPick={commitTeacher}
         />
       ) : workspaceMode === 'ops' ? (
-        <OpsInbox
-          requests={requests}
-          cfg={input.config}
-          onApprove={onApproveRequest}
-          onReject={onRejectRequest}
-          onChecklist={onRequestChecklist}
-          onPublish={onPublishRequest}
-          onCopyNeisList={onCopyRequestNeisList}
-          onCopyNotice={onCopyRequestNotice}
-          onPrint={onPrintRequest}
-          onSelectCandidate={onSelectRequestCandidate}
-        />
+        <main className="missing-workspace">
+          <h2>변경 관제판으로 이동합니다</h2>
+          <p>이전 요청함은 더 이상 운영 상태를 직접 수정하지 않습니다.</p>
+        </main>
       ) : (
         <main className={'teacher-work focus-' + scheduleFocus + (activeSlot !== null ? ' has-selection' : '')}>
           {(scheduleFocus === 'week' || view === 'klass') && (
@@ -1347,6 +1345,10 @@ type TeacherRoleViewAdapterProps = Omit<RoleViewAdapterProps, 'location'> & {
   location: Extract<AppLocation, { view: 'teacher' }>;
 };
 
+type OpsRoleViewAdapterProps = Omit<RoleViewAdapterProps, 'location'> & {
+  location: Extract<AppLocation, { view: 'ops' }>;
+};
+
 function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleViewAdapterProps) {
   const teacherId = location.teacher;
   const [handoff, setHandoff] = useState<CandidateHandoff | null>(null);
@@ -1476,9 +1478,76 @@ function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleVi
   );
 }
 
+function CanonicalOpsWorkbench({ state, location, saveState, navigate }: OpsRoleViewAdapterProps) {
+  const activeRevision = state.revisions.find((item) => item.id === state.workspace.activeRevisionId);
+  const today = activeRevision?.source === 'demo'
+    ? '2026-08-18'
+    : new Date().toISOString().slice(0, 10);
+  const dashboard = useMemo(() => projectOpsCommandCenter(state, today), [state, today]);
+  const selectedCaseId = dashboard.cases.some((item) => item.caseId === location.caseId)
+    ? location.caseId
+    : dashboard.cases[0]?.caseId;
+
+  const selectCase = (caseId: string) => navigate({
+    view: 'ops', school: state.workspace.id, caseId, step: 'case',
+  });
+  const backToList = () => navigate({ view: 'ops', school: state.workspace.id });
+  const openAdministrativeStep = () => selectedCaseId && navigate({
+    view: 'ops', school: state.workspace.id, caseId: selectedCaseId, step: 'admin',
+  });
+  const returnToCase = () => selectedCaseId && navigate({
+    view: 'ops', school: state.workspace.id, caseId: selectedCaseId, step: 'case',
+  });
+  const openScenario = (id: DemoScenarioId): SaveResult => {
+    if (!canResetDemoWorkspace(state)) return { ok: false, reason: 'unavailable' };
+    const next = loadDemoScenario(id);
+    const saved = saveState(next);
+    if (saved.ok) {
+      navigate({
+        view: 'ops', school: next.workspace.id,
+        ...(next.cases[0] ? { caseId: next.cases[0].id, step: 'case' as const } : {}),
+      });
+    }
+    return saved;
+  };
+
+  return (
+    <OpsCommandCenter
+      dashboard={dashboard.dashboard}
+      cases={dashboard.cases}
+      timeline={dashboard.timeline}
+      selectedCaseId={selectedCaseId}
+      onSelectCase={selectCase}
+      onOpenScenario={openScenario}
+      scenarioState={state}
+      onBackToList={backToList}
+      onReturnToCase={returnToCase}
+      step={location.step}
+      detail={selectedCaseId ? (
+        <CaseDetail
+          state={state}
+          caseId={selectedCaseId}
+          today={today}
+          onChange={saveState}
+          onBack={backToList}
+          onOpenAdministrativeStep={openAdministrativeStep}
+        />
+      ) : <section className="ops-case-detail empty"><h2>선택할 사건이 없습니다</h2><p>사건 목록에서 확인할 변경을 선택하십시오.</p></section>}
+    />
+  );
+}
+
 function RoleWorkbench(props: RoleViewAdapterProps) {
   if (props.location.view === 'teacher') return (
     <CanonicalTeacherWorkbench
+      state={props.state}
+      location={props.location}
+      saveState={props.saveState}
+      navigate={props.navigate}
+    />
+  );
+  if (props.location.view === 'ops') return (
+    <CanonicalOpsWorkbench
       state={props.state}
       location={props.location}
       saveState={props.saveState}

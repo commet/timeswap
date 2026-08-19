@@ -151,6 +151,8 @@ export interface AuditEvent {
     | 'case.superseded'
     | 'case.deleted'
     | 'case.correction_created'
+    | 'case.resolution_changed'
+    | 'case.recomputation_requested'
     | 'admin.tasks_created'
     | 'admin.task_completed'
     | 'migration.v1';

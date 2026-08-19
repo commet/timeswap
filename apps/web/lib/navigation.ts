@@ -2,7 +2,7 @@ export type AppLocation =
   | { view: 'landing' }
   | { view: 'setup'; schoolQuery?: string }
   | { view: 'teacher'; school: string; teacher: string }
-  | { view: 'ops'; school: string; caseId?: string }
+  | { view: 'ops'; school: string; caseId?: string; step?: 'case' | 'admin' }
   | { view: 'class'; school: string; grade: string; className: string };
 
 type PushHistoryLike = Pick<History, 'pushState'>;
@@ -31,7 +31,10 @@ export function formatLocation(location: AppLocation): string {
   }
   params.set('school', location.school);
   if (location.view === 'teacher') params.set('teacher', location.teacher);
-  if (location.view === 'ops' && location.caseId) params.set('case', location.caseId);
+  if (location.view === 'ops') {
+    if (location.caseId) params.set('case', location.caseId);
+    if (location.step) params.set('step', location.step);
+  }
   if (location.view === 'class') {
     params.set('grade', location.grade);
     params.set('class', location.className);
@@ -63,10 +66,14 @@ export function parseLocation(input: string | LocationLike): AppLocation {
     const teacher = required(params, 'teacher');
     return school && teacher ? { view, school, teacher } : { view: 'landing' };
   }
-  if (view === 'ops' && hasOnly(params, ['view', 'school', 'case'])) {
+  if (view === 'ops' && hasOnly(params, ['view', 'school', 'case', 'step'])) {
     const school = required(params, 'school');
     const caseId = params.has('case') ? required(params, 'case') : undefined;
-    return school && caseId !== null ? { view, school, ...(caseId ? { caseId } : {}) } : { view: 'landing' };
+    const step = params.has('step') ? required(params, 'step') : undefined;
+    if (!school || caseId === null || step === null) return { view: 'landing' };
+    if (step !== undefined && step !== 'case' && step !== 'admin') return { view: 'landing' };
+    if (step && !caseId) return { view: 'landing' };
+    return { view, school, ...(caseId ? { caseId } : {}), ...(step ? { step } : {}) };
   }
   if (view === 'class' && hasOnly(params, ['view', 'school', 'grade', 'class'])) {
     const school = required(params, 'school');

@@ -70,6 +70,10 @@ export interface CreateCorrectionCaseInput {
   auditEventId: string;
 }
 
+export interface ReplaceCaseResolutionInput extends CaseOperationContext {
+  resolution: ResolutionItem;
+}
+
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
@@ -318,6 +322,98 @@ export function transitionCase(
         },
       }] : []),
     ],
+  };
+}
+
+/**
+ * An operator can replace one selected lesson's resolution, but the browser
+ * never edits a case object directly.  Whole-case validation remains the
+ * approval gate because a multi-lesson case may intentionally stay partial.
+ */
+export function replaceCaseResolution(
+  state: WorkspaceState,
+  input: ReplaceCaseResolutionInput,
+): WorkspaceState {
+  validateContext(state, input);
+  const current = findCase(state, input.caseId);
+  if (current.status !== 'in_review') {
+    throw new Error('Resolution changes require an in-review case.');
+  }
+  if (!current.lessonIds.includes(input.resolution.lessonId)) {
+    throw new Error('The resolution must belong to an affected lesson.');
+  }
+  if (input.resolution.kind === 'unresolved') {
+    throw new Error('Use recomputation instead of selecting an unresolved item.');
+  }
+  if (input.resolution.computedAgainstRevisionId !== state.workspace.activeRevisionId) {
+    throw new Error('The resolution must be recomputed against the active revision.');
+  }
+
+  const resolution: ResolutionItem = {
+    ...input.resolution,
+    changes: input.resolution.changes.map((change) => ({
+      ...change,
+      teacher: { ...change.teacher },
+    })),
+  };
+  let replaced = false;
+  const resolutionItems = current.resolutionItems.map((item) => {
+    if (item.lessonId !== resolution.lessonId || replaced) return item;
+    replaced = true;
+    return resolution;
+  });
+  if (!replaced) resolutionItems.push(resolution);
+
+  return {
+    ...state,
+    cases: state.cases.map((item) => item.id === current.id ? {
+      ...item,
+      resolutionItems,
+      updatedAt: input.at,
+    } : item),
+    audit: [...state.audit, {
+      id: input.auditEventId,
+      workspaceId: current.workspaceId,
+      caseId: current.id,
+      actorId: input.actorId,
+      type: 'case.resolution_changed',
+      at: input.at,
+      details: {
+        resolutionId: resolution.id,
+        lessonId: resolution.lessonId,
+        kind: resolution.kind,
+      },
+    }],
+  };
+}
+
+/** Leaves the case in review and makes missing recomputation explicit in audit. */
+export function returnCaseForRecomputation(
+  state: WorkspaceState,
+  input: CaseOperationContext,
+): WorkspaceState {
+  validateContext(state, input);
+  const current = findCase(state, input.caseId);
+  if (current.status !== 'in_review') {
+    throw new Error('Only an in-review case can return for recomputation.');
+  }
+
+  return {
+    ...state,
+    cases: state.cases.map((item) => item.id === current.id ? {
+      ...item,
+      resolutionItems: [],
+      updatedAt: input.at,
+    } : item),
+    audit: [...state.audit, {
+      id: input.auditEventId,
+      workspaceId: current.workspaceId,
+      caseId: current.id,
+      actorId: input.actorId,
+      type: 'case.recomputation_requested',
+      at: input.at,
+      details: { previousResolutionCount: current.resolutionItems.length },
+    }],
   };
 }
 

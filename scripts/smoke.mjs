@@ -97,6 +97,89 @@ await page.getByRole('button', { name: '예시 학교 둘러보기' }).click();
 await page.waitForURL(/\?view=ops&school=/);
 await page.waitForTimeout(80);
 await shot(page, 'task-7-demo-ops');
+if (!(await page.locator('[data-ops-command-center]').count())) {
+  failures.push('일과 담당 예시가 canonical 변경 관제판을 열지 않음');
+}
+const expectedOpsMetrics = {
+  todayChanges: '0', unresolvedLessons: '0', pendingCases: '1',
+  neisTasks: '0', publicationTasks: '0', burdenAlerts: '0',
+};
+for (const [key, expected] of Object.entries(expectedOpsMetrics)) {
+  const actual = (await page.locator(`[data-ops-metric="${key}"] dd`).innerText().catch(() => '')).trim();
+  if (actual !== expected) failures.push(`관제판 ${key} 수치가 projectOpsDashboard와 다름: ${actual || '없음'}`);
+}
+if (!(await page.locator('[data-case-detail]').count())) failures.push('데스크톱 관제판에 선택 사건 상세 레일이 없음');
+if (!(await page.locator('.ops-period-timeline button').count())) failures.push('오늘 교시별 변경 타임라인이 없음');
+if (!(await page.locator('.ops-source-health').innerText().catch(() => '')).includes('완전 · demo')) failures.push('관제판에 시간표 자료 상태가 없음');
+if (!(await page.locator('.ops-period-timeline').innerText()).includes('1명 교사 · 1개 학급')) failures.push('교시 표식에 영향 교사·학급 수가 없음');
+if ((await page.locator('body').innerText()).includes('teacher:seo-jun')) failures.push('관제판에 내부 교사 ID가 노출됨');
+const initialNavigationCount = await page.evaluate(() => performance.getEntriesByType('navigation').length);
+await page.locator('.ops-period-timeline button').first().click();
+await page.waitForURL(/\?view=ops&school=.*&case=.*&step=case/);
+if ((await page.evaluate(() => performance.getEntriesByType('navigation').length)) !== initialNavigationCount) {
+  failures.push('타임라인 사건 선택이 전체 페이지를 다시 불러옴');
+}
+const simpleBaseline = await page.evaluate(() => JSON.parse(localStorage.getItem('joyul:v2:workspace:simple-swap:workspace')));
+
+await page.getByRole('button', { name: '현실 사례 바꾸기' }).click();
+const operationalScenarioIds = await page.locator('[data-demo-scenario]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-demo-scenario')));
+const expectedScenarioIds = ['full-day-absence', 'elective-block', 'practice-block', 'closure-conflict', 'incomplete-api', 'concurrent-request', 'published-correction'];
+if (operationalScenarioIds.join('|') !== expectedScenarioIds.join('|')) {
+  failures.push(`현실 사례 선택기가 2~8만 제공하지 않음: ${operationalScenarioIds.join('|')}`);
+}
+await page.locator('[data-demo-scenario="full-day-absence"]').click();
+await page.getByRole('button', { name: '초기화 확인' }).click();
+await page.waitForURL(/school=full-day-absence%3Aworkspace/);
+if ((await page.locator('body').innerText()).includes('직업계고 동명 반')) failures.push('자료 진단 사례가 운영 선택기에 섞임');
+await page.goto(`${BASE}/?view=ops&school=simple-swap%3Aworkspace&case=simple-swap%3Acase%3Arequest`, { waitUntil: 'networkidle' });
+
+await page.getByRole('button', { name: '대안 적용' }).click();
+let actionStored = await page.evaluate(() => JSON.parse(localStorage.getItem('joyul:v2:workspace:simple-swap:workspace')));
+if (!actionStored.audit.some((event) => event.type === 'case.resolution_changed')) {
+  failures.push('대안 적용이 감사 기록을 남기지 않음');
+}
+await page.getByRole('button', { name: '재계산으로 돌려보내기' }).click();
+actionStored = await page.evaluate(() => JSON.parse(localStorage.getItem('joyul:v2:workspace:simple-swap:workspace')));
+if (!actionStored.audit.some((event) => event.type === 'case.recomputation_requested') || actionStored.cases[0].resolutionItems.length !== 0) {
+  failures.push('재계산 요청이 해결안을 지우고 감사 기록을 남기지 않음');
+}
+await page.getByPlaceholder('다시 조정해야 하는 이유').fill('수업 충돌을 다시 확인해야 합니다');
+await page.getByRole('button', { name: '사유와 함께 반려' }).click();
+actionStored = await page.evaluate(() => JSON.parse(localStorage.getItem('joyul:v2:workspace:simple-swap:workspace')));
+if (actionStored.cases[0].status !== 'rejected' || !actionStored.audit.some((event) => event.type === 'case.status_changed')) {
+  failures.push('반려가 canonical 상태와 감사 기록을 함께 바꾸지 않음');
+}
+
+await page.evaluate((baseline) => localStorage.setItem('joyul:v2:workspace:simple-swap:workspace', JSON.stringify(baseline)), simpleBaseline);
+await page.reload({ waitUntil: 'networkidle' });
+const saveFailureAuditCount = await page.evaluate(() => JSON.parse(localStorage.getItem('joyul:v2:workspace:simple-swap:workspace')).audit.length);
+await page.evaluate(() => {
+  const original = Storage.prototype.setItem;
+  Storage.prototype.setItem = function(key, value) {
+    if (String(key).startsWith('joyul:v2:workspace:')) throw new DOMException('full', 'QuotaExceededError');
+    return original.call(this, key, value);
+  };
+});
+await page.getByRole('button', { name: '대안 적용' }).click();
+const saveFailureText = await page.locator('.ops-action-message').innerText().catch(() => '');
+const saveFailureState = await page.evaluate(() => JSON.parse(localStorage.getItem('joyul:v2:workspace:simple-swap:workspace')));
+if (!saveFailureText.includes('변경하지 않았습니다') || saveFailureState.audit.length !== saveFailureAuditCount) {
+  failures.push('저장 실패 뒤 관제판이 성공을 알리거나 상태를 앞당김');
+}
+
+await page.reload({ waitUntil: 'networkidle' });
+await page.getByRole('button', { name: '해결안 승인' }).click();
+actionStored = await page.evaluate(() => JSON.parse(localStorage.getItem('joyul:v2:workspace:simple-swap:workspace')));
+if (actionStored.cases[0].status !== 'resolution_approved') failures.push('유효한 사건을 승인하지 못함');
+await page.evaluate((baseline) => {
+  const state = { ...baseline, revisions: [{ ...baseline.revisions[0], source: 'neis' }] };
+  localStorage.setItem('joyul:v2:workspace:simple-swap:workspace', JSON.stringify(state));
+}, simpleBaseline);
+await page.reload({ waitUntil: 'networkidle' });
+if (!(await page.locator('.demo-scenario-picker.locked').count())) failures.push('실제 또는 나이스 작업공간의 예시 초기화를 막지 않음');
+await page.evaluate((baseline) => localStorage.setItem('joyul:v2:workspace:simple-swap:workspace', JSON.stringify(baseline)), simpleBaseline);
+await page.goto(`${BASE}/?view=ops&school=simple-swap%3Aworkspace&case=simple-swap%3Acase%3Arequest`, { waitUntil: 'networkidle' });
+await page.waitForTimeout(50);
 if (!(await page.getByRole('navigation', { name: '체험 역할' }).count())) failures.push('체험 역할 내비게이션이 없음');
 for (const role of ['교사', '일과 담당', '학급 공개']) {
   if (!(await page.getByRole('button', { name: role, exact: true }).count())) failures.push(`체험 역할 ${role} 보기가 없음`);
@@ -114,10 +197,6 @@ if (!stored.some((state) => state.schemaVersion === 2 && state.workspace?.name =
   failures.push('예시 학교가 schema-v2 WorkspaceRepository 경계에 저장되지 않음');
 }
 if (stored.some((state) => JSON.stringify(state).includes('secret-key'))) failures.push('저장 상태에 인증키가 섞임');
-
-await page.goBack({ waitUntil: 'networkidle' });
-await page.waitForTimeout(50);
-if ((await activeText(page)).id !== 'landing-title') failures.push('역할 화면에서 뒤로 간 뒤 학교 진입 제목으로 초점이 이동하지 않음');
 
 await page.goto(`${BASE}/?view=teacher&school=simple-swap%3Aworkspace&teacher=teacher%3Aseo-jun`, { waitUntil: 'networkidle' });
 await shot(page, 'task-8-teacher-desktop');
@@ -336,6 +415,59 @@ if (narrowMetrics.document > narrowMetrics.viewport + 1) failures.push('320px �
 await mobile.setViewportSize({ width: 390, height: 844 });
 await mobile.getByRole('button', { name: '예시 학교 둘러보기' }).click();
 await mobile.waitForURL(/\?view=ops&school=/);
+const mobileOpsFirst = await mobile.evaluate(() => ({
+  viewport: document.documentElement.clientWidth,
+  document: document.documentElement.scrollWidth,
+  step: document.querySelector('[data-ops-command-center]')?.getAttribute('data-ops-step'),
+  listVisible: Boolean(document.querySelector('.ops-priority-region')),
+  detailVisible: Boolean(document.querySelector('.ops-case-region')),
+}));
+if (mobileOpsFirst.document > mobileOpsFirst.viewport + 1) failures.push('390px 관제판 사건 목록이 가로로 밀림');
+if (mobileOpsFirst.step !== 'list' || !mobileOpsFirst.listVisible) failures.push('390px 관제판이 URL 사건 목록 단계로 시작하지 않음');
+await shot(mobile, 'task-10-ops-mobile-list');
+await mobile.locator('.ops-priority-region button').first().click();
+await mobile.waitForURL(/&step=case/);
+if (!(await mobile.locator('.ops-case-detail').count()) || !(await mobile.getByRole('button', { name: '← 사건 목록으로' }).count())) {
+  failures.push('390px 사건 상세 단계에 보이는 뒤로 가기 행동이 없음');
+}
+const mobileCaseMetrics = await mobile.evaluate(() => ({
+  viewport: document.documentElement.clientWidth,
+  document: document.documentElement.scrollWidth,
+  smallControls: [...document.querySelectorAll('.ops-case-detail button, .ops-case-detail select')]
+    .map((element) => element.getBoundingClientRect())
+    .filter((box) => box.width > 0 && box.height > 0 && box.height < 44).length,
+}));
+if (mobileCaseMetrics.document > mobileCaseMetrics.viewport + 1) failures.push('390px 관제판 사건 상세가 가로로 밀림');
+if (mobileCaseMetrics.smallControls) failures.push(`390px 관제판 사건 상세에 44px 미만 조작 요소 ${mobileCaseMetrics.smallControls}개`);
+await mobile.getByRole('button', { name: '← 사건 목록으로' }).first().click();
+await mobile.waitForURL(/\?view=ops&school=[^&]+$/);
+await mobile.evaluate(() => {
+  const key = 'joyul:v2:workspace:simple-swap:workspace';
+  const state = JSON.parse(localStorage.getItem(key));
+  state.cases[0].status = 'resolution_approved';
+  localStorage.setItem(key, JSON.stringify(state));
+});
+await mobile.goto(`${BASE}/?view=ops&school=simple-swap%3Aworkspace&case=simple-swap%3Acase%3Arequest&step=case`, { waitUntil: 'networkidle' });
+await mobile.getByRole('button', { name: '행정 마감 현황' }).click();
+await mobile.waitForURL(/&step=admin/);
+if (!(await mobile.locator('#ops-admin-title').count())) failures.push('390px 행정 마감 단계가 URL로 열리지 않음');
+await mobile.setViewportSize({ width: 320, height: 740 });
+await mobile.waitForTimeout(80);
+await shot(mobile, 'task-10-ops-mobile-admin');
+const narrowOps = await mobile.evaluate(() => ({
+  viewport: document.documentElement.clientWidth,
+  document: document.documentElement.scrollWidth,
+  backHeight: document.querySelector('.ops-administration-step .ops-mobile-back')?.getBoundingClientRect().height ?? 0,
+}));
+if (narrowOps.document > narrowOps.viewport + 1) failures.push('320px 관제판 행정 단계가 가로로 밀림');
+if (narrowOps.backHeight < 44) failures.push('320px 관제판 뒤로 가기 행동이 44px 미만');
+await mobile.setViewportSize({ width: 390, height: 844 });
+await mobile.evaluate(() => {
+  const key = 'joyul:v2:workspace:simple-swap:workspace';
+  const state = JSON.parse(localStorage.getItem(key));
+  state.cases[0].status = 'in_review';
+  localStorage.setItem(key, JSON.stringify(state));
+});
 await mobile.goto(`${BASE}/?view=teacher&school=simple-swap%3Aworkspace&teacher=teacher%3Aseo-jun`, { waitUntil: 'networkidle' });
 await shot(mobile, 'task-8-teacher-mobile');
 const teacherFirstViewport = await mobile.evaluate(() => {

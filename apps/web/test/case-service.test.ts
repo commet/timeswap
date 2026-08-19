@@ -9,6 +9,8 @@ import {
   deleteCase,
   findDuplicateAbsenceCase,
   lessonsAffectedByAbsence,
+  replaceCaseResolution,
+  returnCaseForRecomputation,
   transitionCase,
 } from '../lib/case-service';
 import type { ClassIdentity } from '@timeswap/engine';
@@ -477,6 +479,53 @@ describe('transitionCase', () => {
       nextStatus: 'rejected',
     });
     expect(JSON.stringify(after.audit)).not.toContain(rejectionNote);
+  });
+});
+
+describe('operator resolution interventions', () => {
+  const cover = {
+    id: 'resolution-cover',
+    lessonId: 'lesson-1',
+    kind: 'cover' as const,
+    computedAgainstRevisionId: 'revision-1',
+    changes: [{
+      lessonId: 'lesson-1', toDate: '2026-08-24', toPeriod: '1',
+      teacher: { state: 'assigned' as const, teacherId: 'teacher-cover' },
+    }],
+  };
+
+  it('records a replacement resolution as a canonical audited operator action', () => {
+    const before = caseAtStatus('in_review');
+
+    const after = replaceCaseResolution(before, {
+      caseId: 'case-1', resolution: cover, actorId: 'operator-1',
+      at: '2026-08-18T02:00:00.000Z', auditEventId: 'audit-resolution-replaced',
+    });
+
+    expect(after.cases[0]?.resolutionItems).toEqual([cover]);
+    expect(after.audit.at(-1)).toMatchObject({
+      type: 'case.resolution_changed', caseId: 'case-1', actorId: 'operator-1',
+      details: { resolutionId: 'resolution-cover', lessonId: 'lesson-1' },
+    });
+    expect(before.cases[0]?.resolutionItems).toEqual([]);
+  });
+
+  it('returns an in-review case to recomputation without deleting its audit history', () => {
+    const selected = replaceCaseResolution(caseAtStatus('in_review'), {
+      caseId: 'case-1', resolution: cover, actorId: 'operator-1',
+      at: '2026-08-18T02:00:00.000Z', auditEventId: 'audit-resolution-replaced',
+    });
+
+    const after = returnCaseForRecomputation(selected, {
+      caseId: 'case-1', actorId: 'operator-1',
+      at: '2026-08-18T02:01:00.000Z', auditEventId: 'audit-recompute',
+    });
+
+    expect(after.cases[0]).toMatchObject({ status: 'in_review', resolutionItems: [] });
+    expect(after.audit.map((event) => event.type)).toEqual([
+      'case.created', 'case.resolution_changed', 'case.recomputation_requested',
+    ]);
+    expect(selected.audit).toHaveLength(2);
   });
 });
 
