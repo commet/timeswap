@@ -5,10 +5,12 @@ import { createDemoWorkspace } from '../lib/demo';
 import {
   canOpenInvitations,
   canEnterSetupStage,
+  completeSetupReview,
   createInvitationLinks,
   createWorkspaceFromNeis,
   type NeisLoadBundle,
 } from '../components/SetupFlow';
+import { createNeisSession } from '../lib/neis-session';
 
 const rows: NeisRow[] = [{
   SCHUL_NM: '보기고등학교',
@@ -61,7 +63,10 @@ describe('school setup boundary', () => {
     expect(state.lessons).toEqual([
       expect.objectContaining({
         date: '2026-08-10', period: '3', subject: '기계일반',
-        teacher: { state: 'assigned', teacherId: 'teacher:seo-jun' },
+        teacher: {
+          state: 'assigned',
+          teacherId: expect.stringMatching(/^member:[0-9a-f]{16}$/),
+        },
       }),
     ]);
   });
@@ -85,6 +90,38 @@ describe('school setup boundary', () => {
       hasSchool: true, hasSessionKey: true, hasBundle: true,
       sourceComplete: true, invitationsReady: false,
     })).toBe(false);
+  });
+
+  it('clears the session key as review completes before invitations are available', () => {
+    const session = createNeisSession();
+    session.setKey('secret-key');
+
+    const state = completeSetupReview(bundle, { '2-1|기계일반': '김서준' }, session);
+
+    expect(session.getKey()).toBe('');
+    expect(state.workspace.name).toBe('보기고등학교');
+  });
+
+  it('uses a deterministic opaque member id in teacher invitation URLs', () => {
+    const teacherName = '김서준';
+    const first = createWorkspaceFromNeis(bundle, { '2-1|기계일반': teacherName });
+    const second = createWorkspaceFromNeis(bundle, { '2-1|기계일반': teacherName });
+    const firstTeacher = first.lessons[0]!.teacher;
+    const secondTeacher = second.lessons[0]!.teacher;
+    if (firstTeacher.state !== 'assigned' || secondTeacher.state !== 'assigned') throw new Error('teacher must be assigned');
+
+    expect(firstTeacher.teacherId).toMatch(/^member:[0-9a-f]{16}$/);
+    expect(firstTeacher.teacherId).toBe(secondTeacher.teacherId);
+    expect(firstTeacher.teacherId).not.toContain(teacherName);
+
+    const link = createInvitationLinks(
+      first,
+      'https://joyul.example',
+      { [firstTeacher.teacherId]: teacherName },
+    ).teachers[0]!;
+    expect(new URL(link.href).searchParams.get('teacher')).toBe(firstTeacher.teacherId);
+    expect(new URL(link.href).searchParams.get('teacher')).not.toContain(teacherName);
+    expect(link.label).toBe(teacherName);
   });
 
   it('generates allowlisted static teacher and class identities only', () => {

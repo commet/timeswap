@@ -43,6 +43,29 @@ if (!(await activeText(page)).text.includes('일과 담당자로 시작')) failu
 await page.keyboard.press('Tab');
 if (!(await activeText(page)).text.includes('예시 학교 둘러보기')) failures.push('예시 학교 행동을 키보드 순서로 이동하지 못함');
 
+await page.route('**/hub/schoolInfo**', async (route) => {
+  await route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ schoolInfo: [
+      { head: [{ list_total_count: 1 }, { RESULT: { CODE: 'INFO-000', MESSAGE: '정상 처리되었습니다.' } }] },
+      { row: [{
+        ATPT_OFCDC_SC_CODE: 'J10', ATPT_OFCDC_SC_NM: '경기도교육청',
+        SD_SCHUL_CODE: '7531057', SCHUL_NM: '수지고등학교', SCHUL_KND_SC_NM: '고등학교',
+      }] },
+    ] }),
+  });
+});
+await page.getByLabel('학교 이름 또는 받은 링크').fill('수지고등학교');
+await page.getByRole('button', { name: '우리 학교 시간표 열기' }).click();
+await page.waitForURL(/\?view=setup&q=/);
+const initialSchoolSearch = page.getByRole('textbox', { name: '학교 이름' });
+if ((await initialSchoolSearch.inputValue()) !== '수지고등학교') failures.push('랜딩 학교명이 설정 검색 입력에 이어지지 않음');
+const initialSchoolHit = page.getByRole('button', { name: /수지고등학교/ });
+await initialSchoolHit.waitFor({ state: 'visible', timeout: 5_000 }).catch(() => undefined);
+if (!(await initialSchoolHit.count())) failures.push('랜딩 학교명으로 학교 검색이 자동 시작되지 않음');
+await page.goBack({ waitUntil: 'networkidle' });
+await page.waitForTimeout(50);
+
 await page.getByRole('button', { name: '일과 담당자로 시작' }).click();
 await page.waitForURL(/\?view=setup$/);
 await page.waitForTimeout(50);

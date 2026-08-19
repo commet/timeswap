@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { fromNeis } from '@timeswap/engine';
 
 import type { NeisLoadBundle } from './SetupFlow';
@@ -15,6 +15,7 @@ import {
 
 interface Props {
   mode: 'school' | 'key' | 'load';
+  initialSchoolQuery?: string;
   neisKey: string;
   school: NeisSchool | null;
   onKeyChange(key: string): void;
@@ -25,6 +26,7 @@ interface Props {
 
 export function NeisLoader({
   mode,
+  initialSchoolQuery = '',
   neisKey,
   school,
   onKeyChange,
@@ -32,7 +34,7 @@ export function NeisLoader({
   onLoaded,
   onContinue,
 }: Props) {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => initialSchoolQuery.trim());
   const [hits, setHits] = useState<NeisSchool[]>([]);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -50,6 +52,13 @@ export function NeisLoader({
       setBusy('');
     }
   }, [neisKey, query]);
+
+  const startedInitialSearch = useRef(false);
+  useEffect(() => {
+    if (mode !== 'school' || !initialSchoolQuery.trim() || startedInitialSearch.current) return;
+    startedInitialSearch.current = true;
+    void search();
+  }, [initialSchoolQuery, mode, search]);
 
   const load = useCallback(async () => {
     if (!school || !neisKey) return;

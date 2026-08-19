@@ -1,6 +1,6 @@
 export type AppLocation =
   | { view: 'landing' }
-  | { view: 'setup' }
+  | { view: 'setup'; schoolQuery?: string }
   | { view: 'teacher'; school: string; teacher: string }
   | { view: 'ops'; school: string; caseId?: string }
   | { view: 'class'; school: string; grade: string; className: string };
@@ -25,7 +25,10 @@ function hasOnly(params: URLSearchParams, keys: readonly string[]): boolean {
 export function formatLocation(location: AppLocation): string {
   if (location.view === 'landing') return '/';
   const params = new URLSearchParams({ view: location.view });
-  if (location.view === 'setup') return `/?${params}`;
+  if (location.view === 'setup') {
+    if (location.schoolQuery?.trim()) params.set('q', location.schoolQuery.trim());
+    return `/?${params}`;
+  }
   params.set('school', location.school);
   if (location.view === 'teacher') params.set('teacher', location.teacher);
   if (location.view === 'ops' && location.caseId) params.set('case', location.caseId);
@@ -49,7 +52,12 @@ export function parseLocation(input: string | LocationLike): AppLocation {
   const search = parsed.search;
   const params = new URLSearchParams(search);
   const view = required(params, 'view');
-  if (view === 'setup' && hasOnly(params, ['view'])) return { view };
+  if (view === 'setup' && hasOnly(params, ['view', 'q'])) {
+    const schoolQuery = params.has('q') ? required(params, 'q') : undefined;
+    return schoolQuery !== null
+      ? { view, ...(schoolQuery ? { schoolQuery: schoolQuery.trim() } : {}) }
+      : { view: 'landing' };
+  }
   if (view === 'teacher' && hasOnly(params, ['view', 'school', 'teacher'])) {
     const school = required(params, 'school');
     const teacher = required(params, 'teacher');

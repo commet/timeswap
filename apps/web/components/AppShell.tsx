@@ -53,7 +53,7 @@ export function AppShell({ state, location, saveState, navigate }: AppShellProps
             : { view: 'ops', school: state.workspace.id });
           return;
         }
-        navigate({ view: 'setup' });
+        navigate({ view: 'setup', ...(trimmed ? { schoolQuery: trimmed } : {}) });
       }}
       onSetup={() => navigate({ view: 'setup' })}
       onDemo={() => {
@@ -67,7 +67,13 @@ export function AppShell({ state, location, saveState, navigate }: AppShellProps
     />
   );
 
-  if (location.view === 'setup') return <SetupFlow saveState={saveState} navigate={navigate} />;
+  if (location.view === 'setup') return (
+    <SetupFlow
+      initialSchoolQuery={location.schoolQuery ?? ''}
+      saveState={saveState}
+      navigate={navigate}
+    />
+  );
 
   if (!state || state.workspace.id !== location.school) return (
     <main className="missing-workspace" aria-labelledby="role-page-title">

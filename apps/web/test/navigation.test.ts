@@ -54,6 +54,13 @@ describe('query navigation', () => {
     expect(parseLocation('/?view=ops&school=joyul-demo&case=case-1')).toEqual({ view: 'ops', school: 'joyul-demo', caseId: 'case-1' });
   });
 
+  it('round-trips a landing school name into the initial setup search', () => {
+    const location: AppLocation = { view: 'setup', schoolQuery: '수지고등학교' };
+
+    expect(formatLocation(location)).toBe('/?view=setup&q=%EC%88%98%EC%A7%80%EA%B3%A0%EB%93%B1%ED%95%99%EA%B5%90');
+    expect(parseLocation(formatLocation(location))).toEqual(location);
+  });
+
   it('returns landing for incomplete, unknown, or sensitive locations', () => {
     expect(parseLocation('/?view=teacher&school=joyul-demo')).toEqual({ view: 'landing' });
     expect(parseLocation('/?view=class&school=joyul-demo&grade=2')).toEqual({ view: 'landing' });

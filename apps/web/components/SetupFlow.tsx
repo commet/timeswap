@@ -70,6 +70,16 @@ const isoDate = (value: string): string =>
 const classLabel = (grade: string, className: string): string => `${grade}-${className}`;
 const pairKey = (classKey: string, subject: string): string => JSON.stringify([classKey, subject]);
 
+function memberIdFor(workspaceId: string, teacherReference: string): string {
+  let hash = 0xcbf29ce484222325n;
+  const source = `${workspaceId}\u0000${normalizeName(teacherReference)}`;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= BigInt(source.charCodeAt(index));
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+  }
+  return `member:${hash.toString(16).padStart(16, '0')}`;
+}
+
 export function createWorkspaceFromNeis(
   bundle: NeisLoadBundle,
   teacherMap: TeacherMap,
@@ -82,8 +92,11 @@ export function createWorkspaceFromNeis(
     group.rowIds.map((rowId) => [rowId, `${revisionId}:parallel:${index + 1}`] as const)));
   const lessons = normalization.accepted.map((row) => {
     const label = classLabel(row.classIdentity.grade, row.classIdentity.className);
-    const teacherId = teacherMap[mapKey(row.classKey, row.subject)]
+    const teacherReference = teacherMap[mapKey(row.classKey, row.subject)]
       ?? teacherMap[mapKey(label, row.subject)];
+    const teacherId = teacherReference
+      ? memberIdFor(workspaceId, teacherReference)
+      : null;
     return {
       id: `${revisionId}:lesson:${row.id}`,
       workspaceId,
@@ -144,6 +157,16 @@ export function createWorkspaceFromNeis(
   };
 }
 
+export function completeSetupReview(
+  bundle: NeisLoadBundle,
+  teacherMap: TeacherMap,
+  credential: Pick<NeisSessionValue, 'clear'>,
+): WorkspaceState {
+  const next = createWorkspaceFromNeis(bundle, teacherMap);
+  credential.clear();
+  return next;
+}
+
 export function canOpenInvitations(input: {
   sourceComplete: boolean;
   unresolvedTeacherCount: number;
@@ -159,13 +182,14 @@ export interface InvitationLink { id: string; label: string; href: string; }
 export function createInvitationLinks(
   state: WorkspaceState,
   origin: string,
+  teacherLabels: Readonly<Record<string, string>> = {},
 ): { teachers: InvitationLink[]; classes: InvitationLink[] } {
   const teachers = [...new Set(state.lessons.flatMap((lesson) =>
     lesson.teacher.state === 'assigned' ? [lesson.teacher.teacherId] : []))]
     .sort((left, right) => left.localeCompare(right, 'ko'))
     .map((teacherId) => ({
       id: teacherId,
-      label: teacherId,
+      label: teacherLabels[teacherId] ?? teacherId,
       href: new URL(formatLocation({
         view: 'teacher', school: state.workspace.id, teacher: teacherId,
       }), origin).toString(),
@@ -233,7 +257,8 @@ function firstAssignedTeacher(state: WorkspaceState): string | null {
   return null;
 }
 
-export function SetupFlow({ saveState, navigate }: {
+export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
+  initialSchoolQuery?: string;
   saveState(next: WorkspaceState): void;
   navigate(next: AppLocation): void;
 }) {
@@ -259,8 +284,13 @@ export function SetupFlow({ saveState, navigate }: {
     duplicateNameCount: duplicateNames.length,
   });
   const invitationLinks = useMemo(() => completedState && typeof window !== 'undefined'
-    ? createInvitationLinks(completedState, window.location.origin)
-    : null, [completedState]);
+    ? createInvitationLinks(
+      completedState,
+      window.location.origin,
+      Object.fromEntries(Object.values(teacherMap)
+        .map((name) => [memberIdFor(completedState.workspace.id, name), name])),
+    )
+    : null, [completedState, teacherMap]);
 
   const leave = useCallback(() => {
     session.clear();
@@ -296,11 +326,11 @@ export function SetupFlow({ saveState, navigate }: {
 
   const completeReview = useCallback(() => {
     if (!bundle || !invitationsReady) return;
-    const next = createWorkspaceFromNeis(bundle, teacherMap);
+    const next = completeSetupReview(bundle, teacherMap, session);
     saveState(next);
     setCompletedState(next);
     setStage('초대 링크');
-  }, [bundle, invitationsReady, saveState, teacherMap]);
+  }, [bundle, invitationsReady, saveState, session, teacherMap]);
 
   const stageEnabled = (candidate: SetupStage): boolean => {
     return canEnterSetupStage(candidate, {
@@ -339,6 +369,7 @@ export function SetupFlow({ saveState, navigate }: {
       <section className="setup-body">
         {stage === '학교 검색' && (
           <NeisLoader mode="school" neisKey={session.key} school={school}
+            initialSchoolQuery={initialSchoolQuery}
             onKeyChange={session.setKey}
             onSchoolChange={(next) => { setSchool(next); setStage('세션 인증키'); }}
             onLoaded={() => undefined} />
