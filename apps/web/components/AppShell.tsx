@@ -9,11 +9,12 @@ import { BRAND } from '../lib/brand';
 import { createDemoWorkspace, DEMO_PROVENANCE_LABEL } from '../lib/demo';
 import type { WorkspaceState } from '../lib/domain';
 import { parseLocation, type AppLocation } from '../lib/navigation';
+import type { SaveResult } from '../lib/repository';
 
 export type AppShellProps = {
   state: WorkspaceState | null;
   location: AppLocation;
-  saveState(next: WorkspaceState): void;
+  saveState(next: WorkspaceState): SaveResult;
   navigate(next: AppLocation): void;
 };
 

@@ -14,6 +14,9 @@ export interface TeacherLessonValue {
   date: string;
   period: string;
   teacherId: string | null;
+  subject: string;
+  room: string;
+  classIdentity: ClassIdentity;
   caseId?: string;
   publicationId?: string;
   publishedAt?: string;
@@ -191,6 +194,13 @@ function changeTeacherId(change: ResolutionChange): string | null {
   return change.teacher.state === 'assigned' ? change.teacher.teacherId : null;
 }
 
+function comparePeriod(left: string, right: string): number {
+  const leftPeriod = Number(left);
+  const rightPeriod = Number(right);
+  if (Number.isFinite(leftPeriod) && Number.isFinite(rightPeriod)) return leftPeriod - rightPeriod;
+  return left.localeCompare(right);
+}
+
 export function projectTeacherSchedule(
   state: WorkspaceState,
   requestedTeacherId: string,
@@ -206,17 +216,26 @@ export function projectTeacherSchedule(
         date: lesson.date,
         period: lesson.period,
         teacherId: teacherId(lesson),
+        subject: lesson.subject,
+        room: lesson.room,
+        classIdentity: { ...lesson.classIdentity },
       };
       const pendingValue: TeacherLessonValue | undefined = pendingChange ? {
         date: pendingChange.change.toDate,
         period: pendingChange.change.toPeriod,
         teacherId: changeTeacherId(pendingChange.change),
+        subject: lesson.subject,
+        room: lesson.room,
+        classIdentity: { ...lesson.classIdentity },
         caseId: pendingChange.absenceCase.id,
       } : undefined;
       const publishedValue: TeacherLessonValue | undefined = publishedChange ? {
         date: publishedChange.change.toDate,
         period: publishedChange.change.toPeriod,
         teacherId: changeTeacherId(publishedChange.change),
+        subject: lesson.subject,
+        room: lesson.room,
+        classIdentity: { ...lesson.classIdentity },
         publicationId: publishedChange.publication.id,
         publishedAt: publishedChange.publication.publishedAt,
       } : undefined;
@@ -238,7 +257,7 @@ export function projectTeacherSchedule(
       const leftValue = left.pending ?? left.published ?? left.base;
       const rightValue = right.pending ?? right.published ?? right.base;
       return leftValue.date.localeCompare(rightValue.date)
-        || leftValue.period.localeCompare(rightValue.period)
+        || comparePeriod(leftValue.period, rightValue.period)
         || left.lessonId.localeCompare(right.lessonId);
     });
 

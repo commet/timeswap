@@ -40,3 +40,33 @@
 
 - The canonical schedule model does not carry bell-time boundaries, so the today rail labels the first and second projected lessons as the immediate `지금`/`다음` flow rather than calculating a wall-clock period.
 - Existing pre-Task-8 repositories can lack `teacherLabels`; they stay readable, render a neutral label, and correctly keep candidate handoff disabled until mapping is completed.
+
+## Review fix round 1/5 — teacher journey gaps
+
+### RED / GREEN
+
+- RED: `absence-composer.test.ts` showed that a revision marked complete incorrectly enabled source readiness for a `7/6` row mismatch; `shell.test.ts` showed setup did not retain received and expected NEIS counts. GREEN: setup now writes `receivedRows` from the actual loaded bundle rows and `expectedRows` from NEIS `result.total`; readiness requires `revision.complete` and strict equality, with no active-lesson fallback. Tests also assert displayed `5/6` and `7/6` copy.
+- RED: `teacher-diagnostics.test.ts` failed because no redacted diagnostic projection existed. GREEN: diagnostic download now contains only source/mapping counts, source/loaded-at/completion revision metadata, and non-identifying issue summaries. The test places lessons, labels, case notes, tasks, publications, audit actors, and checksums in input and verifies none are serialized.
+- RED: submission persistence tests failed because the canonical save boundary could report a case id before storage saved. GREEN: `SaveResult` is returned by the controlled save callback; case submission only reports its id after repository success. Quota and security/unavailable failures keep the prior canonical state, show a recovery/export message, and have focused tests.
+- RED: projection sorting placed period `10` before `2`, the teacher date helper was missing, and the week-slot helper was absent. GREEN: period ordering is numeric; an absent browser date is labelled `불러온 날짜`, not `오늘`; the grid preserves and renders every lesson in a shared date/period cell.
+- RED: teacher projection values lacked original/new subject, class, room fields, and render checks could not find changed values. GREEN: base/pending/published values carry the real lesson fields and today/week surfaces render the changed details alongside a smaller original value.
+
+### Commands and observed output
+
+- Focused RED runs: `npm run test -w web -- absence-composer.test.ts shell.test.ts`, `... teacher-diagnostics.test.ts`, `... case-service.test.ts repository.test.ts`, and `... projections.test.ts teacher-schedule-view.test.ts` each failed for the intended missing/incorrect behavior before the corresponding implementation.
+- Focused GREEN: `npm run test -w web -- absence-composer.test.ts projections.test.ts teacher-schedule-view.test.ts case-service.test.ts repository.test.ts teacher-diagnostics.test.ts shell.test.ts demo.test.ts` — `8 files / 96 tests passed`.
+- Full `npm test` — engine: `19 files / 160 tests passed`; web: `14 files / 187 tests passed`.
+- `npm run typecheck` — passed (engine and web). An earlier root attempt reported Windows `ENOSPC` before compilation; the clean retry passed.
+- `npm run build` — Next production build completed successfully.
+- `npm run smoke` against the checked static server — passed; it covers the canonical teacher route at both 1440px and 390px.
+- `git diff --check` — passed.
+
+### Files and self-review
+
+- `SetupFlow`, `AbsenceComposer`, `Workbench`, repository/case services, and the shell adapter now use explicit NEIS counts, redacted diagnostics, and success-gated canonical persistence.
+- Teacher projection/today/week code now has numeric periods, an honest loaded-date label, multi-lesson week slots, and explicit current/original values. Composer primary buttons retain the global 44px `.btn` minimum.
+- No Task 9 candidate matrix, legacy ops screen, or publication workflow was changed. The only candidate behavior remains the existing typed handoff.
+
+### Concerns
+
+- Older saved revisions without explicit source counts remain safely blocked; the warning reports `0/0` rather than inventing equality from loaded lessons. A future migration could distinguish unavailable historical counts from an actual empty source.

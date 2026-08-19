@@ -56,7 +56,7 @@ describe('school setup boundary', () => {
       loadedAt: '2026-08-18T01:02:03.000Z',
       query: {
         from: '20260810', to: '20260814', academicYear: '2026',
-        rawRows: '1', pageCount: '1', acceptedRows: '1', quarantinedRows: '0',
+        rawRows: '1', receivedRows: '1', expectedRows: '1', pageCount: '1', acceptedRows: '1', quarantinedRows: '0',
         duplicateRows: '0', parallelGroups: '0',
       },
     });
@@ -72,6 +72,20 @@ describe('school setup boundary', () => {
     const assignedTeacher = state.lessons[0]!.teacher;
     if (assignedTeacher.state !== 'assigned') throw new Error('teacher must be assigned');
     expect(state.teacherLabels).toEqual({ [assignedTeacher.teacherId]: 'teacher:seo-jun' });
+  });
+
+  it('persists the received NEIS rows separately from the official expected count', () => {
+    const partialRows = Array.from({ length: 5 }, () => rows[0]!);
+    const partial = createWorkspaceFromNeis({
+      ...bundle,
+      rows: partialRows,
+      result: { ...bundle.result, total: 6, complete: false, truncated: true },
+    }, {});
+
+    expect(partial.revisions[0]).toMatchObject({
+      complete: false,
+      query: { receivedRows: '5', expectedRows: '6' },
+    });
   });
 
   it('keeps invitations locked until the official page set and every teacher are resolved', () => {

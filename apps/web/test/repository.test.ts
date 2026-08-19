@@ -133,4 +133,16 @@ describe('WorkspaceRepository', () => {
     expect(repository.save(state())).toEqual({ ok: false, reason: 'unavailable' });
     expect(JSON.parse(repository.export(state()))).toEqual(state());
   });
+
+  it('returns a quota failure without overwriting the last persisted canonical workspace', () => {
+    const storage = new MemoryStorage();
+    const repository = createWorkspaceRepository(storage);
+    const persisted = state();
+    expect(repository.save(persisted)).toEqual({ ok: true });
+    storage.setItem = () => { throw new DOMException('full', 'QuotaExceededError'); };
+    const next = { ...persisted, cases: [{ ...persisted.cases[0]!, id: 'case-unsaved' }] };
+
+    expect(repository.save(next)).toEqual({ ok: false, reason: 'quota' });
+    expect(repository.load(persisted.workspace.id)).toEqual(persisted);
+  });
 });

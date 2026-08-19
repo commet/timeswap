@@ -149,8 +149,12 @@ describe('projectTeacherSchedule', () => {
       expect.objectContaining({
         lessonId: 'lesson-1',
         status: '변경 예정',
-        base: expect.objectContaining({ period: '2', teacherId: '김수학' }),
-        pending: expect.objectContaining({ period: '4', teacherId: '이수학' }),
+        base: expect.objectContaining({
+          period: '2', teacherId: '김수학', subject: '수학', room: '2-3', classIdentity: klass,
+        }),
+        pending: expect.objectContaining({
+          period: '4', teacherId: '이수학', subject: '수학', room: '2-3', classIdentity: klass,
+        }),
         published: undefined,
       }),
     ]);
@@ -158,11 +162,16 @@ describe('projectTeacherSchedule', () => {
       expect.objectContaining({
         lessonId: 'lesson-1',
         status: 'published',
-        base: expect.objectContaining({ period: '2', teacherId: '김수학' }),
+        base: expect.objectContaining({
+          period: '2', teacherId: '김수학', subject: '수학', room: '2-3', classIdentity: klass,
+        }),
         pending: undefined,
         published: expect.objectContaining({
           period: '4',
           teacherId: '이수학',
+          subject: '수학',
+          room: '2-3',
+          classIdentity: klass,
           publicationId: 'publication-1',
         }),
       }),
@@ -228,6 +237,18 @@ describe('projectTeacherSchedule', () => {
         }),
       }),
     ]);
+  });
+
+  it('orders multi-digit teaching periods numerically in the teacher projection', () => {
+    const state = stateAt('submitted');
+    state.lessons.push({
+      ...state.lessons[0]!,
+      id: 'lesson-10',
+      period: '10',
+      subject: '과학',
+    });
+
+    expect(projectTeacherSchedule(state, '김수학').lessons.map((lesson) => lesson.base.period)).toEqual(['2', '10']);
   });
 });
 

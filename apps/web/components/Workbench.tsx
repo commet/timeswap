@@ -21,23 +21,23 @@ import { Changes } from './Changes';
 import { Sheet } from './Sheet';
 import { TeacherPick } from './TeacherPick';
 import { TeacherHome } from './TeacherHome';
-import type { AbsenceComposerSubmission, CandidateHandoff } from './AbsenceComposer';
+import {
+  projectTeacherDiagnostic,
+  type AbsenceComposerSubmission,
+  type CandidateHandoff,
+} from './AbsenceComposer';
 import { RequestStatusList } from './RequestStatusList';
 import { OpsInbox } from './OpsInbox';
 import { BRAND } from '../lib/brand';
 import type { WorkspaceState } from '../lib/domain';
-import {
-  createAbsenceCase,
-  findDuplicateAbsenceCase,
-  transitionCase,
-} from '../lib/case-service';
+import { findDuplicateAbsenceCase, persistSubmittedAbsenceCase } from '../lib/case-service';
 import {
   parseLocation,
   pushLocation,
   subscribeToPopState,
   type AppLocation,
 } from '../lib/navigation';
-import { createWorkspaceRepository, type WorkspaceRepository } from '../lib/repository';
+import { createWorkspaceRepository, type SaveResult, type WorkspaceRepository } from '../lib/repository';
 import {
   RoleViewAdapterProvider,
   type RoleViewAdapterProps,
@@ -1315,9 +1315,8 @@ function workspaceIdOf(location: AppLocation): string | null {
 function downloadDiagnostic(state: WorkspaceState): void {
   const generatedAt = new Date().toISOString();
   const blob = new Blob([JSON.stringify({
-    kind: 'teacher-absence-diagnostic',
     generatedAt,
-    workspace: state,
+    ...projectTeacherDiagnostic(state),
   }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -1357,23 +1356,15 @@ function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleVi
     const at = new Date().toISOString();
     const caseId = `case:${part}`;
     try {
-      const created = createAbsenceCase(state, {
+      return persistSubmittedAbsenceCase(state, {
         id: caseId,
         auditEventId: `audit:${part}:created`,
+        submissionAuditEventId: `audit:${part}:submitted`,
         workspaceId: state.workspace.id,
         requesterTeacherId: teacherId,
         ...input,
         at,
-      });
-      const submitted = transitionCase(created, {
-        caseId,
-        to: 'submitted',
-        actorId: teacherId,
-        at,
-        auditEventId: `audit:${part}:submitted`,
-      });
-      saveState(submitted);
-      return { caseId };
+      }, saveState);
     } catch (error) {
       return { error: error instanceof Error ? error.message : '요청을 저장하지 못했습니다.' };
     }
@@ -1441,15 +1432,18 @@ export function Workbench() {
     return subscribeToPopState(updateLocation);
   }, [updateLocation]);
 
-  const saveState = useCallback((next: WorkspaceState) => {
+  const saveState = useCallback((next: WorkspaceState): SaveResult => {
+    const result = repositoryRef.current?.save(next) ?? { ok: false, reason: 'unavailable' as const };
+    if (!result.ok) {
+      setSaveError(result.reason === 'quota'
+        ? '브라우저 저장 공간이 부족합니다. 요청을 저장하지 않았습니다. 진단 보고서를 내보내고 저장 공간을 확보한 뒤 다시 시도하십시오.'
+        : '이 브라우저에 학교 자료를 저장할 수 없습니다. 요청을 저장하지 않았습니다. 진단 보고서를 내보낸 뒤 브라우저 저장 설정을 확인하십시오.');
+      return result;
+    }
     workspaceRef.current = next;
     setState(next);
-    const result = repositoryRef.current?.save(next);
-    setSaveError(result && !result.ok
-      ? result.reason === 'quota'
-        ? '브라우저 저장 공간이 부족합니다. 현재 화면은 유지되지만 내보내기 전에는 새로고침하지 마십시오.'
-        : '이 브라우저에 학교 자료를 저장할 수 없습니다. 현재 화면은 유지됩니다.'
-      : '');
+    setSaveError('');
+    return result;
   }, []);
 
   const navigate = useCallback((next: AppLocation) => {

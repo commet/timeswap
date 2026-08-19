@@ -23,6 +23,17 @@ function currentDate(): string {
     .join('-');
 }
 
+export function selectTeacherToday(
+  dates: readonly string[],
+  browserDate: string,
+): { date: string; label: '오늘' | '불러온 날짜' | '불러온 날짜 없음' } {
+  if (dates.includes(browserDate)) return { date: browserDate, label: '오늘' };
+  const loadedDate = [...dates].sort()[0];
+  return loadedDate
+    ? { date: loadedDate, label: '불러온 날짜' }
+    : { date: browserDate, label: '불러온 날짜 없음' };
+}
+
 function teacherLabel(state: WorkspaceState, teacherId: string): string {
   return state.teacherLabels?.[teacherId]?.trim() || '담당 교사';
 }
@@ -47,7 +58,8 @@ export function TeacherHome({
   const dates = useMemo(() => [...new Set(schedule.lessons.map((lesson) => scheduleValue(lesson).date))]
     .sort(), [schedule.lessons]);
   const browserToday = currentDate();
-  const todayDate = dates.includes(browserToday) ? browserToday : dates[0] ?? browserToday;
+  const today = selectTeacherToday(dates, browserToday);
+  const todayDate = today.date;
   const todayLessons = useMemo(() => schedule.lessons.filter((lesson) =>
     scheduleValue(lesson).date === todayDate), [schedule.lessons, todayDate]);
   const todayChanges = todayLessons.filter((lesson) => lesson.status !== 'base').length;
@@ -65,7 +77,7 @@ export function TeacherHome({
       <section className="teacher-command-intro">
         <div>
           <span className="eyebrow">{state.workspace.name}</span>
-          <h1 id="teacher-home-title">{label} 선생님의 오늘 시간표</h1>
+          <h1 id="teacher-home-title">{label} 선생님의 시간표</h1>
           <p>수업을 먼저 확인하고, 필요한 경우 영향 수업을 골라 하나의 변경 사건으로 요청합니다.</p>
         </div>
         <button className="btn primary teacher-request-button" onClick={() => openComposer()}>변경 요청</button>
@@ -74,7 +86,7 @@ export function TeacherHome({
       <section className="teacher-today" aria-labelledby="teacher-today-title">
         <div className="teacher-today-head">
           <div>
-            <span className="eyebrow">오늘 · {todayDate}</span>
+            <span className="eyebrow">{today.label} · {todayDate}</span>
             <h2 id="teacher-today-title">수업 흐름</h2>
           </div>
           <p data-today-change-count><b>{todayChanges}</b>건 변경</p>
@@ -89,11 +101,11 @@ export function TeacherHome({
           <div className="period-rail" aria-label={`${todayDate} 수업`}>
             <article className="now-next" data-now-next>
               <span>지금</span>
-              {nowLesson ? <b>{scheduleValue(nowLesson).period}교시 · {nowLesson.subject}</b> : <b>오늘 예정된 수업이 없습니다</b>}
+              {nowLesson ? <b>{scheduleValue(nowLesson).period}교시 · {scheduleValue(nowLesson).subject}</b> : <b>표시할 수업이 없습니다</b>}
             </article>
             <article className="now-next">
               <span>다음</span>
-              {nextLesson ? <b>{scheduleValue(nextLesson).period}교시 · {nextLesson.subject}</b> : <b>다음 수업은 없습니다</b>}
+              {nextLesson ? <b>{scheduleValue(nextLesson).period}교시 · {scheduleValue(nextLesson).subject}</b> : <b>다음 수업은 없습니다</b>}
             </article>
             {todayLessons.map((lesson) => {
               const value = scheduleValue(lesson);
@@ -101,9 +113,10 @@ export function TeacherHome({
                 <button key={lesson.lessonId} className={`period-rail-lesson ${lesson.status === '변경 예정' ? 'planned' : lesson.status}`}
                   onClick={() => openComposer(lesson.lessonId)}>
                   <span>{value.period}교시</span>
-                  <b>{lesson.subject}</b>
+                  <b>{value.subject}</b>
                   {lesson.status === '변경 예정' && <em>변경 예정</em>}
-                  {lesson.status === 'published' && <small>원래 {lesson.subject}</small>}
+                  {lesson.status !== 'base' && <small>원래 {lesson.base.subject} · {lesson.base.classIdentity.grade}-{lesson.base.classIdentity.className} · {lesson.base.period}교시 · {lesson.base.room}</small>}
+                  <small>{value.classIdentity.grade}-{value.classIdentity.className} · {value.room}</small>
                 </button>
               );
             })}

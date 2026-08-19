@@ -1168,12 +1168,13 @@ button.cell.empty:hover { border-color: var(--muted); }
 .teacher-projection-grid h2 { font-size: 24px; }
 .teacher-grid-scroll { overflow-x: auto; }
 .teacher-grid { min-width: 100%; display: grid; gap: 1px; background: var(--line); }
-.teacher-grid-corner, .teacher-grid-day, .teacher-grid-period, .teacher-grid-empty-cell, .teacher-grid-lesson { min-height: 92px; background: var(--surface); }
+.teacher-grid-corner, .teacher-grid-day, .teacher-grid-period, .teacher-grid-empty-cell, .teacher-grid-slot, .teacher-grid-lesson { min-height: 92px; background: var(--surface); }
 .teacher-grid-day { padding: 14px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-weight: 850; }
 .teacher-grid-day small { color: var(--muted); font-size: 10px; }
 .teacher-grid-row { display: contents; }
 .teacher-grid-period { display: grid; place-items: center; color: var(--muted); font-size: 11px; font-weight: 850; }
 .teacher-grid-empty-cell { background: var(--surface-2); }
+.teacher-grid-slot { display: grid; gap: 1px; background: var(--line); }
 .teacher-grid-lesson { padding: 12px; border: 0; text-align: left; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
 .teacher-grid-lesson:hover { background: var(--accent-soft); }
 .teacher-grid-lesson.planned { outline: 1px dashed var(--accent); outline-offset: -5px; }

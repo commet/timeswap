@@ -381,6 +381,8 @@ function buildState(
     source: scenario.surface === 'diagnostics' ? 'neis' : 'demo',
     query: {
       ...(scenario.surface === 'diagnostics' ? EXACT_REVISION_QUERY : STRUCTURE_REVISION_QUERY),
+      receivedRows: String(input.lessons.length),
+      expectedRows: String(input.lessons.length),
       ...input.revisionQuery,
     },
     loadedAt: timestampAt(now, 1),

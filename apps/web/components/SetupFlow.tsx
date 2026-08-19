@@ -17,6 +17,7 @@ import { fromFile, mapKey, normalizeName, type TeacherMap } from '../lib/app';
 import type { WorkspaceState } from '../lib/domain';
 import { formatLocation, type AppLocation } from '../lib/navigation';
 import type { CompleteNeisResult, NeisEvent, NeisSchool } from '../lib/neis';
+import type { SaveResult } from '../lib/repository';
 
 export interface NeisLoadBundle {
   school: NeisSchool;
@@ -143,7 +144,9 @@ export function createWorkspaceFromNeis(
       source: 'neis',
       query: {
         from: bundle.range.from, to: bundle.range.to, academicYear,
-        rawRows: String(bundle.result.total), pageCount: String(bundle.result.pageCount),
+        rawRows: String(bundle.result.total),
+        receivedRows: String(bundle.rows.length), expectedRows: String(bundle.result.total),
+        pageCount: String(bundle.result.pageCount),
         acceptedRows: String(normalization.accepted.length),
         quarantinedRows: String(normalization.quarantined.length),
         duplicateRows: String(normalization.duplicateCount),
@@ -262,7 +265,7 @@ function firstAssignedTeacher(state: WorkspaceState): string | null {
 
 export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
   initialSchoolQuery?: string;
-  saveState(next: WorkspaceState): void;
+  saveState(next: WorkspaceState): SaveResult;
   navigate(next: AppLocation): void;
 }) {
   const session = useContext(NeisSessionContext);

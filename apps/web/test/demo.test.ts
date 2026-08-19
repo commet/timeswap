@@ -79,6 +79,15 @@ describe('demo scenario inventory', () => {
     expect(first.cases.every((absenceCase) =>
       absenceCase.createdAt <= absenceCase.updatedAt)).toBe(true);
   });
+
+  it('records explicit matching demo-source row counts without relying on lesson count at readiness time', () => {
+    const state = createDemoWorkspace('2026-08-18T00:00:00.000Z');
+
+    expect(state.revisions[0]?.query).toMatchObject({
+      receivedRows: String(state.lessons.length),
+      expectedRows: String(state.lessons.length),
+    });
+  });
 });
 
 describe('demo source boundary', () => {

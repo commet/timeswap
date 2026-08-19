@@ -401,6 +401,26 @@ function koreanDay(date: string): string {
     .format(new Date(`${date}T00:00:00.000Z`));
 }
 
+function teacherScheduleValue(lesson: TeacherScheduleLessonView) {
+  return lesson.pending ?? lesson.published ?? lesson.base;
+}
+
+/** Keeps concurrent projected lessons in their shared timetable cell. */
+export function teacherWeekSlots(lessons: TeacherScheduleLessonView[]): Map<string, TeacherScheduleLessonView[]> {
+  const bySlot = new Map<string, TeacherScheduleLessonView[]>();
+  for (const lesson of lessons) {
+    const value = teacherScheduleValue(lesson);
+    const key = `${value.date}\u0000${value.period}`;
+    const current = bySlot.get(key) ?? [];
+    current.push(lesson);
+    bySlot.set(key, current);
+  }
+  for (const slotLessons of bySlot.values()) {
+    slotLessons.sort((left, right) => left.lessonId.localeCompare(right.lessonId));
+  }
+  return bySlot;
+}
+
 /** Canonical teacher projection grid.  The legacy interaction grid above stays for ops until Task 10. */
 export function TeacherScheduleGrid({
   lessons,
@@ -410,17 +430,14 @@ export function TeacherScheduleGrid({
   onSelectLesson(lessonId: string): void;
 }) {
   const dates = [...new Set(lessons.map((lesson) => {
-    const value = lesson.pending ?? lesson.published ?? lesson.base;
+    const value = teacherScheduleValue(lesson);
     return value.date;
   }))].sort();
   const periods = [...new Set(lessons.map((lesson) => {
-    const value = lesson.pending ?? lesson.published ?? lesson.base;
+    const value = teacherScheduleValue(lesson);
     return value.period;
   }))].sort((left, right) => Number(left) - Number(right));
-  const bySlot = new Map(lessons.map((lesson) => {
-    const value = lesson.pending ?? lesson.published ?? lesson.base;
-    return [`${value.date}\u0000${value.period}`, lesson] as const;
-  }));
+  const bySlot = teacherWeekSlots(lessons);
 
   return (
     <section className="teacher-projection-grid" data-teacher-week aria-labelledby="teacher-week-title">
@@ -440,22 +457,29 @@ export function TeacherScheduleGrid({
               <div className="teacher-grid-row" key={period}>
                 <span className="teacher-grid-period">{period}교시</span>
                 {dates.map((date) => {
-                  const lesson = bySlot.get(`${date}\u0000${period}`);
-                  if (!lesson) return <span className="teacher-grid-empty-cell" key={date} aria-label={`${date} ${period}교시 공강`} />;
-                  const changed = lesson.status !== 'base';
+                  const slotLessons = bySlot.get(`${date}\u0000${period}`);
+                  if (!slotLessons) return <span className="teacher-grid-empty-cell" key={date} aria-label={`${date} ${period}교시 공강`} />;
                   return (
-                    <button
-                      key={date}
-                      className={`teacher-grid-lesson${changed ? ` ${lesson.status === 'published' ? 'published' : 'planned'}` : ''}`}
-                      onClick={() => onSelectLesson(lesson.lessonId)}
-                      aria-label={`${date} ${period}교시 ${lesson.subject} 변경 요청`}
-                    >
-                      {lesson.status === '변경 예정' && <em>변경 예정</em>}
-                      {lesson.status === 'published' && <em>게시됨</em>}
-                      <b>{lesson.subject}</b>
-                      {lesson.status === 'published' && <small>원래 {lesson.subject}</small>}
-                      <span>{lesson.classIdentity.grade}-{lesson.classIdentity.className} · {lesson.room}</span>
-                    </button>
+                    <div className="teacher-grid-slot" key={date}>
+                      {slotLessons.map((lesson) => {
+                        const value = teacherScheduleValue(lesson);
+                        const changed = lesson.status !== 'base';
+                        return (
+                          <button
+                            key={lesson.lessonId}
+                            className={`teacher-grid-lesson${changed ? ` ${lesson.status === 'published' ? 'published' : 'planned'}` : ''}`}
+                            onClick={() => onSelectLesson(lesson.lessonId)}
+                            aria-label={`${date} ${period}교시 ${value.subject} 변경 요청`}
+                          >
+                            {lesson.status === '변경 예정' && <em>변경 예정</em>}
+                            {lesson.status === 'published' && <em>게시됨</em>}
+                            <b>{value.subject}</b>
+                            {lesson.status !== 'base' && <small>원래 {lesson.base.subject} · {lesson.base.classIdentity.grade}-{lesson.base.classIdentity.className} · {lesson.base.period}교시 · {lesson.base.room}</small>}
+                            <span>{value.classIdentity.grade}-{value.classIdentity.className} · {value.period}교시 · {value.room}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   );
                 })}
               </div>

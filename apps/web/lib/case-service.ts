@@ -6,6 +6,7 @@ import type {
   Lesson,
   WorkspaceState,
 } from './domain';
+import type { SaveResult } from './repository';
 import { validateCasePlan } from './projections';
 
 export interface CreateAbsenceCaseInput {
@@ -312,6 +313,34 @@ export function transitionCase(
         },
       }] : []),
     ],
+  };
+}
+
+export interface PersistSubmittedAbsenceCaseInput extends CreateAbsenceCaseInput {
+  submissionAuditEventId: string;
+}
+
+export type PersistSubmittedAbsenceCaseResult = { caseId: string } | { error: string };
+
+export function persistSubmittedAbsenceCase(
+  state: WorkspaceState,
+  input: PersistSubmittedAbsenceCaseInput,
+  save: (next: WorkspaceState) => SaveResult,
+): PersistSubmittedAbsenceCaseResult {
+  const created = createAbsenceCase(state, input);
+  const submitted = transitionCase(created, {
+    caseId: input.id,
+    to: 'submitted',
+    actorId: input.requesterTeacherId,
+    at: input.at,
+    auditEventId: input.submissionAuditEventId,
+  });
+  const result = save(submitted);
+  if (result.ok) return { caseId: input.id };
+  return {
+    error: result.reason === 'quota'
+      ? '브라우저 저장 공간이 부족하여 요청을 저장하지 않았습니다. 진단 보고서를 내보내고 저장 공간을 확보한 뒤 다시 시도하십시오.'
+      : '이 브라우저에서 요청을 저장하지 않았습니다. 진단 보고서를 내보내고 저장 가능 여부를 확인한 뒤 다시 시도하십시오.',
   };
 }
 

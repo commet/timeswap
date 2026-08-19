@@ -4,11 +4,12 @@ import { createContext, useContext, type ComponentType, type ReactNode } from 'r
 
 import type { WorkspaceState } from '../lib/domain';
 import type { AppLocation } from '../lib/navigation';
+import type { SaveResult } from '../lib/repository';
 
 export interface RoleViewAdapterProps {
   state: WorkspaceState;
   location: Exclude<AppLocation, { view: 'landing' | 'setup' }>;
-  saveState(next: WorkspaceState): void;
+  saveState(next: WorkspaceState): SaveResult;
   navigate(next: AppLocation): void;
 }
 

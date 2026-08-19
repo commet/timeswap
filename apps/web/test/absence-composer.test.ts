@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ClassIdentity } from '@timeswap/engine';
+import * as Composer from '../components/AbsenceComposer';
 
 import {
   atomicSelectionWarnings,
@@ -76,6 +77,42 @@ describe('absence composer helpers', () => {
       source: { known: 4, expected: 6, complete: false },
       mapping: { known: 1, expected: 2, complete: false },
     });
+  });
+
+  it.each([
+    ['partial official rows', '5', '6'],
+    ['mismatched official rows', '7', '6'],
+  ])('blocks candidate handoff for %s even when the revision says complete', (_label, receivedRows, expectedRows) => {
+    const state = stateForComposer();
+    state.revisions[0] = {
+      ...state.revisions[0]!,
+      complete: true,
+      query: { receivedRows, expectedRows },
+    };
+
+    expect(composerReadiness(state)).toMatchObject({
+      readyForCandidates: false,
+      source: { known: Number(receivedRows), expected: Number(expectedRows), complete: false },
+    });
+  });
+
+  it.each([
+    ['5', '6', '공식 시간표 5/6건'],
+    ['7', '6', '공식 시간표 7/6건'],
+  ])('shows exact received and expected rows for blocked source %s/%s', (receivedRows, expectedRows, expectedCopy) => {
+    const messageForUnavailableSource = (Composer as unknown as {
+      messageForUnavailableSource?: (readiness: ReturnType<typeof composerReadiness>) => string;
+    }).messageForUnavailableSource;
+    const state = stateForComposer();
+    state.revisions[0] = {
+      ...state.revisions[0]!,
+      complete: true,
+      query: { receivedRows, expectedRows },
+    };
+
+    expect(messageForUnavailableSource).toBeTypeOf('function');
+    if (typeof messageForUnavailableSource !== 'function') return;
+    expect(messageForUnavailableSource(composerReadiness(state))).toContain(expectedCopy);
   });
 
   it('warns when an explicitly deselected lesson breaks an atomic block', () => {

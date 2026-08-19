@@ -29,37 +29,82 @@ export interface CandidateHandoff {
   atomicWarnings: string[];
 }
 
+export interface TeacherDiagnosticProjection {
+  kind: 'teacher-absence-diagnostic';
+  source: { receivedRows: number; expectedRows: number; complete: boolean };
+  mapping: { knownTeachers: number; expectedTeachers: number; unassignedLessons: number; complete: boolean };
+  revision: { source: WorkspaceState['revisions'][number]['source'] | null; loadedAt: string | null; complete: boolean };
+  issues: string[];
+}
+
 function activeLessons(state: WorkspaceState): Lesson[] {
   return state.lessons.filter((lesson) => lesson.revisionId === state.workspace.activeRevisionId);
 }
 
-function countFromQuery(query: Record<string, string> | undefined, key: string, fallback: number): number {
+function countFromQuery(query: Record<string, string> | undefined, key: string): number | null {
   const value = Number(query?.[key]);
-  return Number.isInteger(value) && value >= 0 ? value : fallback;
+  return Number.isInteger(value) && value >= 0 ? value : null;
 }
 
 export function composerReadiness(state: WorkspaceState): ComposerReadiness {
   const revision = state.revisions.find((item) => item.id === state.workspace.activeRevisionId);
   const lessons = activeLessons(state);
-  const sourceKnown = countFromQuery(revision?.query, 'receivedRows', lessons.length);
-  const sourceExpected = countFromQuery(revision?.query, 'expectedRows', lessons.length);
+  const sourceKnown = countFromQuery(revision?.query, 'receivedRows');
+  const sourceExpected = countFromQuery(revision?.query, 'expectedRows');
   const assignedTeachers = new Set(lessons.flatMap((lesson) =>
     lesson.teacher.state === 'assigned' ? [lesson.teacher.teacherId] : []));
   const knownTeacherLabels = [...assignedTeachers].filter((teacherId) =>
     Boolean(state.teacherLabels?.[teacherId]?.trim())).length;
   const unassignedLessons = lessons.filter((lesson) => lesson.teacher.state === 'unassigned').length;
-  const sourceComplete = Boolean(revision?.complete) && sourceKnown >= sourceExpected;
+  const sourceComplete = Boolean(revision?.complete)
+    && sourceKnown !== null
+    && sourceExpected !== null
+    && sourceKnown === sourceExpected;
   const mappingComplete = knownTeacherLabels === assignedTeachers.size && unassignedLessons === 0;
 
   return {
     readyForCandidates: sourceComplete && mappingComplete,
-    source: { known: sourceKnown, expected: sourceExpected, complete: sourceComplete },
+    source: { known: sourceKnown ?? 0, expected: sourceExpected ?? 0, complete: sourceComplete },
     mapping: {
       known: knownTeacherLabels,
       expected: assignedTeachers.size,
       complete: mappingComplete,
       unassignedLessons,
     },
+  };
+}
+
+/** Deliberately redacted: this is safe to hand to support without timetable or case data. */
+export function projectTeacherDiagnostic(state: WorkspaceState): TeacherDiagnosticProjection {
+  const revision = state.revisions.find((item) => item.id === state.workspace.activeRevisionId);
+  const readiness = composerReadiness(state);
+  const issues: string[] = [];
+  if (!readiness.source.complete) {
+    issues.push(`공식 시간표 행이 완전하지 않습니다 (${readiness.source.known}/${readiness.source.expected}건).`);
+  }
+  if (!readiness.mapping.complete) {
+    issues.push(`교사 연결이 완전하지 않습니다 (${readiness.mapping.known}/${readiness.mapping.expected}명, 담당 미확정 수업 ${readiness.mapping.unassignedLessons}건).`);
+  }
+
+  return {
+    kind: 'teacher-absence-diagnostic',
+    source: {
+      receivedRows: readiness.source.known,
+      expectedRows: readiness.source.expected,
+      complete: readiness.source.complete,
+    },
+    mapping: {
+      knownTeachers: readiness.mapping.known,
+      expectedTeachers: readiness.mapping.expected,
+      unassignedLessons: readiness.mapping.unassignedLessons,
+      complete: readiness.mapping.complete,
+    },
+    revision: {
+      source: revision?.source ?? null,
+      loadedAt: revision?.loadedAt ?? null,
+      complete: Boolean(revision?.complete),
+    },
+    issues,
   };
 }
 
@@ -105,7 +150,7 @@ function collaborationTeacherCount(
   })).size;
 }
 
-function messageForUnavailableSource(readiness: ComposerReadiness): string {
+export function messageForUnavailableSource(readiness: ComposerReadiness): string {
   const parts: string[] = [];
   if (!readiness.source.complete) {
     parts.push(`공식 시간표 ${readiness.source.known}/${readiness.source.expected}건`);

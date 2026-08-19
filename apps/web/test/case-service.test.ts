@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as CaseService from '../lib/case-service';
 
 import {
   completeAdminTask,
@@ -160,6 +161,70 @@ describe('createAbsenceCase', () => {
     expect(before.audit).toEqual([]);
     expect(after.cases).not.toBe(before.cases);
     expect(after.audit).not.toBe(before.audit);
+  });
+});
+
+describe('persistSubmittedAbsenceCase', () => {
+  it.each(['quota', 'unavailable'] as const)('does not report a case id when repository saving fails with %s', (reason) => {
+    const persist = (CaseService as unknown as {
+      persistSubmittedAbsenceCase?: (
+        state: WorkspaceState,
+        input: {
+          id: string; auditEventId: string; submissionAuditEventId: string; workspaceId: string;
+          requesterTeacherId: string; fromDate: string; toDate: string; reason: '업무상 부재';
+          lessonIds: string[]; at: string;
+        },
+        save: (next: WorkspaceState) => { ok: true } | { ok: false; reason: 'quota' | 'unavailable' },
+      ) => { caseId?: string; error?: string };
+    }).persistSubmittedAbsenceCase;
+    const before = initialState();
+
+    expect(persist).toBeTypeOf('function');
+    if (typeof persist !== 'function') return;
+
+    const result = persist(before, {
+      id: 'case-unsaved', auditEventId: 'audit-created-unsaved', submissionAuditEventId: 'audit-submitted-unsaved',
+      workspaceId: 'workspace-1', requesterTeacherId: 'teacher-1',
+      fromDate: '2026-08-24', toDate: '2026-08-24', reason: '업무상 부재', lessonIds: ['lesson-1'],
+      at: '2026-08-18T01:00:00.000Z',
+    }, () => ({ ok: false, reason }));
+
+    expect(result.caseId).toBeUndefined();
+    expect(result.error).toContain('저장하지 않았습니다');
+    expect(result.error).toContain('진단 보고서');
+    expect(before.cases).toEqual([]);
+    expect(before.audit).toEqual([]);
+  });
+
+  it('reports a case id only after the submitted canonical state is saved', () => {
+    const persist = (CaseService as unknown as {
+      persistSubmittedAbsenceCase?: (
+        state: WorkspaceState,
+        input: {
+          id: string; auditEventId: string; submissionAuditEventId: string; workspaceId: string;
+          requesterTeacherId: string; fromDate: string; toDate: string; reason: '업무상 부재';
+          lessonIds: string[]; at: string;
+        },
+        save: (next: WorkspaceState) => { ok: true } | { ok: false; reason: 'quota' | 'unavailable' },
+      ) => { caseId?: string; error?: string };
+    }).persistSubmittedAbsenceCase;
+    const saves: WorkspaceState[] = [];
+
+    expect(persist).toBeTypeOf('function');
+    if (typeof persist !== 'function') return;
+
+    const result = persist(initialState(), {
+      id: 'case-saved', auditEventId: 'audit-created-saved', submissionAuditEventId: 'audit-submitted-saved',
+      workspaceId: 'workspace-1', requesterTeacherId: 'teacher-1',
+      fromDate: '2026-08-24', toDate: '2026-08-24', reason: '업무상 부재', lessonIds: ['lesson-1'],
+      at: '2026-08-18T01:00:00.000Z',
+    }, (next) => {
+      saves.push(next);
+      return { ok: true };
+    });
+
+    expect(result).toEqual({ caseId: 'case-saved' });
+    expect(saves[0]?.cases).toEqual([expect.objectContaining({ id: 'case-saved', status: 'submitted' })]);
   });
 });
 

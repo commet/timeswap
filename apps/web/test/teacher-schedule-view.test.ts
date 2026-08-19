@@ -1,0 +1,62 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
+import type { ClassIdentity } from '@timeswap/engine';
+
+import * as Grid from '../components/Grid';
+import * as TeacherHomeModule from '../components/TeacherHome';
+import type { TeacherScheduleLessonView } from '../lib/projections';
+
+const klass: ClassIdentity = {
+  schoolCode: 'school-1', academicYear: '2026', dayCourse: '주간',
+  affiliation: '일반계', major: '공통', grade: '2', className: '1',
+};
+
+function view(lessonId: string, period: string, subject: string, status: TeacherScheduleLessonView['status'] = 'base'): TeacherScheduleLessonView {
+  const base = { date: '2026-08-24', period, teacherId: 'member:teacher', subject, room: `${subject}실`, classIdentity: klass };
+  return {
+    lessonId, subject, room: base.room, classIdentity: klass, status, base,
+    ...(status === '변경 예정' ? {
+      pending: { ...base, period: '10', subject: `${subject} 변경`, room: `${subject} 새교실`, classIdentity: { ...klass, className: '2' }, caseId: 'case-1' },
+    } : {}),
+    ...(status === 'published' ? {
+      published: { ...base, period: '11', subject: `${subject} 게시`, room: `${subject} 게시교실`, classIdentity: { ...klass, className: '3' }, publicationId: 'publication-1', publishedAt: '2026-08-18T00:00:00.000Z' },
+    } : {}),
+  };
+}
+
+describe('teacher schedule view helpers', () => {
+  it('labels an available browser date as today and a missing browser date as a loaded date', () => {
+    const selectToday = (TeacherHomeModule as unknown as {
+      selectTeacherToday?: (dates: readonly string[], browserDate: string) => { date: string; label: string };
+    }).selectTeacherToday;
+
+    expect(selectToday).toBeTypeOf('function');
+    if (typeof selectToday !== 'function') return;
+
+    expect(selectToday(['2026-08-24', '2026-08-25'], '2026-08-24')).toEqual({ date: '2026-08-24', label: '오늘' });
+    expect(selectToday(['2026-08-24', '2026-08-25'], '2026-08-19')).toEqual({ date: '2026-08-24', label: '불러온 날짜' });
+  });
+
+  it('keeps every lesson that shares one date and period and renders changed original/new details', () => {
+    const teacherWeekSlots = (Grid as unknown as {
+      teacherWeekSlots?: (lessons: TeacherScheduleLessonView[]) => Map<string, TeacherScheduleLessonView[]>;
+    }).teacherWeekSlots;
+    const lessons = [view('lesson-a', '2', '수학'), view('lesson-b', '2', '과학'), view('lesson-pending', '3', '영어', '변경 예정'), view('lesson-published', '4', '국어', 'published')];
+
+    expect(teacherWeekSlots).toBeTypeOf('function');
+    if (typeof teacherWeekSlots !== 'function') return;
+
+    expect(teacherWeekSlots(lessons).get('2026-08-24\u00002')?.map((lesson) => lesson.lessonId)).toEqual(['lesson-a', 'lesson-b']);
+
+    const html = renderToStaticMarkup(createElement(Grid.TeacherScheduleGrid, {
+      lessons,
+      onSelectLesson: () => undefined,
+    }));
+    for (const detail of ['영어 변경', '영어 새교실', '원래 영어 · 2-1 · 3교시 · 영어실', '국어 게시', '국어 게시교실', '원래 국어 · 2-1 · 4교시 · 국어실']) {
+      expect(html).toContain(detail);
+    }
+    expect(html).toContain('수학');
+    expect(html).toContain('과학');
+  });
+});

@@ -14,9 +14,11 @@ export const WORKSPACE_KEY_PREFIX = 'joyul:v2:workspace:';
 const LEGACY_REQUESTS_KEY = 'joyul:v1:requests';
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+export type SaveResult = { ok: true } | { ok: false; reason: 'quota' | 'unavailable' };
+
 export interface WorkspaceRepository {
   load(workspaceId: string): WorkspaceState | null;
-  save(state: WorkspaceState): { ok: true } | { ok: false; reason: 'quota' | 'unavailable' };
+  save(state: WorkspaceState): SaveResult;
   export(state: WorkspaceState): string;
 }
 
