@@ -26,7 +26,7 @@ export function TeacherPick({
   }, [teachers, q]);
 
   return (
-    <main className="work single">
+    <main id="main-content" tabIndex={-1} className="work single">
       <section className="card pick">
         <div className="card-head">
           <h2>선생님 성함을 선택하십시오</h2>

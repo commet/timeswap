@@ -44,7 +44,7 @@ export function PublicClassTimetable({
   );
 
   if (!view) return (
-    <main className="public-class empty" aria-labelledby="public-class-title">
+    <main id="main-content" tabIndex={-1} className="public-class empty" aria-labelledby="public-class-title">
       <span className="eyebrow">{state.workspace.name}</span>
       <h2 id="public-class-title" tabIndex={-1}>{grade}학년 {className}반 시간표를 찾을 수 없습니다</h2>
       <p>이 학교의 활성 시간표에 해당 학급이 없습니다. 학급을 다시 확인하십시오.</p>
@@ -60,7 +60,7 @@ export function PublicClassTimetable({
   const changedCount = view.lessons.filter((lesson) => lesson.changed).length;
 
   return (
-    <main className="public-class" aria-labelledby="public-class-title" data-public-class={classKey}>
+    <main id="main-content" tabIndex={-1} className="public-class" aria-labelledby="public-class-title" data-public-class={classKey}>
       <header className="public-class-heading">
         <span className="eyebrow">{view.schoolName}</span>
         <h2 id="public-class-title" tabIndex={-1}>{grade}학년 {className}반 시간표</h2>

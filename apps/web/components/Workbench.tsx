@@ -1157,7 +1157,7 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
       </header>
 
       {!loaded || !input ? (
-        <main className="missing-workspace"><p>학교 시간표를 읽지 못했습니다.</p></main>
+        <main id="main-content" tabIndex={-1} className="missing-workspace"><p>학교 시간표를 읽지 못했습니다.</p></main>
       ) : needsPick ? (
         <TeacherPick
           schoolName={loaded.schoolName}
@@ -1170,7 +1170,7 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
           <p>이전 요청함은 더 이상 운영 상태를 직접 수정하지 않습니다.</p>
         </main>
       ) : (
-        <main className={'teacher-work focus-' + scheduleFocus + (activeSlot !== null ? ' has-selection' : '')}>
+        <main id="main-content" tabIndex={-1} className={'teacher-work focus-' + scheduleFocus + (activeSlot !== null ? ' has-selection' : '')}>
           {(scheduleFocus === 'week' || view === 'klass') && (
             <div className="work">
               <Grid

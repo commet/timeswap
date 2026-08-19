@@ -1,0 +1,71 @@
+/* 디자인 토큰. 밝음과 어둠의 값만 둔다. 여기서 정한 이름 밖의 색을 쓰지 않는다. */
+
+/* 조율 디자인 토큰. 학교 행정 화면의 선명함과 개인 시간표의 편안함을 함께 잡는다. */
+:root {
+  --bg: #f4f6fa;
+  --surface: #ffffff;
+  --surface-2: #edf0f6;
+  --ink: #172033;
+  --muted: #626b7d;
+  --line: #dfe3ec;
+  --accent: #4456c7;
+  --accent-strong: #3444ad;
+  --accent-soft: #e9ebfb;
+  --on-accent: #ffffff;
+  --warn: #b83e36;
+  --warn-soft: #fae9e7;
+  --success: #0e6f60;
+  --success-soft: #e1f3ef;
+  --cell-sat: 30%;
+  --cell-lit: 93%;
+  --cell-line-lit: 84%;
+  --shadow: 0 1px 2px rgb(23 32 51 / 0.05), 0 12px 32px rgb(23 32 51 / 0.08);
+  --radius: 14px;
+  /* 초점 테두리와 최소 조작 크기는 화면마다 정하지 않는다. 여기 한 곳에서 정한다. */
+  --focus: #1746c6;
+  --tap: 44px;
+}
+/* 어둠 토큰. 수동 선택(data-theme)이 있으면 그 값이 이기고, 없으면 OS 설정을 따른다. */
+:root[data-theme='dark']  {
+  --bg: #111522;
+  --surface: #181e2d;
+  --surface-2: #202738;
+  --ink: #edf0f7;
+  --muted: #a3adbf;
+  --line: #30394c;
+  --accent: #91a0ff;
+  --accent-strong: #aab4ff;
+  --accent-soft: #272e52;
+  --on-accent: #11162d;
+  --warn: #ff998f;
+  --warn-soft: #3b2429;
+  --success: #63cdbb;
+  --success-soft: #193b39;
+  --cell-sat: 24%;
+  --cell-lit: 23%;
+  --cell-line-lit: 32%;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.35);
+  --focus: #aab4ff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #111522;
+    --surface: #181e2d;
+    --surface-2: #202738;
+    --ink: #edf0f7;
+    --muted: #a3adbf;
+    --line: #30394c;
+    --accent: #91a0ff;
+    --accent-strong: #aab4ff;
+    --accent-soft: #272e52;
+    --on-accent: #11162d;
+    --warn: #ff998f;
+    --warn-soft: #3b2429;
+    --success: #63cdbb;
+    --success-soft: #193b39;
+    --cell-sat: 24%;
+    --cell-lit: 23%;
+    --cell-line-lit: 32%;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.35);
+  }
+}

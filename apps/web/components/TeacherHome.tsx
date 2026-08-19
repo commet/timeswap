@@ -75,7 +75,7 @@ export function TeacherHome({
   }
 
   return (
-    <main className="teacher-command" data-teacher-home aria-labelledby="teacher-home-title">
+    <main id="main-content" tabIndex={-1} className="teacher-command" data-teacher-home aria-labelledby="teacher-home-title">
       <section className="teacher-command-intro">
         <div>
           <span className="eyebrow">{state.workspace.name}</span>

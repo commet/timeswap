@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { chromium } from 'playwright';
+import { AxeBuilder } from '@axe-core/playwright';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:3100';
 const OUT = process.env.SHOT_DIR;
@@ -710,11 +711,173 @@ await shot(narrowAdmin, 'task-11-publication-320');
 await narrowAdmin.close();
 await publicPage.close();
 
+
+// Task 12 — 접근성, 키보드, 조작 크기를 여섯 화면에서 한 번에 잰다.
+// 화면마다 손으로 확인하던 것을 관문으로 옮긴다. 손 검사는 바쁜 날 제일 먼저 빠진다.
+const A11Y_SCHOOL = 'simple-swap%3Aworkspace';
+const A11Y_CASE = 'simple-swap%3Acase%3Arequest';
+const CORE_SCREENS = [
+  { id: '진입', path: '/' },
+  { id: '학교 설정', path: '/?view=setup' },
+  { id: '교사', path: `/?view=teacher&school=${A11Y_SCHOOL}&teacher=teacher%3Aseo-jun` },
+  { id: '관제판', path: `/?view=ops&school=${A11Y_SCHOOL}&case=${A11Y_CASE}&step=case` },
+  { id: '행정 마감', path: `/?view=ops&school=${A11Y_SCHOOL}&case=${A11Y_CASE}&step=admin` },
+  { id: '학급 공개', path: `/?view=class&school=${A11Y_SCHOOL}&grade=2&class=1` },
+];
+
+const a11yCtx = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+const a11y = await a11yCtx.newPage();
+a11y.on('pageerror', (error) => failures.push(`접근성 점검 중 페이지 오류: ${error.message}`));
+await a11y.goto(BASE, { waitUntil: 'networkidle' });
+await a11y.getByRole('button', { name: '예시 학교 둘러보기' }).click();
+await a11y.waitForURL(/\?view=ops&school=/);
+
+for (const screen of CORE_SCREENS) {
+  await a11y.goto(`${BASE}${screen.path}`, { waitUntil: 'networkidle' });
+  await a11y.waitForTimeout(120);
+  const result = await new AxeBuilder({ page: a11y })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+  const blocking = result.violations.filter((item) => item.impact === 'serious' || item.impact === 'critical');
+  for (const violation of blocking) {
+    failures.push(`${screen.id} 접근성 ${violation.impact}: ${violation.id} (${violation.nodes.length}곳)`);
+  }
+  const landmarks = await a11y.evaluate(() => ({
+    main: document.querySelectorAll('main').length,
+    heading: Boolean(document.querySelector('h1, h2')),
+    skip: Boolean(document.querySelector('.skip-link')),
+  }));
+  if (landmarks.main !== 1) failures.push(`${screen.id} 본문 랜드마크가 ${landmarks.main}개`);
+  if (!landmarks.heading) failures.push(`${screen.id} 화면 제목이 없음`);
+  if (!landmarks.skip) failures.push(`${screen.id} 건너뛰기 링크가 없음`);
+}
+
+// 좁은 폭에서 조작 크기와 가로 넘침을 여섯 화면 모두에서 잰다.
+for (const width of [390, 320]) {
+  await a11y.setViewportSize({ width, height: width === 390 ? 844 : 740 });
+  for (const screen of CORE_SCREENS) {
+    await a11y.goto(`${BASE}${screen.path}`, { waitUntil: 'networkidle' });
+    await a11y.waitForTimeout(120);
+    const metrics = await a11y.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      document: document.documentElement.scrollWidth,
+      small: [...document.querySelectorAll('button, a[href], input, select, textarea')]
+        .filter((node) => {
+          const box = node.getBoundingClientRect();
+          if (box.width === 0 || box.height === 0) return false;
+          if (node.classList.contains('skip-link')) return false;
+          return box.height < 44 || box.width < 44;
+        })
+        .map((node) => `${node.tagName.toLowerCase()}.${node.className || '무명'}`),
+    }));
+    if (metrics.document > metrics.viewport + 1) {
+      failures.push(`${width}px ${screen.id} 문서가 ${metrics.document - metrics.viewport}px 넘침`);
+    }
+    if (metrics.small.length) {
+      failures.push(`${width}px ${screen.id} 조작 ${metrics.small.length}개가 44px 미만: ${[...new Set(metrics.small)].slice(0, 3).join(', ')}`);
+    }
+  }
+}
+
+// 키보드만으로 진입부터 게시까지 걸어 본다. 초점이 body 로 떨어지면 길이 끊긴 것이다.
+await a11y.setViewportSize({ width: 1440, height: 960 });
+await a11y.goto(`${BASE}/?view=ops&school=${A11Y_SCHOOL}&case=${A11Y_CASE}&step=case`, { waitUntil: 'networkidle' });
+await a11y.waitForTimeout(100);
+// 건너뛰기 링크는 문서에서 초점을 받을 수 있는 첫 요소여야 하고, 눌렀을 때 본문에
+// 닿아야 한다. Tab 한 번으로 재지 않는 이유는 앱 껍데기가 화면이 바뀔 때 제목으로
+// 초점을 옮기고, 브라우저는 그 자리를 다음 Tab 의 출발점으로 기억하기 때문이다.
+const focusOrder = await a11y.evaluate(() => {
+  const focusable = document.querySelector(
+    'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])',
+  );
+  return focusable?.className ?? '';
+});
+if (!focusOrder.includes('skip-link')) failures.push(`건너뛰기 링크가 첫 초점 대상이 아님 (${focusOrder})`);
+await a11y.locator('.skip-link').focus();
+await a11y.keyboard.press('Enter');
+await a11y.waitForTimeout(80);
+const afterSkip = await a11y.evaluate(() => document.activeElement?.id || document.activeElement?.tagName || '');
+if (afterSkip !== 'main-content') failures.push(`건너뛰기 링크가 본문으로 초점을 옮기지 않음 (${afterSkip})`);
+
+for (const [label, name] of [
+  ['대안 적용', '대안 적용'],
+  ['해결안 승인', '해결안 승인'],
+]) {
+  const control = a11y.getByRole('button', { name });
+  await control.focus();
+  await a11y.keyboard.press('Enter');
+  await a11y.waitForTimeout(150);
+  const focus = await a11y.evaluate(() => document.activeElement?.tagName ?? 'NONE');
+  if (focus === 'BODY') failures.push(`${label} 뒤 초점이 본문 바깥으로 떨어짐`);
+}
+await a11y.waitForTimeout(120);
+for (const [kind, name] of [
+  ['neis', '직접 입력했음'],
+  ['teacher_notice', '이미 안내했음'],
+  ['class_publication', '미리보기 확인했음'],
+]) {
+  const control = a11y.locator(`[data-publication-task="${kind}"]`).getByRole('button', { name });
+  await control.focus();
+  await a11y.keyboard.press('Enter');
+  await a11y.waitForTimeout(100);
+}
+const publishControl = a11y.locator('[data-publish-action]');
+await publishControl.focus();
+await a11y.keyboard.press('Enter');
+await a11y.waitForTimeout(180);
+const keyboardPublished = await a11y.evaluate(() => {
+  const state = JSON.parse(localStorage.getItem('joyul:v2:workspace:simple-swap:workspace'));
+  return {
+    status: state.cases.find((item) => item.id === 'simple-swap:case:request')?.status,
+    focus: document.activeElement?.tagName ?? 'NONE',
+    announced: [...document.querySelectorAll('[role="status"], [aria-live]')]
+      .map((node) => node.textContent?.trim() ?? '')
+      .filter(Boolean),
+  };
+});
+if (keyboardPublished.status !== 'published') failures.push('키보드만으로 게시까지 가지 못함');
+if (keyboardPublished.focus === 'BODY') failures.push('게시 뒤 초점이 본문 바깥으로 떨어짐');
+if (!keyboardPublished.announced.some((text) => text.includes('게시'))) {
+  failures.push('게시 결과를 알림 영역이 말하지 않음');
+}
+
+// 동작 줄이기를 켠 사람에게는 전파 표시가 움직이지 않고 말로 도착해야 한다.
+const reducedCtx = await browser.newContext({
+  viewport: { width: 1440, height: 960 },
+  reducedMotion: 'reduce',
+});
+const reduced = await reducedCtx.newPage();
+await reduced.goto(BASE, { waitUntil: 'networkidle' });
+await reduced.getByRole('button', { name: '예시 학교 둘러보기' }).click();
+await reduced.waitForURL(/\?view=ops&school=/);
+await reduced.goto(`${BASE}/?view=ops&school=${A11Y_SCHOOL}&case=${A11Y_CASE}&step=case`, { waitUntil: 'networkidle' });
+await reduced.waitForTimeout(80);
+await reduced.getByRole('button', { name: '대안 적용' }).click();
+await reduced.waitForTimeout(60);
+await reduced.getByRole('button', { name: '해결안 승인' }).click();
+await reduced.waitForTimeout(150);
+const reducedMetrics = await reduced.evaluate(() => {
+  const sample = document.querySelector('.publication-tasks > li') ?? document.body;
+  return {
+    rendered: Boolean(document.querySelector('[data-publication-center]')),
+    animation: getComputedStyle(sample).animationDuration,
+    scroll: getComputedStyle(document.documentElement).scrollBehavior,
+    live: [...document.querySelectorAll('[role="status"], [aria-live]')].length,
+  };
+});
+if (!reducedMetrics.rendered) failures.push('동작 줄이기 점검이 게시 화면을 열지 못함');
+if (Number.parseFloat(reducedMetrics.animation) > 0.05) failures.push(`동작 줄이기에서도 애니메이션이 남아 있음 (${reducedMetrics.animation})`);
+if (reducedMetrics.scroll === 'smooth') failures.push('동작 줄이기에서도 부드러운 스크롤이 남아 있음');
+if (reducedMetrics.live === 0) failures.push('동작 줄이기 화면에 알림 영역이 없음');
+await reducedCtx.close();
+await a11yCtx.close();
+
 console.log('랜딩 행동·민감 입력 분리:', failures.some((item) => item.includes('랜딩')) ? '실패' : '통과');
 console.log('최초 설정 순서·게이트:', failures.some((item) => item.includes('설정') || item.includes('초대')) ? '실패' : '통과');
 console.log('체험 역할·출처:', failures.some((item) => item.includes('역할') || item.includes('출처')) ? '실패' : '통과');
 console.log('모바일 폭:', mobileMetrics.viewport, '문서 폭:', mobileMetrics.document, '작은 조작:', mobileMetrics.small);
 console.log('교사 오늘·변경 요청:', failures.some((item) => item.includes('교사') || item.includes('변경 요청')) ? '실패' : '통과');
+console.log('접근성·키보드:', failures.some((item) => item.includes('접근성') || item.includes('초점') || item.includes('건너뛰기') || item.includes('44px')) ? '실패' : '통과');
 console.log('검증 결과:', failures.length ? failures : '모두 통과');
 
 await mobileCtx.close();

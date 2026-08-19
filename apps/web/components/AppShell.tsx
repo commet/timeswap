@@ -86,7 +86,7 @@ export function AppShell({ state, location, saveState, navigate }: AppShellProps
   );
 
   if (!state || state.workspace.id !== location.school) return (
-    <main className="missing-workspace" aria-labelledby="role-page-title">
+    <main id="main-content" tabIndex={-1} className="missing-workspace" aria-labelledby="role-page-title">
       <span className="eyebrow">학교 자료 없음</span>
       <h1 id="role-page-title" tabIndex={-1}>이 기기에서 학교를 열 수 없습니다</h1>
       <p>받은 링크의 학교를 아직 설정하지 않았습니다. 학교 진입 화면에서 다시 시작하십시오.</p>

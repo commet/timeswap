@@ -16,9 +16,12 @@
     "dev": "npm run dev -w web",
     "serve": "node scripts/serve-checked.mjs",
     "smoke": "node scripts/smoke.mjs",
+    "visual-review": "node scripts/visual-review.mjs",
+    "css-usage": "node scripts/css-usage.mjs",
     "check": "node scripts/check-config.mjs"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "playwright": "^1.62.1"
   }
 }

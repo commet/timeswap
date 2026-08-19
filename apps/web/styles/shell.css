@@ -1,0 +1,149 @@
+/* 앱 껍데기. 진입, 머리말, 역할 이동, 학교 설정처럼 화면을 감싸는 것들이다. */
+
+/* ── 공통 구조 ─────────────────────────── */
+.shell  { min-height: 100dvh; display: flex; flex-direction: column; }
+.topbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 20px; border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 88%, var(--surface));
+  position: sticky; top: 0; z-index: 20; backdrop-filter: blur(6px);
+}
+.wordmark {
+  display: flex; align-items: center; gap: 8px; flex: none;
+  font-weight: 800; font-size: 17px; letter-spacing: -0.01em;
+  border: 0; background: none; padding: 4px 6px; margin-left: -6px; border-radius: 8px;
+  transition: background 0.15s ease;
+}
+.wordmark:hover { background: var(--surface-2); }
+.wordmark .tick { width: 10px; height: 10px; border-radius: 3px; background: var(--accent); }
+.wordmark .beta { font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; }
+.school-chip { font-size: 13px; color: var(--muted); font-weight: 600; padding-left: 8px; border-left: 1px solid var(--line); }
+.topbar .spacer { flex: 1; }
+.select {
+  appearance: none; border: 1px solid var(--line); background: var(--surface);
+  border-radius: 8px; padding: 6px 30px 6px 12px; font-weight: 600; font-size: 14px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 55%, calc(100% - 11px) 55%;
+  background-size: 5px 5px; background-repeat: no-repeat;
+}
+.btn {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 8px;
+  padding: 6px 14px; font-weight: 700; font-size: 14px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover { background: var(--accent-strong); }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+.btn.ghost:hover { color: var(--ink); }
+/* ── 랜딩 ─────────────────────────────── */
+.landing  { flex: 1; display: flex; align-items: center; justify-content: center; padding: 48px 20px; }
+.landing-card { max-width: 760px; width: 100%; }
+.hero { display: flex; align-items: center; gap: 28px; }
+.landing h1 {
+  font-size: clamp(28px, 5vw, 40px); line-height: 1.25; letter-spacing: -0.02em;
+  font-weight: 800; margin: 0 0 12px; text-wrap: balance;
+}
+.landing h1 em { font-style: normal; color: var(--accent); }
+.landing .lede { color: var(--muted); font-size: 16px; margin: 0 0 28px; text-wrap: pretty; }
+.dropzone.on { border-color: var(--accent); background: var(--accent-soft); }
+.dropzone .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; align-items: stretch; }
+/* 단추마다 무엇이 필요한지 한 줄로 적는다. 누른 뒤에 알면 늦다 */
+.dropzone .actions .btn  {
+  padding: 9px 18px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+/* 이어서 작업. 저장된 시간표가 있을 때만 나오며 가장 먼저 눈에 들어와야 한다. */
+.resume  {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  margin-bottom: 14px; padding: 13px 16px; border-radius: var(--radius);
+  border: 1.5px solid var(--accent); background: var(--accent-soft);
+  transition: background 0.15s ease;
+}
+.landing .privacy {
+  margin-top: 18px; font-size: 13px; color: var(--muted);
+  display: flex; gap: 8px; align-items: baseline;
+}
+.landing .privacy::before { content: ''; width: 7px; height: 7px; border-radius: 2px; background: var(--accent); flex: none; transform: translateY(-1px); }
+/* 사용 3단계 */
+.steps  {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  list-style: none; counter-reset: step; margin: 20px 0 0; padding: 0;
+}
+.input {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 8px;
+  padding: 8px 12px; font-size: 14px; width: 100%;
+}
+.input:focus { border-color: var(--accent); outline: none; }
+/* ── 2026 제품 흐름: 개인 시간표 → 비교 요청 → 일과 마무리 ── */
+.topbar  { min-height: 64px; box-shadow: 0 1px 0 rgb(23 32 51 / 0.03); }
+.btn, .select, .input { min-height: var(--tap); }
+.btn:disabled { cursor: not-allowed; opacity: 0.45; }
+.landing-card { max-width: 920px; }
+.hero { gap: 54px; margin-bottom: 30px; }
+.landing h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.17; letter-spacing: -0.045em; }
+.landing .lede { max-width: 650px; margin-bottom: 0; font-size: 17px; }
+.entry-path.primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.entry-path.primary:hover { background: var(--accent-strong); }
+.teacher-work { flex: 1; width: 100%; padding-bottom: 30px; }
+.eyebrow {
+  display: block; margin: 0 0 4px; color: var(--accent); font-size: 11px;
+  font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.teacher-welcome p:not(.eyebrow) { margin: 6px 0 0; color: var(--muted); }
+.selected .compare-method i { background: var(--accent); color: var(--on-accent); }
+.inbox-list > button.selected { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+/* Task 7 — 학교 진입과 최초 설정. 시간표의 눈금·현재선이 화면 구조를 이끈다. */
+.school-entry  { min-height: 100dvh; align-items: flex-start; padding-top: clamp(28px, 7vh, 76px); }
+.school-entry .landing-card { max-width: 1080px; }
+.entry-hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(360px, .9fr); gap: clamp(32px, 6vw, 84px); align-items: center; }
+.entry-copy .eyebrow { margin-bottom: 12px; }
+.entry-copy h1 { margin: 0; font-size: clamp(42px, 6vw, 76px); line-height: 1.06; letter-spacing: -.062em; }
+.entry-copy h1 em { color: var(--accent); }
+.entry-copy > p { max-width: 600px; margin: 22px 0 0; color: var(--muted); font-size: 17px; }
+.school-entry-panel { margin-top: 48px; padding: 22px; border-radius: 17px; background: var(--ink); color: var(--surface); }
+.school-entry-panel > label { display: block; margin-bottom: 8px; color: color-mix(in srgb, var(--surface) 72%, transparent); font-size: 11px; font-weight: 800; letter-spacing: .04em; }
+.school-entry-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; }
+.school-entry-row .input { border-color: transparent; background: var(--surface); color: var(--ink); }
+.school-entry-row .btn { min-width: 206px; }
+.saved-school { width: 100%; min-height: 48px; margin-top: 9px; padding: 7px 10px; display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; border: 0; border-radius: 10px; background: rgb(255 255 255 / .08); color: inherit; text-align: left; }
+.saved-school span { font-size: 10px; opacity: .68; }
+.saved-school b { font-size: 13px; }
+.saved-school i { font-style: normal; }
+.entry-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 13px; }
+.entry-actions > button { position: relative; min-height: 98px; padding: 16px 48px 16px 17px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); display: flex; flex-direction: column; align-items: flex-start; text-align: left; }
+.entry-actions > button:hover { border-color: var(--accent); transform: translateY(-1px); }
+.entry-actions span { color: var(--muted); font-size: 10px; font-weight: 800; }
+.entry-actions b { margin-top: 4px; font-size: 16px; }
+.entry-actions i { position: absolute; right: 18px; top: 50%; transform: translateY(-50%); color: var(--accent); font-size: 20px; font-style: normal; }
+.entry-demo { background: var(--accent-soft) !important; border-color: color-mix(in srgb, var(--accent) 40%, var(--line)) !important; }
+.entry-trust { display: flex; align-items: center; gap: 8px; margin: 18px 2px 0; color: var(--muted); font-size: 12px; }
+.entry-trust span { width: 19px; height: 19px; border-radius: 50%; display: grid; place-items: center; background: var(--success-soft); color: var(--success); font-weight: 900; }
+.app-shell { min-height: 100dvh; }
+.shell-header { position: relative; z-index: 5; min-height: 78px; padding: 11px 20px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 18px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.shell-wordmark { min-height: var(--tap); padding: 6px 10px; border: 0; background: transparent; color: var(--accent); font-weight: 900; font-size: 17px; }
+.shell-wordmark span { margin-right: 7px; }
+.shell-school span { color: var(--muted); font-size: 9px; font-weight: 800; }
+.shell-school h1 { margin: 0; font-size: 16px; letter-spacing: -.02em; }
+.role-navigation { display: flex; align-items: center; gap: 3px; padding: 3px; border-radius: 11px; background: var(--surface-2); }
+.role-navigation .role-label { padding: 0 8px; color: var(--muted); font-size: 10px; font-weight: 850; }
+.role-navigation button { min-height: 38px; padding: 5px 11px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 780; }
+.role-navigation button.current { background: var(--surface); color: var(--ink); box-shadow: 0 1px 4px rgb(23 32 51 / .1); }
+.role-navigation small { max-width: 150px; padding: 0 7px; color: var(--muted); font-size: 8px; line-height: 1.25; }
+.missing-workspace, .role-placeholder { width: min(720px, calc(100% - 32px)); margin: 72px auto; padding: 32px; border: 1px solid var(--line); border-radius: 17px; background: var(--surface); }
+/* Task 8 — teacher request path.  This is deliberately separate from the legacy ops grid. */
+.teacher-command  { width: min(1120px, calc(100% - 40px)); margin: 30px auto 56px; display: grid; gap: 16px; }
+.teacher-command-intro { padding: clamp(20px, 4vw, 34px); display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; }
+.teacher-command h1, .teacher-command h2 { margin: 0; letter-spacing: -.04em; }
+.teacher-command h1 { font-size: clamp(27px, 4vw, 43px); }
+.teacher-request-button { flex: none; min-height: 50px; min-width: 116px; }
+.whole-day { min-height: var(--tap); flex-direction: row !important; align-items: center; white-space: nowrap; color: var(--ink) !important; }
+.affected-lessons > label { min-height: var(--tap); display: flex; align-items: center; gap: 9px; border-top: 1px solid var(--line); font-size: 13px; }
+.affected-lessons > label:first-of-type { border-top: 0; }
+.affected-lessons > p { color: var(--muted); font-size: 13px; }
+/* Task 11 — 행정 마감, 학급 공개 시간표, 게시 전파. */
+.visually-hidden  { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* 건너뛰기 링크. 초점을 받기 전에는 자리를 차지하지 않고, 받으면 가장 앞에 선다. */
+.skip-link { position: absolute; left: -9999px; top: 0; z-index: 20; padding: 11px 15px; border-radius: 0 0 10px 0; background: var(--accent); color: var(--on-accent); font-weight: 800; text-decoration: none; }
+.skip-link:focus { left: 0; }

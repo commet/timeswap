@@ -14,7 +14,7 @@ export interface RoleViewAdapterProps {
 }
 
 const MissingRoleView = ({ location }: RoleViewAdapterProps) => (
-  <main className="role-placeholder">
+  <main id="main-content" tabIndex={-1} className="role-placeholder">
     <h2>{location.view === 'teacher' ? '교사 화면' : location.view === 'ops' ? '일과 담당 화면' : '학급 공개 화면'}</h2>
     <p>이 역할 화면은 다음 작업에서 새 상태 모델에 맞춰 교체됩니다.</p>
   </main>

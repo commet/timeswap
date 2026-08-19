@@ -49,7 +49,7 @@ export function OpsCommandCenter({
 }: OpsCommandCenterProps) {
   const mobileStep = step ?? 'list';
   return (
-    <main className="ops-command-center" data-ops-command-center data-ops-step={mobileStep}>
+    <main id="main-content" tabIndex={-1} className="ops-command-center" data-ops-command-center data-ops-step={mobileStep}>
       <header className="ops-command-heading">
         <div>
           <span className="eyebrow">일과 담당 · 변경 관제판</span>

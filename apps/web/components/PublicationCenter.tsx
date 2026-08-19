@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ChangePulse, type ChangePulseDestination } from './ChangePulse';
 import { completeAdminTask, createCorrectionCase } from '../lib/case-service';
@@ -61,6 +61,15 @@ export function PublicationCenter({
   const [needsExport, setNeedsExport] = useState(false);
   const [fallbackText, setFallbackText] = useState<Record<string, string>>({});
   const [pulse, setPulse] = useState<ChangePulseDestination[] | null>(null);
+  const resultRef = useRef<HTMLParagraphElement | null>(null);
+
+  /**
+   * 게시하면 눌렀던 단추가 사라진다. 초점을 그대로 두면 본문 바깥으로 떨어져
+   * 키보드로 온 사람이 길을 잃는다. 방금 생긴 결과 문장으로 초점을 옮긴다.
+   */
+  useEffect(() => {
+    if (pulse) resultRef.current?.focus();
+  }, [pulse]);
   const view = useMemo(() => projectPublicationCenter(state, caseId), [state, caseId]);
 
   const commit = (next: WorkspaceState, success: string): boolean => {
@@ -279,7 +288,7 @@ export function PublicationCenter({
         )}
         {view.blockedReason && <p className="publication-blocked">{view.blockedReason}</p>}
         {view.stage === 'published' && view.publication && (
-          <p className="publication-done">게시 시각 {publishedTimeLabel(view.publication.publishedAt)} · 변경 {view.publication.changedLessonIds.length}건</p>
+          <p className="publication-done" ref={resultRef} tabIndex={-1}>게시 시각 {publishedTimeLabel(view.publication.publishedAt)} · 변경 {view.publication.changedLessonIds.length}건</p>
         )}
         {view.stage === 'published' && (
           <button className="btn" onClick={startCorrection} data-correction-action>이 게시를 정정하기</button>
