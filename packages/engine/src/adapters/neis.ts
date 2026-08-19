@@ -455,10 +455,20 @@ export function neisToTimetable(
     });
   }
 
+  // 학년은 학급 표시(`2-7`)에서 읽어 명시로 넘긴다.
+  // 학급 키는 학교 코드로 시작하는 구조화된 값이라 거기서 캐내면 학교 코드를 학년으로 읽는다.
+  const klassGrade: Record<string, number> = {};
+  for (const c of report.cells) {
+    if (klassGrade[c.klass] !== undefined) continue;
+    const g = Number(c.classLabel.split('-')[0]);
+    if (Number.isFinite(g) && g >= 1 && g <= 12) klassGrade[c.klass] = g;
+  }
+
   return {
     config: report.config,
     assignments,
     conflicts,
+    ...(Object.keys(klassGrade).length > 0 ? { klassGrade } : {}),
     ...(Object.keys(klassBusy).length > 0 ? { klassBusy } : {}),
   };
 }
@@ -478,66 +488,143 @@ export interface TeacherConflict {
 }
 
 /**
- * 학년별 과목 다양성. 선택과목 구간인지 가르는 데 쓴다.
+ * 학년의 편성 모양. 교체 상대를 찾기 어려운 학년인지 가르는 데 쓴다.
  *
- * 실제 학교 24곳의 나이스 자료를 받아 재어 만들었다.
- * 학년이 올라갈수록 한 학년에 동시에 열리는 과목 종수가 뚜렷하게 는다.
+ * 인증키를 받아 전국 고등학교 217곳의 한 주를 통째로 재어 다시 만들었다.
+ * 앞서 24곳으로 정한 값을 그대로 두었다면 안내 절반이 틀린 채로 나갔다.
  *
- * | 학년 | 최소 | 1사분위 | 중앙 | 3사분위 | 최대 |
- * |---|---|---|---|---|---|
- * | 1학년 | 1.1 | 1.3 | 1.5 | 1.9 | 3.3 |
- * | 2학년 | 0.8 | 1.6 | 2.2 | 2.9 | 3.7 |
- * | 3학년 | 1.0 | 2.4 | 2.7 | 3.3 | 6.9 |
+ * 가르는 값은 공통도(sharedRate)다. 과목마다 그 과목을 듣는 학급이 학년의 몇 할인지
+ * 구해 평균한다. 모든 학급이 같은 과목을 들으면 1.0 이고, 학급마다 다른 강좌를
+ * 들으면 0 에 가까워진다.
  *
- * 학급 수로 나눈 값이다. 고교학점제가 자료에 이렇게 보인다.
+ * | 무리 | 1학년 중앙 | 2학년 중앙 | 3학년 중앙 |
+ * |---|---|---|---|
+ * | 일반고와 자율고 (106곳) | 0.91 | 0.50 | 0.39 |
+ * | 특목고 (28곳) | 0.75 | 0.56 | 0.57 |
  *
- * 자리마다 "이동수업입니까"를 묻던 규칙은 같은 자료에서 판별력이 없었다.
- * 학년과 무관하게 비슷한 수가 나와, 공통과목만 있는 1학년에서도 같은 빈도로 떴다.
- * 반면 이 비율은 학년을 가른다. 그래서 묻는 단위를 자리에서 학년으로 옮겼다.
+ * 자리마다 "이동수업입니까"를 묻던 규칙은 판별력이 없었다. 학년과 무관하게 비슷한
+ * 수가 나와 공통과목만 있는 1학년에서도 같은 빈도로 떴다. 그래서 묻는 단위를
+ * 자리에서 학년으로 옮겼다.
  */
 export interface GradeShape {
   /** 학년. 학급 이름 맨 앞 숫자 */
   grade: number;
   klasses: number;
   subjects: number;
-  /** 학급 수로 나눈 과목 종수 */
+  /**
+   * 학급 수로 나눈 과목 종수.
+   *
+   * 화면에 "학급 N개에 과목 M종"으로 보여 주는 데만 쓴다. 판정에는 쓰지 않는다.
+   * 분모가 학급 수라 학년이 작을수록 값이 커진다. 전국 표본에서 학급 1~2개 학년의
+   * 중앙값이 10.00, 11개 이상 학년이 1.91 이었다. 같은 교육과정을 돌려도 다섯 배가
+   * 벌어진다. 이 값으로 가르면 작은 학교를 통째로 선택과목 구간으로 읽는다.
+   */
   ratio: number;
+  /**
+   * 공통도. 과목마다 (그 과목을 듣는 학급 수 / 학년 학급 수)를 구해 평균한 값이다.
+   *
+   * 학급 수로 먼저 나눈 뒤 평균하므로 학년 규모에 덜 끌려다닌다. 같은 전국 표본에서
+   * 학급 1~2개 학년 1.00, 11개 이상 학년 0.46 으로 벌어짐이 5.2배에서 2.2배로 줄었다.
+   * 남은 벌어짐은 치우침이 아니다. 학급이 하나뿐인 학년에는 함께 움직일 다른 학급이
+   * 정말로 없다.
+   */
+  sharedRate: number;
   /** 그 가운데 전문교과 실습 과목 종수 */
   proSubjects: number;
-  /** 교체 상대를 찾기 어려운 학년으로 볼 만한지 */
+  /**
+   * 그 학년 수업 가운데 담당 교사를 아직 모르는 몫.
+   *
+   * 이 값이 크면 공통도를 믿을 수 없다. 덜 채운 자리가 "그 학급은 그 과목을 안 듣는다"로
+   * 읽혀 공통도를 끌어내리기 때문이다.
+   */
+  unknownRate: number;
+  /**
+   * 교체 상대를 찾기 어려운 학년으로 볼 만한지.
+   *
+   * 자료가 얇거나 표를 덜 채웠으면 참으로 두지 않는다. 모르는 것을 근거로 삼지 않는다.
+   */
   elective: boolean;
   /**
    * 과목이 많은 까닭. 화면에 다른 문장이 나간다.
    *
-   * 비율만 보고 모두 "선택과목"이라 하면 특성화고에서 틀린다.
-   * 특성화고 13곳 38개 학년 가운데 29개가 2.2를 넘는데, 그 학교의 과목이 많은 까닭은
-   * 고교학점제 선택과목이 아니라 학과별 전공 편성이다. 학급은 학과 안에서 그대로 함께 다닌다.
+   * 공통도만 보고 모두 "선택과목"이라 하면 특성화고에서 틀린다.
+   * 전국 217곳 실측에서 전문계 3학년의 85%가 기준 아래로 내려가는데, 그 학교의
+   * 교체 상대가 적은 까닭은 고교학점제 선택과목이 아니라 학과별 전공 편성이다.
+   * 학급은 학과 안에서 그대로 함께 다닌다.
    * 이유를 틀리게 말하면 그 뒤의 안내까지 못 믿게 된다.
    */
   kind: '보통' | '선택과목' | '전공실습';
 }
 
 /**
- * 이 값을 넘으면 선택과목이 열리는 학년으로 본다.
+ * 공통도가 이 값보다 낮으면 교체 상대를 찾기 어려운 학년으로 본다.
  *
- * 처음에는 학교 셋만 보고 1.5로 잡았다. 24곳으로 넓히니 1학년 중앙값이 바로 1.5여서
- * 1학년의 절반을 선택과목 구간으로 잘못 보고 있었다. 기준값별로 다시 쟀다.
+ * 앞서 두 번 틀렸다. 학교 셋만 보고 "과목 종수 / 학급 수"를 1.5로 잡았고,
+ * 24곳으로 넓히니 1학년 중앙값이 바로 1.5여서 2.2로 옮겼다.
+ * 인증키를 받아 전국 217곳을 통째로 재니 2.2도 틀린 값이었다.
  *
- * | 기준 | 1학년 오탐 | 3학년 미탐 |
+ * | 기준 (옛 지표) | 일반고 1학년 오탐 | 특목고 1학년 오탐 |
  * |---|---|---|
- * | 1.5 | 54% | 10% |
- * | 2.0 | 17% | 10% |
- * | **2.2** | **4%** | **14%** |
- * | 2.5 | 4% | 43% |
+ * | 2.2 (24곳에서 4%로 봤던 값) | **17%** | **50%** |
  *
- * 2.2를 골랐다. 놓치는 쪽보다 잘못 알리는 쪽이 나쁘기 때문이다.
- * 공통과목만 도는 1학년에서 "선택과목이라 교체가 어렵다"고 하면 그 말이 틀렸고,
- * 한 번 틀린 안내는 다음 안내까지 못 믿게 만든다.
+ * 기준값을 옮겨도 낫지 않았다. 4.0 까지 올려도 오탐이 9%와 25%로 남는데 3학년 미탐이
+ * 64%로 갔다. 값이 아니라 지표가 문제였다. 분모가 학급 수여서 작은 학년이 무조건
+ * 높게 나왔기 때문이다.
  *
- * 알아 둘 것이 하나 있다. 학급이 적은 학교는 비율이 높게 나온다.
- * 학급 7개 이하는 평균 2.27, 10개 이상은 1.83이었다. 작은 학교에서 오탐이 조금 더 난다.
+ * 그래서 공통도로 바꿨다. 같은 표본에서 이렇게 갈린다.
+ *
+ * | 기준 | 일반고 1학년 오탐 | 일반고 3학년 미탐 | 특목고 1학년 오탐 | 특목고 3학년 미탐 |
+ * |---|---|---|---|---|
+ * | 0.60 | 3% | 9% | 18% | 36% |
+ * | **0.65** | **3%** | **7%** | **25%** | **25%** |
+ * | 0.70 | 4% | 5% | 29% | 14% |
+ *
+ * 0.65 를 골랐다. 표본을 절반으로 갈라 스무 번 다시 고르게 하니 0.59 에서 0.70 사이,
+ * 중앙 0.67 이 나왔다. 0.65 는 그 안에 넉넉히 든다.
+ *
+ * 특목고 오탐 25% 는 그대로 두었다. 과학고와 외국어고 1학년에는 실제로 계열별 강좌가
+ * 열려 오탐이라 센 것 가운데 오탐이 아닌 것이 섞여 있다. 자료로 가릴 수 없어
+ * 숫자를 그대로 적어 둔다. 없는 정확도를 적어 두면 다음 사람이 속는다.
+ *
+ * 잘못 알리는 쪽이 놓치는 쪽보다 나쁘다는 원칙은 그대로다. 공통과목만 도는 1학년에서
+ * "선택과목이라 교체가 어렵다"고 하면 그 말이 틀렸고, 한 번 틀린 안내는 다음 안내까지
+ * 못 믿게 만든다.
  */
-export const ELECTIVE_RATIO = 2.2;
+export const SHARED_SUBJECT_MIN = 0.65;
+
+/**
+ * 학년의 수업 가운데 담당을 모르는 몫이 이 값을 넘으면 판정을 내지 않는다.
+ *
+ * 교사 표는 사람이 채운다. 학교 하나에 (학급, 과목) 짝이 수백 개라 처음부터 다 채우고
+ * 시작하는 사람은 없다. 그런데 덜 채우면 공통도가 실제보다 낮게 나온다. 한 과목을
+ * 학급 넷이 다 듣는데 둘만 채워 두면 그 과목은 0.5 로 계산되기 때문이다.
+ *
+ * 전국 217곳 자료로 표를 무작위로 덜 채워 가며 재었다. 판정이 뒤집힌 몫이다.
+ *
+ * | 채운 비율 | 뒤집힘 | 그중 오탐 |
+ * |---|---|---|
+ * | 100% | 0.0% | 0.0% |
+ * | 90% | 5.4% | 5.4% |
+ * | 80% | 10.6% | 10.6% |
+ * | 70% | 22.1% | 21.9% |
+ * | 60% | 32.6% | 32.4% |
+ *
+ * **뒤집힘이 거의 전부 오탐이다.** 덜 채운 학교가 "선택과목이라 교체가 어렵다"는
+ * 틀린 안내를 받는다. 표를 덜 채웠다는 이유만으로 나가는 안내다.
+ *
+ * 그래서 담당을 모르는 몫으로 억제한다. 억제 기준별로 남는 오탐이다.
+ *
+ * | 억제 기준 | 억제된 몫 | 남은 오탐 | 제대로 뜬 안내 |
+ * |---|---|---|---|
+ * | 없음 | 0.0% | 14.6% | 56.5% |
+ * | 0.35 | 24.8% | 6.2% | 42.2% |
+ * | **0.25** | **37.3%** | **3.2%** | **35.2%** |
+ * | 0.15 | 55.8% | 1.3% | 24.7% |
+ *
+ * 0.25 를 골랐다. 지표 자체의 오탐이 3% 라서다. 지키려는 것보다 헐거운 보호 장치는
+ * 약한 고리가 된다. 더 조이면 제대로 뜰 안내까지 절반이 사라진다.
+ */
+export const MAX_UNKNOWN_SHARE = 0.25;
 
 /**
  * 학교 전체 과목 가운데 이 몫 넘게 전문교과이면 전공 편성으로 과목이 많은 학교로 본다.
@@ -558,23 +645,56 @@ export const ELECTIVE_RATIO = 2.2;
  * | 과학고, 외국어고, 예술고, 체육고 | 9 | 0.00 | 0.00 | 0.00 |
  * | 특성화고와 마이스터고 | 16 | 0.31 | 0.54 | 0.67 |
  *
- * 0.00 과 0.31 사이에 놓인 학교가 하나도 없다. 그 사이 어디에 두어도 판정이 같아
- * 가운데인 0.15 로 둔다. 값이 흔들려도 결과가 안 바뀌는 자리다.
+ * **여기까지가 25곳에서 본 것이고, 그때 붙인 근거는 틀렸다.**
+ * 당시에는 "0.00 과 0.31 사이에 놓인 학교가 하나도 없으니 값이 흔들려도 결과가
+ * 안 바뀐다"고 적었다. 전국 217곳에서는 그 구간에 13곳이 들어앉는다.
+ *
+ * 값은 그대로 두었다. 근거를 다시 대야 해서 다시 쟀을 뿐이다.
+ * 나이스의 `HS_GNRL_BUSNS_SC_NM`(일반계 또는 전문계)을 정답으로 놓고 훑었다.
+ * 계열명으로 가르면 안 된다. 특성화고로 등록된 대안학교가 전문교과를 하나도 안 쓴다.
+ *
+ * | 기준 | 전문계 미탐 | 일반계 오탐 | 오분류 합 |
+ * |---|---|---|---|
+ * | 0.05 | 2.5% | 2.9% | 6 |
+ * | **0.15** | **3.8%** | **2.2%** | **6** |
+ * | 0.20 | 7.6% | 1.4% | 8 |
+ * | 0.30 | 13.9% | 0.7% | 12 |
+ *
+ * 217곳에 오분류 6곳으로 최저다. 다만 경계가 비어 있어서가 아니라 오분류가 가장
+ * 적어서 고른 값이다. 표본이 늘면 다시 재야 한다.
  */
 export const PRO_SHARE = 0.15;
+
+/**
+ * 학급의 학년을 읽는다. 명시로 받은 것이 먼저다.
+ *
+ * 학급 키에서 정규식으로 캐내는 길만 두었다가 실제 자료에서 통째로 틀렸다.
+ * 나이스 학급 키는 학교 코드로 시작하는 JSON 이라 첫 숫자가 학년이 아니다.
+ */
+function gradeOf(klass: string, map: Record<string, number> | undefined): number | undefined {
+  const named = map?.[klass];
+  if (named !== undefined && Number.isFinite(named) && named >= 1 && named <= 12) return named;
+  if (map !== undefined) return undefined;
+  const m = /\d+/.exec(klass);
+  if (!m) return undefined;
+  const g = Number(m[0]);
+  return Number.isFinite(g) && g >= 1 && g <= 12 ? g : undefined;
+}
 
 export function gradeShapes(input: TimetableInput): GradeShape[] {
   const klasses = new Map<number, Set<string>>();
   const subjects = new Map<number, Set<string>>();
   const proSubjects = new Map<number, Set<string>>();
+  /** 학년 안에서 과목마다 그 과목을 듣는 학급을 모은다. 공통도의 재료다. */
+  const takers = new Map<number, Map<string, Set<string>>>();
   for (const a of input.assignments) {
-    const m = /\d+/.exec(a.klass);
-    if (!m) continue;
-    const g = Number(m[0]);
-    if (!Number.isFinite(g) || g < 1 || g > 12) continue;
+    const g = gradeOf(a.klass, input.klassGrade);
+    if (g === undefined) continue;
     (klasses.get(g) ?? klasses.set(g, new Set()).get(g)!).add(a.klass);
     (subjects.get(g) ?? subjects.set(g, new Set()).get(g)!).add(a.subject);
     if (a.pro) (proSubjects.get(g) ?? proSubjects.set(g, new Set()).get(g)!).add(a.subject);
+    const perGrade = takers.get(g) ?? takers.set(g, new Map()).get(g)!;
+    (perGrade.get(a.subject) ?? perGrade.set(a.subject, new Set()).get(a.subject)!).add(a.klass);
   }
   // 학교 전체의 전문교과 몫. 학년마다 센 것을 더해 나눈다.
   let allSubjects = 0;
@@ -585,17 +705,48 @@ export function gradeShapes(input: TimetableInput): GradeShape[] {
   }
   const vocational = allSubjects > 0 && allPro / allSubjects >= PRO_SHARE;
 
+  // 학년마다 아는 자리와 모르는 자리를 센다. 단위를 (학급, 슬롯)으로 맞춘다.
+  // 한 칸에 강좌가 둘인 분반이 있어 배정 수를 그대로 세면 klassBusy 와 단위가 어긋난다.
+  const knownCells = new Map<number, Set<string>>();
+  const unknownCells = new Map<number, number>();
+  for (const a of input.assignments) {
+    const g = gradeOf(a.klass, input.klassGrade);
+    if (g === undefined) continue;
+    (knownCells.get(g) ?? knownCells.set(g, new Set()).get(g)!).add(`${a.klass}|${a.slot}`);
+  }
+  for (const [klass, slots] of Object.entries(input.klassBusy ?? {})) {
+    const g = gradeOf(klass, input.klassGrade);
+    if (g === undefined) continue;
+    unknownCells.set(g, (unknownCells.get(g) ?? 0) + slots.length);
+  }
+
   const out: GradeShape[] = [];
   for (const [g, ks] of klasses) {
     const ss = subjects.get(g)?.size ?? 0;
     const ps = proSubjects.get(g)?.size ?? 0;
     const ratio = ks.size === 0 ? 0 : ss / ks.size;
-    const elective = ratio >= ELECTIVE_RATIO;
+    // 공통도. 과목마다 (그 과목을 듣는 학급 / 학년 학급)을 구해 평균한다.
+    const perSubject = takers.get(g);
+    let sharedRate = 1;
+    if (perSubject !== undefined && perSubject.size > 0 && ks.size > 0) {
+      let sum = 0;
+      for (const who of perSubject.values()) sum += who.size / ks.size;
+      sharedRate = sum / perSubject.size;
+    }
+    // 과목이 하나뿐인 학년은 표본이 아니라 자료가 얇은 것이다. 단정하지 않는다.
+    const enough = ss >= 3;
+    const known = knownCells.get(g)?.size ?? 0;
+    const unknown = unknownCells.get(g) ?? 0;
+    const unknownRate = known + unknown === 0 ? 0 : unknown / (known + unknown);
+    const trustworthy = unknownRate <= MAX_UNKNOWN_SHARE;
+    const elective = enough && trustworthy && sharedRate < SHARED_SUBJECT_MIN;
     out.push({
       grade: g,
       klasses: ks.size,
       subjects: ss,
       ratio,
+      sharedRate,
+      unknownRate,
       proSubjects: ps,
       elective,
       kind: !elective ? '보통' : vocational ? '전공실습' : '선택과목',
