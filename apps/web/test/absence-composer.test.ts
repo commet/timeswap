@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ClassIdentity } from '@timeswap/engine';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import * as Composer from '../components/AbsenceComposer';
 
 import {
@@ -119,5 +121,26 @@ describe('absence composer helpers', () => {
     expect(atomicSelectionWarnings(stateForComposer(), ['lesson-1'])).toEqual([
       expect.stringContaining('실습 묶음 2개 중 1개 수업만 선택'),
     ]);
+  });
+
+  it('keeps the redacted diagnostic export reachable when candidates are ready', () => {
+    const state = stateForComposer();
+    state.revisions[0] = {
+      ...state.revisions[0]!, complete: true,
+      query: { receivedRows: '3', expectedRows: '3' },
+    };
+    state.lessons = state.lessons.filter((lesson) => lesson.teacher.state !== 'unassigned');
+    state.teacherLabels = { 'member:teacher-1': '김서준', 'member:teacher-2': '이하늘' };
+
+    const html = renderToStaticMarkup(createElement(Composer.AbsenceComposer, {
+      state,
+      teacherId: 'member:teacher-1',
+      onSubmit: () => ({}),
+      onExportDiagnostic: () => undefined,
+      onDismiss: () => undefined,
+    }));
+
+    expect(composerReadiness(state).readyForCandidates).toBe(true);
+    expect(html).toContain('진단 보고서 내보내기');
   });
 });

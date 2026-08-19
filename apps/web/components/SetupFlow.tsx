@@ -163,14 +163,23 @@ export function createWorkspaceFromNeis(
   };
 }
 
-export function completeSetupReview(
+export async function completeSetupReview(
   bundle: NeisLoadBundle,
   teacherMap: TeacherMap,
   credential: Pick<NeisSessionValue, 'clear'>,
-): WorkspaceState {
+  save: (state: WorkspaceState) => SaveResult | Promise<SaveResult>,
+): Promise<{ ok: true; state: WorkspaceState } | { ok: false; reason: 'quota' | 'unavailable' }> {
   const next = createWorkspaceFromNeis(bundle, teacherMap);
+  const result = await save(next);
+  if (!result.ok) return result;
   credential.clear();
-  return next;
+  return { ok: true, state: next };
+}
+
+export function messageForSetupPersistenceFailure(reason: 'quota' | 'unavailable'): string {
+  return reason === 'quota'
+    ? '브라우저 저장 공간이 부족해 설정을 저장하지 못했습니다. 공간을 확보한 뒤 초대 링크 만들기를 다시 누르십시오. 인증키와 검토 내용은 이 탭에 그대로 남아 있습니다.'
+    : '이 브라우저에 설정을 저장하지 못했습니다. 저장을 허용한 뒤 초대 링크 만들기를 다시 누르십시오. 인증키와 검토 내용은 이 탭에 그대로 남아 있습니다.';
 }
 
 export function canOpenInvitations(input: {
@@ -330,11 +339,14 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
     reader.readAsText(file);
   }, []);
 
-  const completeReview = useCallback(() => {
+  const completeReview = useCallback(async () => {
     if (!bundle || !invitationsReady) return;
-    const next = completeSetupReview(bundle, teacherMap, session);
-    saveState(next);
-    setCompletedState(next);
+    const result = await completeSetupReview(bundle, teacherMap, session, saveState);
+    if (!result.ok) {
+      setMessage(messageForSetupPersistenceFailure(result.reason));
+      return;
+    }
+    setCompletedState(result.state);
     setStage('초대 링크');
   }, [bundle, invitationsReady, saveState, session, teacherMap]);
 
@@ -455,6 +467,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
           <section className="unresolved-review" aria-labelledby="unresolved-title">
             <span className="eyebrow">마지막 안전 점검</span>
             <h2 id="unresolved-title">미해결 항목 검토</h2>
+            {message && <p className="setup-alert" role="alert">{message}</p>}
             <div className="review-counts">
               <div><b>{unresolved.length}</b><span>담당 교사 미연결</span></div>
               <div><b>{duplicateNames.length}</b><span>동명이인 의심</span></div>
@@ -470,7 +483,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
             </p>}
             <div className="setup-actions">
               <button className="btn ghost" onClick={() => setStage('교사 연결')}>교사 연결 수정</button>
-              <button className="btn primary" disabled={!invitationsReady} onClick={completeReview}>초대 링크 만들기</button>
+              <button className="btn primary" disabled={!invitationsReady} onClick={() => void completeReview()}>초대 링크 만들기</button>
             </div>
           </section>
         )}

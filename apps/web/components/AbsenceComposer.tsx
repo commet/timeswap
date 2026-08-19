@@ -315,7 +315,6 @@ export function AbsenceComposer({
           <b>후보 추천을 시작할 수 없습니다</b>
           <p>{messageForUnavailableSource(readiness)}</p>
           <p>공식 자료를 다시 확인하고 교사 연결을 완료하십시오. 진단 보고서는 지금 내보낼 수 있습니다.</p>
-          <button className="btn ghost" onClick={onExportDiagnostic}>진단 보고서 내보내기</button>
         </aside>
       )}
 
@@ -326,6 +325,7 @@ export function AbsenceComposer({
           onClick={() => onCandidateHandoff?.({
             lessonIds: selected.map((lesson) => lesson.id), fromDate, toDate, atomicWarnings,
           })}>후보 계산으로 전달</button>
+        <button className="btn ghost" onClick={onExportDiagnostic}>진단 보고서 내보내기</button>
       </footer>
     </section>
   );

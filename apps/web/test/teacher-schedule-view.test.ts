@@ -5,6 +5,7 @@ import type { ClassIdentity } from '@timeswap/engine';
 
 import * as Grid from '../components/Grid';
 import * as TeacherHomeModule from '../components/TeacherHome';
+import { createDemoWorkspace } from '../lib/demo';
 import type { TeacherScheduleLessonView } from '../lib/projections';
 
 const klass: ClassIdentity = {
@@ -35,7 +36,25 @@ describe('teacher schedule view helpers', () => {
     if (typeof selectToday !== 'function') return;
 
     expect(selectToday(['2026-08-24', '2026-08-25'], '2026-08-24')).toEqual({ date: '2026-08-24', label: '오늘' });
-    expect(selectToday(['2026-08-24', '2026-08-25'], '2026-08-19')).toEqual({ date: '2026-08-24', label: '불러온 날짜' });
+    expect(selectToday(['2026-08-24', '2026-08-25'], '2026-08-19')).toEqual({ date: '2026-08-24', label: '불러온 수업일' });
+  });
+
+  it('uses ordered lesson labels instead of ungrounded wall-clock semantics', () => {
+    const state = createDemoWorkspace();
+    const teacher = state.lessons[0]?.teacher;
+    if (!teacher || teacher.state !== 'assigned') throw new Error('fixture requires an assigned teacher');
+
+    const html = renderToStaticMarkup(createElement(TeacherHomeModule.TeacherHome, {
+      state,
+      teacherId: teacher.teacherId,
+      onSubmit: () => ({}),
+      onExportDiagnostic: () => undefined,
+    }));
+
+    expect(html).toContain('오늘 첫 수업');
+    expect(html).toContain('그다음 수업');
+    expect(html).not.toContain('>지금<');
+    expect(html).not.toContain('>다음<');
   });
 
   it('keeps every lesson that shares one date and period and renders changed original/new details', () => {

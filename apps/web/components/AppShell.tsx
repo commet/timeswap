@@ -25,6 +25,20 @@ function firstTeacher(state: WorkspaceState): string | null {
   return null;
 }
 
+export async function saveDemoAndNavigate(
+  demo: WorkspaceState,
+  save: (state: WorkspaceState) => SaveResult | Promise<SaveResult>,
+  navigate: (location: AppLocation) => void,
+): Promise<SaveResult> {
+  const result = await save(demo);
+  if (!result.ok) return result;
+  navigate({
+    view: 'ops', school: demo.workspace.id,
+    ...(demo.cases[0] ? { caseId: demo.cases[0].id } : {}),
+  });
+  return result;
+}
+
 export function AppShell({ state, location, saveState, navigate }: AppShellProps): React.ReactNode {
   const RoleView = useRoleViewAdapter();
 
@@ -58,12 +72,7 @@ export function AppShell({ state, location, saveState, navigate }: AppShellProps
       }}
       onSetup={() => navigate({ view: 'setup' })}
       onDemo={() => {
-        const demo = createDemoWorkspace();
-        saveState(demo);
-        navigate({
-          view: 'ops', school: demo.workspace.id,
-          ...(demo.cases[0] ? { caseId: demo.cases[0].id } : {}),
-        });
+        void saveDemoAndNavigate(createDemoWorkspace(), saveState, navigate);
       }}
     />
   );

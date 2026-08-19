@@ -70,3 +70,27 @@
 ### Concerns
 
 - Older saved revisions without explicit source counts remain safely blocked; the warning reports `0/0` rather than inventing equality from loaded lessons. A future migration could distinguish unavailable historical counts from an actual empty source.
+
+## Review fix round 2/5 — honest persistence and teacher controls
+
+### RED / GREEN
+
+- RED: setup completion tests showed `completeSetupReview` cleared the session and returned a workspace regardless of the save result; demo entry tests showed no save-gated navigation helper. GREEN: both paths now await `SaveResult`; setup remains on the review screen with its session key and review state after quota/security failure, and demo navigation only follows a successful save.
+- RED: the teacher schedule test still returned `불러온 날짜` and rendered `지금`/`다음`, which implies bell-time knowledge the canonical model does not have. GREEN: absent browser dates use `불러온 수업일`; the projected cards are labelled `오늘 첫 수업` and `그다음 수업`.
+- RED: server-rendering a complete composer could not find a diagnostic action. GREEN: the existing redacted export is always a footer action, including save-failure recovery and complete workspaces; it never exports full canonical state.
+- GREEN: teacher tabs, affected-lesson rows, reason labels, and the mobile whole-day control use a 44px minimum. The browser smoke now measures those controls at 390px.
+
+### Commands and observed output
+
+- Focused RED: `npm run test -w web -- shell.test.ts app-shell.test.ts absence-composer.test.ts teacher-schedule-view.test.ts` failed for the intended missing save gates, always-reachable diagnostic action, and honest labels.
+- Focused GREEN: the same command passed with `4 files / 26 tests`.
+- Full `npm test` — engine: `19 files / 160 tests passed`; web: `15 files / 196 tests passed`.
+- `npm run typecheck` and `npm run build` — passed.
+- `npm run smoke` — passed at desktop and 390px, including the new first-lesson copy and 44px composer control check.
+- `git diff --check` — passed.
+
+### Self-review / scope
+
+- Setup failure does not clear the in-memory NEIS key, advance the stage, or mark a completed workspace. Its recovery message is visible on the review step and tells the user to retry after resolving browser storage.
+- The demo failure remains on entry; Workbench’s existing save-error alert surfaces the storage failure. The only diagnostic export continues to use the redacted projection.
+- No Task 9 comparison, ops, or publication code changed.

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { fromNeis, type NeisRow } from '@timeswap/engine';
 
 import { createDemoWorkspace } from '../lib/demo';
+import * as SetupFlowModule from '../components/SetupFlow';
 import {
   canOpenInvitations,
   canEnterSetupStage,
@@ -109,14 +110,54 @@ describe('school setup boundary', () => {
     })).toBe(false);
   });
 
-  it('clears the session key as review completes before invitations are available', () => {
+  it('clears the session key and returns a completed workspace only after setup persistence succeeds', async () => {
     const session = createNeisSession();
     session.setKey('secret-key');
+    const complete = (SetupFlowModule as unknown as {
+      completeSetupReview: (
+        input: NeisLoadBundle,
+        teacherMap: Record<string, string>,
+        credential: { clear(): void },
+        save: (state: ReturnType<typeof createWorkspaceFromNeis>) => { ok: true } | { ok: false; reason: 'quota' | 'unavailable' },
+      ) => Promise<{ ok: true; state: ReturnType<typeof createWorkspaceFromNeis> } | { ok: false; reason: 'quota' | 'unavailable' }>;
+    }).completeSetupReview;
 
-    const state = completeSetupReview(bundle, { '2-1|기계일반': '김서준' }, session);
+    const result = await complete(bundle, { '2-1|기계일반': '김서준' }, session, () => ({ ok: true }));
 
     expect(session.getKey()).toBe('');
-    expect(state.workspace.name).toBe('보기고등학교');
+    expect(result).toEqual({
+      ok: true,
+      state: expect.objectContaining({ workspace: expect.objectContaining({ name: '보기고등학교' }) }),
+    });
+  });
+
+  it.each(['quota', 'unavailable'] as const)('keeps setup credentials and review state usable after a %s persistence failure', async (reason) => {
+    const session = createNeisSession();
+    session.setKey('secret-key');
+    const complete = (SetupFlowModule as unknown as {
+      completeSetupReview: (
+        input: NeisLoadBundle,
+        teacherMap: Record<string, string>,
+        credential: { clear(): void },
+        save: (state: ReturnType<typeof createWorkspaceFromNeis>) => { ok: true } | { ok: false; reason: 'quota' | 'unavailable' },
+      ) => Promise<{ ok: true; state: ReturnType<typeof createWorkspaceFromNeis> } | { ok: false; reason: 'quota' | 'unavailable' }>;
+    }).completeSetupReview;
+
+    const result = await complete(bundle, { '2-1|기계일반': '김서준' }, session, () => ({ ok: false, reason }));
+
+    expect(result).toEqual({ ok: false, reason });
+    expect(session.getKey()).toBe('secret-key');
+  });
+
+  it.each(['quota', 'unavailable'] as const)('gives an actionable %s setup recovery message without asking for a new key', (reason) => {
+    const messageForSetupPersistenceFailure = (SetupFlowModule as unknown as {
+      messageForSetupPersistenceFailure?: (reason: 'quota' | 'unavailable') => string;
+    }).messageForSetupPersistenceFailure;
+
+    expect(messageForSetupPersistenceFailure).toBeTypeOf('function');
+    if (typeof messageForSetupPersistenceFailure !== 'function') return;
+    expect(messageForSetupPersistenceFailure(reason)).toContain('다시');
+    expect(messageForSetupPersistenceFailure(reason)).toContain('인증키');
   });
 
   it('uses a deterministic opaque member id in teacher invitation URLs', () => {

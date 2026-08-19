@@ -128,6 +128,9 @@ if ((await page.getByRole('tab', { name: '오늘', exact: true }).getAttribute('
 for (const selector of ['[data-now-next]', '[data-today-change-count]']) {
   if (!(await page.locator(selector).count())) failures.push(`교사 첫 화면에 ${selector} 정보가 없음`);
 }
+if (!(await page.locator('[data-now-next]').first().innerText()).includes('오늘 첫 수업')) {
+  failures.push('교사 첫 수업 카드가 근거 없는 현재 시각 표현을 사용함');
+}
 if (!(await page.getByRole('button', { name: '변경 요청', exact: true }).count())) failures.push('교사 첫 화면에 변경 요청 행동이 없음');
 if ((await page.locator('body').innerText()).includes('teacher:seo-jun')) failures.push('교사 화면에 내부 교사 ID가 이름처럼 노출됨');
 
@@ -226,6 +229,16 @@ const teacherMobileMetrics = await mobile.evaluate(() => ({
   document: document.documentElement.scrollWidth,
 }));
 if (teacherMobileMetrics.document > teacherMobileMetrics.viewport + 1) failures.push('390px 교사 시간표가 가로로 밀림');
+await mobile.locator('.period-rail-lesson').first().click();
+const composerSmallControls = await mobile.evaluate(() => [
+  ...document.querySelectorAll('.teacher-focus-tabs button, .affected-lessons > label, .absence-reason > label:not(.coordination-note), .whole-day'),
+].filter((element) => {
+  const box = element.getBoundingClientRect();
+  return box.width > 0 && box.height > 0 && box.height < 44;
+}).map((element) => element.className || element.tagName));
+if (composerSmallControls.length) {
+  failures.push(`390px 교사 요청 조작 요소가 44px 미만: ${composerSmallControls.join(', ')}`);
+}
 
 console.log('랜딩 행동·민감 입력 분리:', failures.some((item) => item.includes('랜딩')) ? '실패' : '통과');
 console.log('최초 설정 순서·게이트:', failures.some((item) => item.includes('설정') || item.includes('초대')) ? '실패' : '통과');

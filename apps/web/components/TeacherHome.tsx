@@ -26,12 +26,12 @@ function currentDate(): string {
 export function selectTeacherToday(
   dates: readonly string[],
   browserDate: string,
-): { date: string; label: '오늘' | '불러온 날짜' | '불러온 날짜 없음' } {
+): { date: string; label: '오늘' | '불러온 수업일' | '불러온 수업일 없음' } {
   if (dates.includes(browserDate)) return { date: browserDate, label: '오늘' };
   const loadedDate = [...dates].sort()[0];
   return loadedDate
-    ? { date: loadedDate, label: '불러온 날짜' }
-    : { date: browserDate, label: '불러온 날짜 없음' };
+    ? { date: loadedDate, label: '불러온 수업일' }
+    : { date: browserDate, label: '불러온 수업일 없음' };
 }
 
 function teacherLabel(state: WorkspaceState, teacherId: string): string {
@@ -100,11 +100,11 @@ export function TeacherHome({
         {focus === 'today' && (
           <div className="period-rail" aria-label={`${todayDate} 수업`}>
             <article className="now-next" data-now-next>
-              <span>지금</span>
+              <span>오늘 첫 수업</span>
               {nowLesson ? <b>{scheduleValue(nowLesson).period}교시 · {scheduleValue(nowLesson).subject}</b> : <b>표시할 수업이 없습니다</b>}
             </article>
             <article className="now-next">
-              <span>다음</span>
+              <span>그다음 수업</span>
               {nextLesson ? <b>{scheduleValue(nextLesson).period}교시 · {scheduleValue(nextLesson).subject}</b> : <b>다음 수업은 없습니다</b>}
             </article>
             {todayLessons.map((lesson) => {
