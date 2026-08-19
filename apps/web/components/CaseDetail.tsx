@@ -155,9 +155,9 @@ export function CaseDetail({
               {absenceCase.status === 'in_review' && rows.length > 0 ? (
                 <div className="ops-resolution-controls">
                   <label>
-                    <span>대안</span>
+                    <span>다른 대안으로 바꾸기</span>
                     <select
-                      aria-label={`${lesson?.period ?? ''}교시 대안 선택`}
+                      aria-label={`${lesson?.period ?? ''}교시를 다른 대안으로 바꾸기`}
                       value={row?.id ?? ''}
                       onChange={(event) => setChosenRows((current) => ({ ...current, [lessonId]: event.target.value }))}
                     >
@@ -182,7 +182,14 @@ export function CaseDetail({
                     >보강으로 바꾸기</button>
                   )}
                 </div>
-              ) : selected ? <small>{selected.changes.length}개 수업 변경</small> : <small>후보 재계산이 필요합니다.</small>}
+              ) : selected ? <small>{selected.changes.length}개 수업 변경</small> : (
+                <small className="ops-no-candidate">
+                  {absenceCase.status === 'in_review'
+                    ? `${item.validation.conflicts.find((conflict) => conflict.lessonId === lessonId)?.message
+                        ?? '지금 시간표에서 옮길 자리를 찾지 못했습니다.'} 이 수업으로는 계획을 세울 수 없으니 사유와 함께 반려하십시오.`
+                    : '후보 재계산이 필요합니다.'}
+                </small>
+              )}
             </article>
           );
         })}
@@ -190,6 +197,21 @@ export function CaseDetail({
 
       <section className="ops-accountable-actions" aria-label="담당자 결정">
         <h3>담당자 결정</h3>
+        {/* 정정 사건은 담당자가 직접 연 것이라 제출을 기다릴 상대가 없다.
+            교사의 미제출 초안에는 이 길을 열지 않는다. */}
+        {absenceCase.status === 'draft' && absenceCase.supersedesCaseId && (
+          <button className="btn primary" data-start-correction-review onClick={() => {
+            const at = new Date().toISOString();
+            const submitted = transitionCase(state, {
+              caseId, to: 'submitted', actorId: OPERATOR_ID,
+              at, auditEventId: auditId('correction-submit', caseId),
+            });
+            commit(transitionCase(submitted, {
+              caseId, to: 'in_review', actorId: OPERATOR_ID,
+              at, auditEventId: auditId('correction-review', caseId),
+            }), '정정 사건 검토를 시작했습니다. 새 해결안을 선택하십시오.');
+          }}>정정 검토 시작</button>
+        )}
         {absenceCase.status === 'submitted' && (
           <button className="btn primary" onClick={() => commit(transitionCase(state, {
             caseId, to: 'in_review', actorId: OPERATOR_ID,

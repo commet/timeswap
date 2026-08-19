@@ -238,6 +238,10 @@
   .resolution-action .btn { width: 100%; min-height: 48px; }
 }
 @media (max-width: 759px) {
+  .ops-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; }
+  .ops-metrics dt { font-size: 10px; white-space: normal; }
+  .ops-metrics dd { font-size: 22px; }
+
   .ops-command-center { width: calc(100% - 20px); margin: 12px auto 34px; }
   .ops-command-heading { align-items: stretch; flex-direction: column; gap: 9px; }
   .ops-command-heading h2 { font-size: 25px; }

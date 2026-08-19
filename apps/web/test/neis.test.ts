@@ -76,6 +76,22 @@ describe('complete NEIS page loading', () => {
 
     await expect(fetchAllNeisRows(request(fetch))).rejects.toMatchObject({ code: 'INCOMPLETE_PAGE_SET' });
   });
+
+  /**
+   * 얼마나 모자란지를 말하지 않으면 담당자는 다시 시도할지 학교에 물을지 정할 수
+   * 없다. 그래서 문구가 받은 수와 공식 총계를 함께 담는지 잠근다.
+   */
+  it('names how many rows arrived out of the official total', async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(response('hisTimetable', 6, [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }]))
+      .mockResolvedValueOnce(response('hisTimetable', 6, []));
+
+    await expect(fetchAllNeisRows(request(fetch))).rejects.toMatchObject({
+      code: 'INCOMPLETE_PAGE_SET',
+      message: expect.stringContaining('6건 가운데 5건'),
+    });
+  });
 });
 
 describe('timetable safety', () => {

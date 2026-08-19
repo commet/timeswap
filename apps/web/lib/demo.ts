@@ -60,7 +60,7 @@ export const DEMO_SCENARIOS = [
     title: '선택과목 블록',
     surface: 'command-center',
     initialView: '일과 담당 · 선택과목 묶음',
-    expectedOutcome: '병렬 묶음을 쪼개지 않고 보강으로 해결합니다.',
+    expectedOutcome: '묶음을 쪼개는 교체안은 후보에 없고, 묶음 전체 보강으로 해결합니다.',
   },
   {
     id: 'practice-block',

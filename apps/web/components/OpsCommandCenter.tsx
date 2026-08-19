@@ -25,7 +25,7 @@ export type OpsCommandCenterProps = {
 };
 
 const metrics: Array<{ key: keyof Pick<OpsDashboardView, 'todayChanges' | 'unresolvedLessons' | 'pendingCases' | 'neisTasks' | 'publicationTasks' | 'burdenAlerts'>; label: string }> = [
-  { key: 'todayChanges', label: '오늘 변경' },
+  { key: 'todayChanges', label: '오늘 게시된 변경' },
   { key: 'unresolvedLessons', label: '미해결 수업' },
   { key: 'pendingCases', label: '승인 대기' },
   { key: 'neisTasks', label: '나이스 대기' },
@@ -59,6 +59,14 @@ export function OpsCommandCenter({
         <DemoScenarioPicker state={scenarioState} onOpenScenario={onOpenScenario} />
       </header>
 
+      {/* 지표는 어느 한 구역의 성질이 아니라 판 전체의 상태다. 카드 안에 넣으면
+          그 카드의 부속으로 읽힌다. 머리말 바로 아래 한 줄로 세운다. */}
+      <dl className="ops-metrics" aria-label="변경 관제 지표">
+        {metrics.map(({ key, label }) => (
+          <div key={key} data-ops-metric={key}><dt>{label}</dt><dd>{dashboard[key]}</dd></div>
+        ))}
+      </dl>
+
       <div className="ops-command-regions">
         <section className="ops-priority-region" aria-labelledby="ops-priority-title">
           <header><span className="eyebrow">사건 목록</span><h3 id="ops-priority-title">우선순위</h3></header>
@@ -82,9 +90,6 @@ export function OpsCommandCenter({
 
         <section className="ops-timeline-region" aria-labelledby="ops-timeline-title">
           <header><span className="eyebrow">{dashboard.today}</span><h3 id="ops-timeline-title">오늘 교시 흐름</h3></header>
-          <dl className="ops-metrics">
-            {metrics.map(({ key, label }) => <div key={key} data-ops-metric={key}><dt>{label}</dt><dd>{dashboard[key]}</dd></div>)}
-          </dl>
           <section className="ops-source-health" aria-label="시간표 자료 상태">
             <b>자료 상태</b>
             <span>{dashboard.sourceHealth.complete ? '완전' : '불완전'} · {dashboard.sourceHealth.source ?? '미확인'} · 수업 {dashboard.sourceHealth.lessonCount}건 · 미배정 {dashboard.sourceHealth.unassignedLessons}건</span>
