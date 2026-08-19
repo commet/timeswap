@@ -1,0 +1,107 @@
+{
+  "metadata": {
+    "source": "NEIS 교육정보 개방 포털 공개 시간표 응답",
+    "retrievedAt": "2026-08-18",
+    "note": "Public regression sample only; no API credential or teacher data is included."
+  },
+  "rows": [
+    {
+      "SCHUL_NM": "서울공업고등학교",
+      "SD_SCHUL_CODE": "7010536",
+      "AY": "2026",
+      "DGHT_CRSE_SC_NM": "주간",
+      "ORD_SC_NM": "공업계",
+      "DDDEP_NM": "기계과",
+      "ALL_TI_YMD": "20260622",
+      "GRADE": "2",
+      "CLASS_NM": "1",
+      "PERIO": "1",
+      "ITRT_CNTNT": "기계일반",
+      "CLRM_NM": "기계실습실"
+    },
+    {
+      "SCHUL_NM": "서울공업고등학교",
+      "SD_SCHUL_CODE": "7010536",
+      "AY": "2026",
+      "DGHT_CRSE_SC_NM": "주간",
+      "ORD_SC_NM": "공업계",
+      "DDDEP_NM": "건축과",
+      "ALL_TI_YMD": "20260622",
+      "GRADE": "2",
+      "CLASS_NM": "1",
+      "PERIO": "1",
+      "ITRT_CNTNT": "건축일반",
+      "CLRM_NM": "건축실습실"
+    },
+    {
+      "SCHUL_NM": "대구공업고등학교",
+      "SD_SCHUL_CODE": "7240454",
+      "AY": "2026",
+      "DGHT_CRSE_SC_NM": "주간",
+      "ORD_SC_NM": "공업계",
+      "DDDEP_NM": "전기과",
+      "ALL_TI_YMD": "20260622",
+      "GRADE": "3",
+      "CLASS_NM": "1",
+      "PERIO": "2",
+      "ITRT_CNTNT": "전기이론",
+      "CLRM_NM": "전기실습실"
+    },
+    {
+      "SCHUL_NM": "대구공업고등학교",
+      "SD_SCHUL_CODE": "7240454",
+      "AY": "2026",
+      "DGHT_CRSE_SC_NM": "주간",
+      "ORD_SC_NM": "공업계",
+      "DDDEP_NM": "기계과",
+      "ALL_TI_YMD": "20260622",
+      "GRADE": "3",
+      "CLASS_NM": "1",
+      "PERIO": "2",
+      "ITRT_CNTNT": "기계이론",
+      "CLRM_NM": "기계실습실"
+    },
+    {
+      "SCHUL_NM": "대구공업고등학교",
+      "SD_SCHUL_CODE": "7240454",
+      "AY": "2026",
+      "DGHT_CRSE_SC_NM": "주간",
+      "ORD_SC_NM": "공업계",
+      "DDDEP_NM": "전기과",
+      "ALL_TI_YMD": "20260622",
+      "GRADE": "3",
+      "CLASS_NM": "2",
+      "PERIO": "3",
+      "ITRT_CNTNT": "전기기기",
+      "CLRM_NM": "전기실습실"
+    },
+    {
+      "SCHUL_NM": "대구공업고등학교",
+      "SD_SCHUL_CODE": "7240454",
+      "AY": "2026",
+      "DGHT_CRSE_SC_NM": "주간",
+      "ORD_SC_NM": "공업계",
+      "DDDEP_NM": "전기과",
+      "ALL_TI_YMD": "20260622",
+      "GRADE": "3",
+      "CLASS_NM": "2",
+      "PERIO": "3",
+      "ITRT_CNTNT": "전기기기",
+      "CLRM_NM": "전기실습실"
+    },
+    {
+      "SCHUL_NM": "대구공업고등학교",
+      "SD_SCHUL_CODE": "7240454",
+      "AY": "2026",
+      "DGHT_CRSE_SC_NM": "주간",
+      "ORD_SC_NM": "공업계",
+      "DDDEP_NM": "전기과",
+      "ALL_TI_YMD": "20260622",
+      "GRADE": "3",
+      "CLASS_NM": "2",
+      "PERIO": "3",
+      "ITRT_CNTNT": "전기설비",
+      "CLRM_NM": "전기실습실"
+    }
+  ]
+}

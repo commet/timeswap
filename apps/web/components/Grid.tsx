@@ -9,6 +9,7 @@ import {
   type ScheduleConfig,
 } from "@timeswap/engine";
 import { subjectHue } from "../lib/app";
+import type { TeacherScheduleLessonView } from '../lib/projections';
 import type { CSSProperties } from "react";
 
 interface Props {
@@ -392,5 +393,125 @@ function Row({
         );
       })}
     </>
+  );
+}
+
+function koreanDay(date: string): string {
+  return new Intl.DateTimeFormat('ko-KR', { weekday: 'short', timeZone: 'UTC' })
+    .format(new Date(`${date}T00:00:00.000Z`));
+}
+
+function teacherScheduleValue(lesson: TeacherScheduleLessonView) {
+  return lesson.pending ?? lesson.published ?? lesson.base;
+}
+
+/** Keeps concurrent projected lessons in their shared timetable cell. */
+export function teacherWeekSlots(lessons: TeacherScheduleLessonView[]): Map<string, TeacherScheduleLessonView[]> {
+  const bySlot = new Map<string, TeacherScheduleLessonView[]>();
+  for (const lesson of lessons) {
+    const value = teacherScheduleValue(lesson);
+    const key = `${value.date}\u0000${value.period}`;
+    const current = bySlot.get(key) ?? [];
+    current.push(lesson);
+    bySlot.set(key, current);
+  }
+  for (const slotLessons of bySlot.values()) {
+    slotLessons.sort((left, right) => left.lessonId.localeCompare(right.lessonId));
+  }
+  return bySlot;
+}
+
+export interface TimetableResolutionPreview {
+  changes: Array<{
+    lessonId: string;
+    next: { date: string; period: string; [key: string]: unknown };
+    [key: string]: unknown;
+  }>;
+}
+
+/** Canonical teacher projection grid.  The legacy interaction grid above stays for ops until Task 10. */
+export function TeacherScheduleGrid({
+  lessons,
+  onSelectLesson,
+  resolutionPreview,
+}: {
+  lessons: TeacherScheduleLessonView[];
+  onSelectLesson(lessonId: string): void;
+  resolutionPreview?: TimetableResolutionPreview;
+}) {
+  const previewChanges = resolutionPreview?.changes ?? [];
+  const dates = [...new Set([
+    ...lessons.map((lesson) => {
+    const value = teacherScheduleValue(lesson);
+    return value.date;
+    }),
+    ...previewChanges.map((change) => change.next.date),
+  ])].sort();
+  const periods = [...new Set([
+    ...lessons.map((lesson) => {
+    const value = teacherScheduleValue(lesson);
+    return value.period;
+    }),
+    ...previewChanges.map((change) => change.next.period)
+      .filter((period) => Number.isFinite(Number(period)) && Number(period) > 0),
+  ])].sort((left, right) => Number(left) - Number(right));
+  const bySlot = teacherWeekSlots(lessons);
+  const resolutionSources = new Set(previewChanges.map((change) => change.lessonId));
+  const resolutionDestinations = new Set(previewChanges.map((change) =>
+    `${change.next.date}\u0000${change.next.period}`) ?? []);
+
+  return (
+    <section className="teacher-projection-grid" data-teacher-week aria-labelledby="teacher-week-title">
+      <header>
+        <div>
+          <span className="eyebrow">주간 시간표</span>
+          <h2 id="teacher-week-title">이번 주 수업</h2>
+        </div>
+        <p>수업을 누르면 해당 날짜와 교시로 변경 요청을 시작합니다.</p>
+      </header>
+      {!dates.length ? <p className="teacher-grid-empty">표시할 수업이 없습니다.</p> : (
+        <div className="teacher-grid-scroll">
+          <div className="teacher-grid" style={{ gridTemplateColumns: `54px repeat(${dates.length}, minmax(128px, 1fr))` }}>
+            <span className="teacher-grid-corner" aria-hidden />
+            {dates.map((date) => <span className="teacher-grid-day" key={date}>{koreanDay(date)}<small>{date.slice(5)}</small></span>)}
+            {periods.map((period) => (
+              <div className="teacher-grid-row" key={period}>
+                <span className="teacher-grid-period">{period}교시</span>
+                {dates.map((date) => {
+                  const slotLessons = bySlot.get(`${date}\u0000${period}`);
+                  const destination = resolutionDestinations.has(`${date}\u0000${period}`);
+                  if (!slotLessons) return <span className={`teacher-grid-empty-cell${destination ? ' resolution-target' : ''}`}
+                    data-resolution-to={destination || undefined} key={date} aria-label={`${date} ${period}교시 공강`} />;
+                  return (
+                    <div className={`teacher-grid-slot${destination ? ' resolution-target' : ''}`}
+                      data-resolution-to={destination || undefined} key={date}>
+                      {slotLessons.map((lesson) => {
+                        const value = teacherScheduleValue(lesson);
+                        const changed = lesson.status !== 'base';
+                        return (
+                          <button
+                            key={lesson.lessonId}
+                            className={`teacher-grid-lesson${changed ? ` ${lesson.status === 'published' ? 'published' : 'planned'}` : ''}`}
+                            onClick={() => onSelectLesson(lesson.lessonId)}
+                            aria-label={`${date} ${period}교시 ${value.subject} 변경 요청`}
+                            data-resolution-from={resolutionSources.has(lesson.lessonId) || undefined}
+                          >
+                            {lesson.status === '변경 예정' && <em>변경 예정</em>}
+                            {lesson.status === 'published' && <em>게시됨</em>}
+                            <b>{value.subject}</b>
+                            {lesson.status !== 'base' && <small>원래 {lesson.base.subject} · {lesson.base.classIdentity.grade}-{lesson.base.classIdentity.className} · {lesson.base.period}교시 · {lesson.base.room}</small>}
+                            <span>{value.classIdentity.grade}-{value.classIdentity.className} · {value.period}교시 · {value.room}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }

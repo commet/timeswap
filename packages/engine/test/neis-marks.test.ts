@@ -30,6 +30,9 @@ function row(date: string, grade: string, klass: string, perio: number, text: st
   };
 }
 
+const classKey = (report: ReturnType<typeof fromNeis>, label: string): string =>
+  report.cells.find((cell) => cell.classLabel === label)?.klass ?? label;
+
 describe('과목명 앞 표시 떼기', () => {
   it('별표를 떼고 전문교과로 표시한다', () => {
     expect(stripMarks('* 도면해독(선반가공)')).toEqual({
@@ -58,9 +61,10 @@ describe('과목명 앞 표시 떼기', () => {
       row(d, '2', '1', 2, '문학'),
     ]);
     const report = fromNeis(rows);
-    expect(report.base.get('2-1|0|0')).toEqual(['용접 작업']);
-    expect(report.proKeys.has('2-1|0|0')).toBe(true);
-    expect(report.proKeys.has('2-1|0|1')).toBe(false);
+    const key = classKey(report, '2-1');
+    expect(report.base.get(`${key}|0|0`)).toEqual(['용접 작업']);
+    expect(report.proKeys.has(`${key}|0|0`)).toBe(true);
+    expect(report.proKeys.has(`${key}|0|1`)).toBe(false);
     expect(report.proRate).toBeCloseTo(0.5, 5);
   });
 
@@ -88,8 +92,9 @@ describe('한 칸에 과목이 둘인 학교', () => {
 
   it('둘 다 기준 시간표에 남긴다', () => {
     const report = fromNeis(split());
-    expect(report.base.get('2-1|0|0')).toEqual(['전공실기(가야금)', '전공실기(대금)']);
-    expect(report.base.get('2-1|0|1')).toEqual(['문학']);
+    const key = classKey(report, '2-1');
+    expect(report.base.get(`${key}|0|0`)).toEqual(['전공실기(가야금)', '전공실기(대금)']);
+    expect(report.base.get(`${key}|0|1`)).toEqual(['문학']);
   });
 
   it('나뉜 두 수업을 한 묶음으로 묶는다', () => {
@@ -153,7 +158,7 @@ describe('한 칸에 과목이 둘인 학교', () => {
       ...YMD.map((d) => row(d, '2', '1', 2, '수학')),
     ];
     const report = fromNeis(rows);
-    expect(report.base.get('2-1|0|0')).toEqual(['문학']);
+    expect(report.base.get(`${classKey(report, '2-1')}|0|0`)).toEqual(['문학']);
     expect(report.changes.map((c) => c.actual)).toEqual(['체육']);
   });
 });

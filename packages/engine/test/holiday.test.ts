@@ -35,6 +35,9 @@ function normalDay(date: string, grade: string, klass: string): NeisRow[] {
   return ['국어', '수학', '영어', '사회', '과학'].map((s, i) => row(date, grade, klass, i + 1, s));
 }
 
+const classKey = (report: ReturnType<typeof fromNeis>, label: string): string =>
+  report.cells.find((cell) => cell.classLabel === label)?.klass ?? label;
+
 describe('휴업일 판정', () => {
   it('학년 전체가 같은 값이면 휴업일이다', () => {
     const rows = [
@@ -56,7 +59,7 @@ describe('휴업일 판정', () => {
     const report = fromNeis(rows);
     expect(report.holidays).toEqual([]);
     expect(report.cells.every((c) => c.kind === '수업')).toBe(true);
-    expect(report.base.get('2-2|0|0')).toEqual(['도면해독(선반가공)']);
+    expect(report.base.get(`${classKey(report, '2-2')}|0|0`)).toEqual(['도면해독(선반가공)']);
   });
 
   it('전문교과 표시가 붙어 있으면 학년이 다 같아도 실습으로 본다', () => {
@@ -75,7 +78,7 @@ describe('휴업일 판정', () => {
     const report = fromNeis(rows);
     expect(report.holidays).toEqual([YMD[0]]);
     const off = report.cells.filter((c) => c.kind === '휴업');
-    expect(new Set(off.map((c) => c.klass))).toEqual(new Set(['2-1', '2-2']));
+    expect(new Set(off.map((c) => c.classLabel))).toEqual(new Set(['2-1', '2-2']));
   });
 
   it('한 학급만 받아 온 자료에서도 휴업일을 가른다', () => {

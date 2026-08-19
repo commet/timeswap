@@ -11,19 +11,62 @@ import {
   validate,
   type Candidate,
   type CoverCandidate,
-  type NeisRow,
   type RecommendResult,
   type TimetableInput,
 } from '@timeswap/engine';
-import { Landing } from './Landing';
+import { AppShell } from './AppShell';
 import { Grid } from './Grid';
 import { Panel } from './Panel';
 import { Changes } from './Changes';
 import { Sheet } from './Sheet';
 import { TeacherPick } from './TeacherPick';
-import { NeisLoader } from './NeisLoader';
-import type { NeisEvent, NeisSchool } from '../lib/neis';
+import { TeacherHome } from './TeacherHome';
+import { ResolutionMatrix } from './ResolutionMatrix';
+import { OpsCommandCenter } from './OpsCommandCenter';
+import { CaseDetail } from './CaseDetail';
+import {
+  projectTeacherDiagnostic,
+  type AbsenceComposerSubmission,
+  type CandidateHandoff,
+} from './AbsenceComposer';
+import { RequestStatusList } from './RequestStatusList';
 import { BRAND } from '../lib/brand';
+import type { WorkspaceState } from '../lib/domain';
+import { findDuplicateAbsenceCase, persistSubmittedAbsenceCase } from '../lib/case-service';
+import {
+  resolutionPreviewForHandoff,
+  resolutionProgressForCase,
+  resolutionRowsForLesson,
+  resolutionDetailForRow,
+  resolutionConstraintForLesson,
+  selectResolutionForCase,
+} from '../lib/resolution';
+import {
+  canResetDemoWorkspace,
+  projectOpsCommandCenter,
+} from '../lib/ops-command-center';
+import {
+  parseLocation,
+  pushLocation,
+  subscribeToPopState,
+  type AppLocation,
+} from '../lib/navigation';
+import { createWorkspaceRepository, type SaveResult, type WorkspaceRepository } from '../lib/repository';
+import {
+  RoleViewAdapterProvider,
+  type RoleViewAdapterProps,
+} from './RoleNavigation';
+import { NeisSessionProvider } from './SetupFlow';
+import {
+  createRequest,
+  createCoverRequest,
+  selectCandidate,
+  setChecklist,
+  transitionRequest,
+  type ChangeRequest,
+  type ChecklistKey,
+  type RequestReason,
+} from '../lib/request-workflow';
 import {
   applyAll,
   applyTheme,
@@ -31,25 +74,13 @@ import {
   buildClosures,
   buildCoverPhrase,
   calendarCoversThisWeek,
-  buildFromNeis,
   buildNeisList,
   buildNotice,
   buildPhrase,
-  clearRaw,
   deriveBurden,
-  fromFile,
-  loadEntries,
-  loadNeisKey,
   loadOffDays,
-  loadRaw,
   loadTheme,
-  loadUnavail,
-  sampleSchool,
-  saveEntries,
-  saveNeisKey,
-  saveOffDays,
-  saveRaw,
-  saveUnavail,
+  weekMondayOf,
   REASON_KEY,
   TEACHER_KEY,
   THEME_LABEL,
@@ -57,9 +88,83 @@ import {
   toFile,
   type AppliedEntry,
   type Loaded,
-  type TeacherMap,
   type ThemeMode,
 } from '../lib/app';
+import { createNeisSession } from '../lib/neis-session';
+import { loadDemoScenario, type DemoScenarioId } from '../lib/demo';
+
+function workspaceToLoaded(state: WorkspaceState): Loaded {
+  const periods = Math.max(7, ...state.lessons.map((lesson) => Number(lesson.period) || 1));
+  const config: TimetableInput['config'] = {
+    days: 5,
+    periods,
+    dayNames: ['월', '화', '수', '목', '금'],
+  };
+  const busy = new Map<string, Set<number>>();
+  const assignments = state.lessons.flatMap((lesson) => {
+    const day = new Date(`${lesson.date}T00:00:00.000Z`).getUTCDay() - 1;
+    const period = Number(lesson.period) - 1;
+    if (day < 0 || day >= 5 || period < 0 || period >= periods) return [];
+    const slot = day * periods + period;
+    const klass = `${lesson.classIdentity.grade}-${lesson.classIdentity.className}`;
+    if (lesson.teacher.state === 'unassigned') {
+      const slots = busy.get(klass) ?? new Set<number>();
+      slots.add(slot);
+      busy.set(klass, slots);
+      return [];
+    }
+    return [{
+      teacher: lesson.teacher.teacherId,
+      klass,
+      subject: lesson.subject,
+      slot,
+      ...(lesson.parallelGroupId ? { group: lesson.parallelGroupId } : {}),
+    }];
+  });
+  return {
+    schoolName: state.workspace.name,
+    source: state.revisions[0]?.source === 'demo'
+      ? '샘플' : state.revisions[0]?.source === 'neis' ? '나이스' : '파일',
+    input: {
+      config,
+      assignments,
+      ...(busy.size ? {
+        klassBusy: Object.fromEntries([...busy].map(([klass, slots]) => [klass, [...slots]])),
+      } : {}),
+    },
+  };
+}
+
+function localYmd(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return [year, month, day].join('-');
+}
+
+function requestEntry(request: ChangeRequest, id: number, cfg: TimetableInput['config']): AppliedEntry {
+  if (request.kind === 'cover' && request.cover) {
+    return {
+      id,
+      type: '보강',
+      title: request.cover.teacher + ' 선생님 보강 (' + slotName(request.target.slot, cfg) + ' ' + request.target.klass + ' ' + request.target.subject + ')',
+      changes: [],
+      cover: {
+        teacher: request.cover.teacher,
+        slot: request.target.slot,
+        klass: request.target.klass,
+        subject: request.target.subject,
+        absent: request.teacher,
+      },
+    };
+  }
+  return {
+    id,
+    type: request.candidate.type,
+    title: request.candidate.title,
+    changes: request.candidate.changes,
+  };
+}
 
 function defaultTeacher(input: TimetableInput): string | null {
   const count = new Map<string, number>();
@@ -78,22 +183,24 @@ function defaultTeacher(input: TimetableInput): string | null {
   return best;
 }
 
-export function Workbench() {
-  const [loaded, setLoaded] = useState<Loaded | null>(null);
-  const [showNeis, setShowNeis] = useState(false);
+function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleViewAdapterProps) {
+  const seed = useMemo(() => workspaceToLoaded(workspaceState), [workspaceState]);
+  const [loaded, setLoaded] = useState<Loaded | null>(seed);
   /** 로고를 누르면 시작 화면으로 돌아온다. 불러온 시간표는 지우지 않는다. */
   const [atHome, setAtHome] = useState(false);
-  const [neisKey, setNeisKey] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [teacher, setTeacher] = useState<string | null>(null);
+  const [teacher, setTeacher] = useState<string | null>(
+    location.view === 'teacher' ? location.teacher : defaultTeacher(seed.input),
+  );
   const [teacherInput, setTeacherInput] = useState('');
   /** 아직 본인 성함을 고르지 않았다. 처음 불러온 직후에만 참이다. */
   const [needsPick, setNeedsPick] = useState(false);
   /** 결재 문서에 들어갈 결강 사유 */
   const [reason, setReason] = useState('출장');
   const [entries, setEntries] = useState<AppliedEntry[]>([]);
-  const [view, setView] = useState<'teacher' | 'klass'>('teacher');
-  const [klass, setKlass] = useState<string | null>(null);
+  const [view, setView] = useState<'teacher' | 'klass'>(location.view === 'class' ? 'klass' : 'teacher');
+  const [klass, setKlass] = useState<string | null>(
+    location.view === 'class' ? `${location.grade}-${location.className}` : null,
+  );
   const [queue, setQueue] = useState<number[]>([]);
   const [unavail, setUnavail] = useState<Record<string, number[]>>({});
   /** 손으로 지정한 수업 없는 요일. 학사일정에 안 잡히는 정기고사와 학교 행사를 위한 것이다 */
@@ -108,30 +215,30 @@ export function Workbench() {
   const [noSave, setNoSave] = useState(false);
   const [todayIdx, setTodayIdx] = useState<number | null>(null);
   const [theme, setTheme] = useState<ThemeMode>('auto');
+  const [workspaceMode, setWorkspaceMode] = useState<'teacher' | 'ops'>(location.view === 'ops' ? 'ops' : 'teacher');
+  const [scheduleFocus, setScheduleFocus] = useState<'today' | 'week'>('week');
+  const [requests, setRequests] = useState<ChangeRequest[]>([]);
+  const [printRequest, setPrintRequest] = useState<ChangeRequest | null>(null);
   const sideRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const raw = loadRaw();
-    if (raw) {
-      try {
-        const l = fromFile(raw);
-        setLoaded(l);
-        setEntries(loadEntries());
-        setUnavail(loadUnavail());
-        const saved = localStorage.getItem(TEACHER_KEY);
-        setTeacher(saved ?? defaultTeacher(l.input));
-        if (saved === null) setNeedsPick(true);
-        setReason(localStorage.getItem(REASON_KEY) ?? '출장');
-      } catch {
-        clearRaw();
-      }
-    }
-    setNeisKey(loadNeisKey());
+    const next = workspaceToLoaded(workspaceState);
+    setLoaded(next);
+    setTeacher(location.view === 'teacher' ? location.teacher : defaultTeacher(next.input));
+    setView(location.view === 'class' ? 'klass' : 'teacher');
+    setKlass(location.view === 'class' ? `${location.grade}-${location.className}` : null);
+    setWorkspaceMode(location.view === 'ops' ? 'ops' : 'teacher');
+    setAtHome(false);
+    setNeedsPick(false);
+    setEntries([]);
+    setUnavail({});
+    setReason(localStorage.getItem(REASON_KEY) ?? '출장');
     setOffDays(loadOffDays());
     setTheme(loadTheme());
     const wd = new Date().getDay(); // 일 0, 월 1
     setTodayIdx(wd >= 1 && wd <= 5 ? wd - 1 : null);
-  }, []);
+    if (window.innerWidth < 700) setScheduleFocus('today');
+  }, [location, workspaceState]);
 
   const base = loaded?.input ?? null;
 
@@ -225,6 +332,16 @@ export function Workbench() {
       return null;
     }
   }, [input, view, currentTeacher, activeSlot]);
+
+  const requestDate = useMemo(() => {
+    if (!result || !input) return localYmd(weekMondayOf());
+    const date = weekMondayOf();
+    date.setDate(date.getDate() + dayOf(result.target.slot, input.config));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (date < today) date.setDate(date.getDate() + 7);
+    return localYmd(date);
+  }, [result, input]);
 
   /**
    * 보강 후보를 언제 함께 보여 줄지.
@@ -342,7 +459,6 @@ export function Workbench() {
       },
     };
     setLoaded(next);
-    if (!saveRaw(toFile(next))) setNoSave(true);
     setHovered(null);
     const n = next.input.assignments.filter((a) => a.group === id).length;
     show(`${subject} 수업 ${n}개를 한 묶음으로 표시했습니다. 이제 함께 움직입니다`);
@@ -378,7 +494,6 @@ export function Workbench() {
       },
     };
     setLoaded(next);
-    if (!saveRaw(toFile(next))) setNoSave(true);
     setHovered(null);
     show('묶음을 해제했습니다. 이제 따로 움직입니다');
   }, [loaded, input, result, show]);
@@ -402,77 +517,6 @@ export function Workbench() {
       /* 무시 */
     }
   }, []);
-
-  /** 새 시간표를 받으면 화면과 저장소를 함께 초기화한다. */
-  const install = useCallback(
-    (l: Loaded) => {
-      setLoaded(l);
-      const stored = saveRaw(toFile(l));
-      setNoSave(!stored);
-      setEntries([]);
-      saveEntries([]);
-      setQueue([]);
-      setUnavail({});
-      saveUnavail({});
-      setHovered(null);
-      setView('teacher');
-      setAtHome(false);
-      // 학교가 바뀌면 이전에 고른 성함은 뜻이 없다. 처음부터 다시 묻는다.
-      setTeacher(defaultTeacher(l.input));
-      setNeedsPick(true);
-      try {
-        localStorage.removeItem(TEACHER_KEY);
-      } catch {
-        /* 무시 */
-      }
-      show(`${l.schoolName} 시간표를 불러왔습니다`);
-    },
-    [show],
-  );
-
-  const onSample = useCallback(() => {
-    setBusy(true);
-    try {
-      install(sampleSchool());
-    } finally {
-      setBusy(false);
-    }
-  }, [install]);
-
-  const onFile = useCallback(
-    (f: File) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          install(fromFile(String(reader.result)));
-        } catch (e) {
-          show(e instanceof Error ? e.message : '불러오기에 실패했습니다');
-        }
-      };
-      reader.onerror = () => show('파일을 읽지 못했습니다');
-      reader.readAsText(f);
-    },
-    [install, show],
-  );
-
-  const onNeisDone = useCallback(
-    (
-      school: NeisSchool,
-      rows: NeisRow[],
-      events: NeisEvent[],
-      map: TeacherMap,
-      range: { from: string; to: string },
-    ) => {
-      const l = buildFromNeis(school, rows, events, map, range);
-      if (l.input.assignments.length === 0) {
-        show('담당 교사를 한 명 이상 입력해야 시간표를 만들 수 있습니다');
-        return;
-      }
-      setShowNeis(false);
-      install(l);
-    },
-    [install, show],
-  );
 
   const onSaveFile = useCallback(() => {
     if (!loaded) return;
@@ -498,6 +542,7 @@ export function Workbench() {
         // 좁은 화면에서는 추천 패널이 격자 아래에 있어 눈에 안 띈다. 골랐으면 데려간다.
         window.setTimeout(() => {
           sideRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          sideRef.current?.focus({ preventScroll: true });
         }, 80);
       }
       return has ? q.filter((x) => x !== s) : [...q, s];
@@ -533,7 +578,6 @@ export function Workbench() {
         const next: Record<string, number[]> = { ...u };
         if (cur.size === 0) delete next[currentTeacher];
         else next[currentTeacher] = [...cur].sort((x, y) => x - y);
-        saveUnavail(next);
         return next;
       });
     },
@@ -544,7 +588,6 @@ export function Workbench() {
     setHovered(null);
     setOffDays((cur) => {
       const next = cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d].sort((a, b) => a - b);
-      saveOffDays(next);
       return next;
     });
   }, []);
@@ -580,7 +623,6 @@ export function Workbench() {
         const next: Record<string, number[]> = { ...u };
         if (cur.size === 0) delete next[currentTeacher];
         else next[currentTeacher] = [...cur].sort((x, y) => x - y);
-        saveUnavail(next);
         return next;
       });
     },
@@ -664,7 +706,6 @@ export function Workbench() {
         },
       ];
       setEntries(next);
-      if (!saveEntries(next)) setNoSave(true);
       setHovered(null);
       setQueue((q) => {
         const rest = q.slice(1);
@@ -703,7 +744,6 @@ export function Workbench() {
       const nextId = (entries[entries.length - 1]?.id ?? 0) + 1;
       const next = [...entries, { id: nextId, type: c.type, title: c.title, changes: c.changes }];
       setEntries(next);
-      if (!saveEntries(next)) setNoSave(true);
       setHovered(null);
       setQueue((q) => {
         const rest = q.slice(1);
@@ -721,11 +761,203 @@ export function Workbench() {
     [input, entries, show],
   );
 
+  const onRequest = useCallback(
+    (candidate: Candidate, date: string, requestReason: RequestReason, note: string, alternatives: Candidate[]) => {
+      if (!result || !input || currentTeacher === null) return;
+      const picked = new Date(date + 'T12:00:00');
+      const expectedDay = dayOf(result.target.slot, input.config) + 1;
+      if (Number.isNaN(picked.getTime()) || picked.getDay() !== expectedDay) {
+        show((input.config.dayNames[expectedDay - 1] ?? '해당') + '요일 날짜를 골라 주세요');
+        return;
+      }
+      if (localYmd(picked) < localYmd(new Date())) {
+        show('오늘 이후 날짜를 골라 주세요');
+        return;
+      }
+      const duplicate = requests.some(
+        (request) =>
+          request.status === 'pending' &&
+          request.teacher === currentTeacher &&
+          request.date === date &&
+          request.target.slot === result.target.slot,
+      );
+      if (duplicate) {
+        show('같은 수업의 검토 중인 요청이 이미 있습니다');
+        return;
+      }
+      try {
+        const request = createRequest({
+          date,
+          teacher: currentTeacher,
+          reason: requestReason,
+          note,
+          target: result.target,
+          candidate,
+          alternatives,
+        });
+        const next = [request, ...requests];
+        setRequests(next);
+        setHovered(null);
+        setQueue((current) => current.slice(1));
+        show('일과 담당자에게 변경 요청을 보냈습니다');
+        window.setTimeout(() => document.getElementById('my-requests-title')?.focus(), 80);
+      } catch (error) {
+        show(error instanceof Error ? error.message : '요청을 저장하지 못했습니다');
+      }
+    },
+    [result, input, currentTeacher, requests, show],
+  );
+
+  const onCoverRequest = useCallback(
+    (candidate: CoverCandidate, date: string, requestReason: RequestReason, note: string) => {
+      if (!result || !input || currentTeacher === null) return;
+      const picked = new Date(date + 'T12:00:00');
+      const expectedDay = dayOf(result.target.slot, input.config) + 1;
+      if (Number.isNaN(picked.getTime()) || picked.getDay() !== expectedDay) {
+        show((input.config.dayNames[expectedDay - 1] ?? '해당') + '요일 날짜를 골라 주세요');
+        return;
+      }
+      if (localYmd(picked) < localYmd(new Date())) {
+        show('오늘 이후 날짜를 골라 주세요');
+        return;
+      }
+      const duplicate = requests.some(
+        (request) =>
+          request.status === 'pending' && request.teacher === currentTeacher &&
+          request.date === date && request.target.slot === result.target.slot,
+      );
+      if (duplicate) {
+        show('같은 수업의 검토 중인 요청이 이미 있습니다');
+        return;
+      }
+      try {
+        const request = createCoverRequest({
+          date, teacher: currentTeacher, reason: requestReason, note,
+          target: result.target, cover: candidate,
+        });
+        const next = [request, ...requests];
+        setRequests(next);
+        setQueue((current) => current.slice(1));
+        show(candidate.teacher + ' 선생님 보강 요청을 보냈습니다');
+        window.setTimeout(() => document.getElementById('my-requests-title')?.focus(), 80);
+      } catch (error) {
+        show(error instanceof Error ? error.message : '요청을 저장하지 못했습니다');
+      }
+    },
+    [result, input, currentTeacher, requests, show],
+  );
+
+  const onCancelRequest = useCallback(
+    (id: string) => {
+      try {
+        const next = requests.map((request) =>
+          request.id === id ? transitionRequest(request, 'cancelled') : request,
+        );
+        setRequests(next);
+        show('요청을 취소했습니다');
+      } catch (error) {
+        show(error instanceof Error ? error.message : '요청을 취소하지 못했습니다');
+      }
+    },
+    [requests, show],
+  );
+
+  const onSelectRequestCandidate = useCallback(
+    (id: string, candidate: Candidate) => {
+      try {
+        const next = requests.map((request) =>
+          request.id === id ? selectCandidate(request, candidate) : request,
+        );
+        setRequests(next);
+        show('승인할 교체안을 바꿨습니다');
+      } catch (error) {
+        show(error instanceof Error ? error.message : '교체안을 바꾸지 못했습니다');
+      }
+    },
+    [requests, show],
+  );
+
+  const onApproveRequest = useCallback(
+    (id: string) => {
+      if (!input) return;
+      const request = requests.find((item) => item.id === id);
+      if (!request) return;
+      if (request.kind !== 'cover') {
+        const after = applyAll(input, [
+          { id: 0, type: request.candidate.type, title: request.candidate.title, changes: request.candidate.changes },
+        ]);
+        if (validate(after).length > 0) {
+          show('그 사이 시간표가 달라져 이 안을 승인할 수 없습니다. 새 요청이 필요합니다');
+          return;
+        }
+      }
+      try {
+        const nextId = (entries[entries.length - 1]?.id ?? 0) + 1;
+        const nextEntry = requestEntry(request, nextId, input.config);
+        const nextEntries = [...entries, nextEntry];
+        const nextRequests = requests.map((item) =>
+          item.id === id ? transitionRequest(item, 'approved') : item,
+        );
+        setEntries(nextEntries);
+        setRequests(nextRequests);
+        show('승인했습니다. 이제 행정 마무리 세 단계를 확인해 주세요');
+        window.setTimeout(() => document.getElementById('admin-checklist-title')?.focus(), 80);
+      } catch (error) {
+        show(error instanceof Error ? error.message : '승인하지 못했습니다');
+      }
+    },
+    [input, requests, entries, show],
+  );
+
+  const onRejectRequest = useCallback(
+    (id: string, note: string) => {
+      try {
+        const next = requests.map((request) =>
+          request.id === id ? transitionRequest(request, 'rejected', note) : request,
+        );
+        setRequests(next);
+        show('조정할 이유와 함께 반려했습니다');
+      } catch (error) {
+        show(error instanceof Error ? error.message : '반려하지 못했습니다');
+      }
+    },
+    [requests, show],
+  );
+
+  const onRequestChecklist = useCallback(
+    (id: string, key: ChecklistKey, checked: boolean) => {
+      try {
+        const next = requests.map((request) =>
+          request.id === id ? setChecklist(request, key, checked) : request,
+        );
+        setRequests(next);
+      } catch (error) {
+        show(error instanceof Error ? error.message : '완료 상태를 저장하지 못했습니다');
+      }
+    },
+    [requests, show],
+  );
+
+  const onPublishRequest = useCallback(
+    (id: string) => {
+      try {
+        const next = requests.map((request) =>
+          request.id === id ? transitionRequest(request, 'published') : request,
+        );
+        setRequests(next);
+        show('변경 시간표를 게시 완료로 표시했습니다');
+        window.setTimeout(() => document.getElementById('ops-detail-title')?.focus(), 80);
+      } catch (error) {
+        show(error instanceof Error ? error.message : '게시 완료로 바꾸지 못했습니다');
+      }
+    },
+    [requests, show],
+  );
+
   const onUndoLast = useCallback(() => {
     if (entries.length === 0) return;
     const next = entries.slice(0, -1);
     setEntries(next);
-    saveEntries(next);
     setQueue([]);
     setHovered(null);
     show('직전 변경을 되돌렸습니다');
@@ -735,7 +967,7 @@ export function Workbench() {
     if (entries.length === 0) return;
     if (!window.confirm('반영한 변경을 모두 되돌리시겠습니까?')) return;
     setEntries([]);
-    saveEntries([]);
+    setRequests([]);
     setQueue([]);
     setHovered(null);
     show('변경을 모두 되돌렸습니다');
@@ -754,23 +986,39 @@ export function Workbench() {
     window.print();
   }, []);
 
+  const onCopyRequestNotice = useCallback(
+    (id: string) => {
+      if (!input || !loaded) return;
+      const request = requests.find((item) => item.id === id);
+      if (!request) return;
+      void copy(buildNotice(loaded.schoolName, [requestEntry(request, 1, input.config)], input.config), '이 요청의 변경 공지를 복사했습니다');
+    },
+    [input, loaded, requests, copy],
+  );
+
+  const onCopyRequestNeisList = useCallback(
+    (id: string) => {
+      if (!input || !loaded) return;
+      const request = requests.find((item) => item.id === id);
+      if (!request) return;
+      void copy(buildNeisList(loaded.schoolName, [requestEntry(request, 1, input.config)], input.config), '이 요청의 나이스 입력 목록을 복사했습니다');
+    },
+    [input, loaded, requests, copy],
+  );
+
+  const onPrintRequest = useCallback(
+    (id: string) => {
+      const request = requests.find((item) => item.id === id);
+      if (!request) return;
+      setPrintRequest(request);
+      window.setTimeout(() => window.print(), 80);
+    },
+    [requests],
+  );
+
   const onReset = useCallback(() => {
-    clearRaw();
-    setLoaded(null);
-    setTeacher(null);
-    setEntries([]);
-    setKlass(null);
-    setView('teacher');
-    setQueue([]);
-    setUnavail({});
-    setHovered(null);
-    setNeedsPick(false);
-    try {
-      localStorage.removeItem(TEACHER_KEY);
-    } catch {
-      /* 무시 */
-    }
-  }, []);
+    navigate({ view: 'landing' });
+  }, [navigate]);
 
   return (
     <div className="shell">
@@ -778,9 +1026,8 @@ export function Workbench() {
         <button
           className="wordmark"
           onClick={() => {
-            setAtHome(true);
-            setShowNeis(false);
             setHovered(null);
+            navigate({ view: 'landing' });
             window.scrollTo({ top: 0 });
           }}
           title="처음 화면으로"
@@ -794,8 +1041,29 @@ export function Workbench() {
             {loaded.schoolName} | {loaded.source}
           </span>
         )}
-        <span className="spacer" />
         {loaded && input && !atHome && !needsPick && (
+          <nav className="workspace-switch" aria-label="작업 공간">
+            <button
+              className={workspaceMode === 'teacher' ? 'on' : ''}
+              aria-current={workspaceMode === 'teacher' ? 'page' : undefined}
+              onClick={() => setWorkspaceMode('teacher')}
+            >
+              내 시간표
+            </button>
+            <button
+              className={workspaceMode === 'ops' ? 'on' : ''}
+              aria-current={workspaceMode === 'ops' ? 'page' : undefined}
+              onClick={() => setWorkspaceMode('ops')}
+            >
+              일과 요청함
+              {requests.some((request) => request.status === 'pending') && (
+                <span>{requests.filter((request) => request.status === 'pending').length}</span>
+              )}
+            </button>
+          </nav>
+        )}
+        <span className="spacer" />
+        {loaded && input && !atHome && !needsPick && workspaceMode === 'teacher' && (
           <>
             <div className="seg" role="tablist" aria-label="보기 전환">
               <button
@@ -886,93 +1154,83 @@ export function Workbench() {
         )}
       </header>
 
-      {showNeis ? (
-        <main className="work single">
-          <section className="card">
-            <NeisLoader
-              neisKey={neisKey}
-              onKeyChange={(k) => {
-                setNeisKey(k);
-                saveNeisKey(k);
-              }}
-              onDone={onNeisDone}
-              onCancel={() => setShowNeis(false)}
-            />
-          </section>
-        </main>
-      ) : !loaded || !input || atHome ? (
-        <Landing
-          onNeis={() => setShowNeis(true)}
-          onSample={onSample}
-          onFile={onFile}
-          onResume={() => setAtHome(false)}
-          hasSaved={loaded !== null && input !== null}
-          savedName={loaded?.schoolName ?? ''}
-          busy={busy}
-        />
+      {!loaded || !input ? (
+        <main className="missing-workspace"><p>학교 시간표를 읽지 못했습니다.</p></main>
       ) : needsPick ? (
         <TeacherPick
           schoolName={loaded.schoolName}
           teachers={teachers}
           onPick={commitTeacher}
         />
+      ) : workspaceMode === 'ops' ? (
+        <main className="missing-workspace">
+          <h2>변경 관제판으로 이동합니다</h2>
+          <p>이전 요청함은 더 이상 운영 상태를 직접 수정하지 않습니다.</p>
+        </main>
       ) : (
-        <main className="work">
-          <Grid
-            cfg={input.config}
-            mode={view}
-            owner={(view === 'teacher' ? currentTeacher : currentKlass) ?? ''}
-            lessons={lessons}
-            absentSlots={queue}
-            lockedSlots={currentTeacher !== null ? (unavail[currentTeacher] ?? []) : []}
-            todayIdx={todayIdx}
-            closures={closures}
-            preview={hovered}
-            onToggleSlot={onToggleSlot}
-            onToggleDay={onToggleDay}
-            onToggleLock={onToggleLock}
-            offDays={offDays}
-            onToggleOffDay={onToggleOffDay}
-            myOffDays={myOffDays}
-            onToggleMyOffDay={onToggleMyOffDay}
-            busySlots={
-              view === 'klass' && currentKlass !== null
-                ? (input.klassBusy?.[currentKlass] ?? [])
-                : []
-            }
-          />
-          <div className="side" ref={sideRef}>
-            <Panel
+        <main className={'teacher-work focus-' + scheduleFocus + (activeSlot !== null ? ' has-selection' : '')}>
+          {(scheduleFocus === 'week' || view === 'klass') && (
+            <div className="work">
+              <Grid
+                cfg={input.config}
+                mode={view}
+                owner={(view === 'teacher' ? currentTeacher : currentKlass) ?? ''}
+                lessons={lessons}
+                absentSlots={queue}
+                lockedSlots={currentTeacher !== null ? (unavail[currentTeacher] ?? []) : []}
+                todayIdx={todayIdx}
+                closures={closures}
+                preview={hovered}
+                onToggleSlot={onToggleSlot}
+                onToggleDay={onToggleDay}
+                onToggleLock={onToggleLock}
+                offDays={offDays}
+                onToggleOffDay={onToggleOffDay}
+                myOffDays={myOffDays}
+                onToggleMyOffDay={onToggleMyOffDay}
+                busySlots={
+                  view === 'klass' && currentKlass !== null
+                    ? (input.klassBusy?.[currentKlass] ?? [])
+                    : []
+                }
+              />
+              <div className="side" ref={sideRef} tabIndex={-1}>
+                <Panel
+                  cfg={input.config}
+                  result={result}
+                  queueLen={queue.length}
+                  cover={cover}
+                  hovered={hovered}
+                  peers={peers}
+                  electiveGrade={electiveGrade}
+                  grouped={grouped}
+                  defaultDate={requestDate}
+                  owner={currentTeacher ?? ''}
+                  onGroup={onGroup}
+                  onUngroup={onUngroup}
+                  onHover={setHovered}
+                  onCopy={onCopy}
+                  onCopyCover={onCopyCover}
+                  onApplyCover={onApplyCover}
+                  onApply={onApply}
+                  onRequest={onRequest}
+                  onCoverRequest={onCoverRequest}
+                  onSkip={onSkip}
+                  onClear={() => {
+                    setQueue([]);
+                    setHovered(null);
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          {view === 'teacher' && currentTeacher !== null && (
+            <RequestStatusList
+              requests={requests.filter((request) => request.teacher === currentTeacher)}
               cfg={input.config}
-              result={result}
-              queueLen={queue.length}
-              cover={cover}
-              hovered={hovered}
-              peers={peers}
-              electiveGrade={electiveGrade}
-              grouped={grouped}
-              onGroup={onGroup}
-              onUngroup={onUngroup}
-              onHover={setHovered}
-              onCopy={onCopy}
-              onCopyCover={onCopyCover}
-              onApplyCover={onApplyCover}
-              onApply={onApply}
-              onSkip={onSkip}
+              onCancel={onCancelRequest}
             />
-            <Changes
-              cfg={input.config}
-              entries={entries}
-              helpers={helpers}
-              onUndoLast={onUndoLast}
-              onUndoAll={onUndoAll}
-              onCopyNotice={onCopyNotice}
-              onCopyNeisList={onCopyNeisList}
-              onPrint={onPrint}
-              reason={reason}
-              onReason={onReason}
-            />
-          </div>
+          )}
         </main>
       )}
 
@@ -980,9 +1238,9 @@ export function Workbench() {
         <Sheet
           schoolName={loaded.schoolName}
           cfg={input.config}
-          entries={entries}
-          teacher={currentTeacher ?? ''}
-          reason={reason}
+          entries={printRequest ? [requestEntry(printRequest, 1, input.config)] : entries}
+          teacher={printRequest?.teacher ?? currentTeacher ?? ''}
+          reason={printRequest ? printRequest.reason + (printRequest.note ? ' · ' + printRequest.note : '') : reason}
         />
       )}
 
@@ -1052,5 +1310,322 @@ export function Workbench() {
         </div>
       )}
     </div>
+  );
+}
+
+function workspaceIdOf(location: AppLocation): string | null {
+  return location.view === 'teacher' || location.view === 'ops' || location.view === 'class'
+    ? location.school
+    : null;
+}
+
+function downloadDiagnostic(state: WorkspaceState): void {
+  const generatedAt = new Date().toISOString();
+  const blob = new Blob([JSON.stringify({
+    generatedAt,
+    ...projectTeacherDiagnostic(state),
+  }, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${state.workspace.name}-변경요청-진단.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function caseIdPart(): string {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+type TeacherRoleViewAdapterProps = Omit<RoleViewAdapterProps, 'location'> & {
+  location: Extract<AppLocation, { view: 'teacher' }>;
+};
+
+type OpsRoleViewAdapterProps = Omit<RoleViewAdapterProps, 'location'> & {
+  location: Extract<AppLocation, { view: 'ops' }>;
+};
+
+function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleViewAdapterProps) {
+  const teacherId = location.teacher;
+  const [handoff, setHandoff] = useState<CandidateHandoff | null>(null);
+  const [selectedResolutionId, setSelectedResolutionId] = useState<string | null>(null);
+  const [resolutionMessage, setResolutionMessage] = useState('');
+  const preview = useMemo(() => handoff
+    ? resolutionPreviewForHandoff(state, teacherId, handoff)
+    : null, [handoff, state, teacherId]);
+  const previewLessonId = handoff?.lessonIds[0] ?? null;
+  const rows = useMemo(() => preview && previewLessonId
+    ? resolutionRowsForLesson(preview.state, preview.caseId, previewLessonId)
+    : [], [preview, previewLessonId]);
+  const selectedRow = rows.find((row) => row.id === selectedResolutionId) ?? rows[0] ?? null;
+  const constraintMessage = useMemo(() => previewLessonId
+    ? resolutionConstraintForLesson(state, previewLessonId, rows)
+    : undefined, [previewLessonId, rows, state]);
+  const selectedPreview = useMemo(() => preview && selectedRow
+    ? selectResolutionForCase(preview.state, preview.caseId, selectedRow)
+    : null, [preview, selectedRow]);
+  const timetablePreview = useMemo(() => selectedRow
+    ? resolutionDetailForRow(state, selectedRow)
+    : undefined, [selectedRow, state]);
+
+  useEffect(() => {
+    setSelectedResolutionId(rows[0]?.id ?? null);
+    setResolutionMessage('');
+  }, [handoff, rows]);
+
+  function submit(input: AbsenceComposerSubmission): { caseId?: string; error?: string } {
+    const duplicate = findDuplicateAbsenceCase(state, {
+      requesterTeacherId: teacherId,
+      fromDate: input.fromDate,
+      toDate: input.toDate,
+      lessonIds: input.lessonIds,
+    });
+    if (duplicate) {
+      return { error: `같은 기간과 수업으로 ${duplicate.status} 상태의 요청이 이미 있습니다. 기존 요청을 확인하거나 날짜 또는 수업 선택을 바꾸십시오.` };
+    }
+    const part = caseIdPart();
+    const at = new Date().toISOString();
+    const caseId = `case:${part}`;
+    try {
+      return persistSubmittedAbsenceCase(state, {
+        id: caseId,
+        auditEventId: `audit:${part}:created`,
+        submissionAuditEventId: `audit:${part}:submitted`,
+        workspaceId: state.workspace.id,
+        requesterTeacherId: teacherId,
+        ...input,
+        at,
+      }, saveState);
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : '요청을 저장하지 못했습니다.' };
+    }
+  }
+
+  function confirmResolution() {
+    if (!handoff || !preview || !selectedRow || !selectedPreview) return;
+    const selectedCase = selectedPreview.state.cases.find((item) => item.id === preview.caseId);
+    if (!selectedCase) return;
+    const duplicate = findDuplicateAbsenceCase(state, {
+      requesterTeacherId: teacherId,
+      fromDate: handoff.fromDate,
+      toDate: handoff.toDate,
+      lessonIds: selectedCase.lessonIds,
+    });
+    if (duplicate) {
+      setResolutionMessage('같은 기간과 수업으로 이미 제출된 요청이 있습니다. 기존 요청을 확인하거나 날짜 또는 수업 선택을 바꾸십시오.');
+      return;
+    }
+    const part = caseIdPart();
+    const at = new Date().toISOString();
+    try {
+      const result = persistSubmittedAbsenceCase(state, {
+        id: `case:${part}`,
+        auditEventId: `audit:${part}:created`,
+        submissionAuditEventId: `audit:${part}:submitted`,
+        workspaceId: state.workspace.id,
+        requesterTeacherId: teacherId,
+        fromDate: handoff.fromDate,
+        toDate: handoff.toDate,
+        reason: handoff.reason,
+        ...(handoff.note ? { note: handoff.note } : {}),
+        lessonIds: selectedCase.lessonIds,
+        resolutionItems: selectedCase.resolutionItems,
+        at,
+      }, saveState);
+      if ('error' in result) {
+        setResolutionMessage(result.error);
+        return;
+      }
+      setHandoff(null);
+    } catch (error) {
+      setResolutionMessage(error instanceof Error ? error.message : '해결안을 저장하지 못했습니다.');
+    }
+  }
+
+  const validationMessage = selectedPreview
+    ? selectedPreview.validation.valid
+      ? '사건 전체 충돌 검사를 통과했습니다.'
+      : selectedPreview.validation.conflicts[0]?.message ?? '사건 전체 충돌 검사가 필요합니다.'
+    : resolutionMessage;
+
+  return (
+    <>
+      <TeacherHome
+        state={state}
+        teacherId={teacherId}
+        onSubmit={submit}
+        onExportDiagnostic={() => downloadDiagnostic(state)}
+        onCandidateHandoff={setHandoff}
+        resolutionPreview={timetablePreview}
+      />
+      {handoff && preview && (
+        <ResolutionMatrix
+          state={selectedPreview?.state ?? preview.state}
+          rows={rows}
+          selectedId={selectedRow?.id ?? null}
+          onSelect={setSelectedResolutionId}
+          onConfirm={confirmResolution}
+          progress={resolutionProgressForCase(selectedPreview?.state ?? preview.state, preview.caseId)}
+          validationMessage={resolutionMessage || validationMessage}
+          atomicMessage={handoff.atomicWarnings[0] ?? constraintMessage}
+        />
+      )}
+    </>
+  );
+}
+
+function CanonicalOpsWorkbench({ state, location, saveState, navigate }: OpsRoleViewAdapterProps) {
+  const activeRevision = state.revisions.find((item) => item.id === state.workspace.activeRevisionId);
+  const today = activeRevision?.source === 'demo'
+    ? '2026-08-18'
+    : new Date().toISOString().slice(0, 10);
+  const dashboard = useMemo(() => projectOpsCommandCenter(state, today), [state, today]);
+  const selectedCaseId = dashboard.cases.some((item) => item.caseId === location.caseId)
+    ? location.caseId
+    : dashboard.cases[0]?.caseId;
+
+  const selectCase = (caseId: string) => navigate({
+    view: 'ops', school: state.workspace.id, caseId, step: 'case',
+  });
+  const backToList = () => navigate({ view: 'ops', school: state.workspace.id });
+  const openAdministrativeStep = () => selectedCaseId && navigate({
+    view: 'ops', school: state.workspace.id, caseId: selectedCaseId, step: 'admin',
+  });
+  const returnToCase = () => selectedCaseId && navigate({
+    view: 'ops', school: state.workspace.id, caseId: selectedCaseId, step: 'case',
+  });
+  const openScenario = (id: DemoScenarioId): SaveResult => {
+    if (!canResetDemoWorkspace(state)) return { ok: false, reason: 'unavailable' };
+    const next = loadDemoScenario(id);
+    const saved = saveState(next);
+    if (saved.ok) {
+      navigate({
+        view: 'ops', school: next.workspace.id,
+        ...(next.cases[0] ? { caseId: next.cases[0].id, step: 'case' as const } : {}),
+      });
+    }
+    return saved;
+  };
+
+  return (
+    <OpsCommandCenter
+      dashboard={dashboard.dashboard}
+      cases={dashboard.cases}
+      timeline={dashboard.timeline}
+      selectedCaseId={selectedCaseId}
+      onSelectCase={selectCase}
+      onOpenScenario={openScenario}
+      scenarioState={state}
+      onBackToList={backToList}
+      onReturnToCase={returnToCase}
+      step={location.step}
+      detail={selectedCaseId ? (
+        <CaseDetail
+          state={state}
+          caseId={selectedCaseId}
+          today={today}
+          onChange={saveState}
+          onBack={backToList}
+          onOpenAdministrativeStep={openAdministrativeStep}
+        />
+      ) : <section className="ops-case-detail empty"><h2>선택할 사건이 없습니다</h2><p>사건 목록에서 확인할 변경을 선택하십시오.</p></section>}
+    />
+  );
+}
+
+function RoleWorkbench(props: RoleViewAdapterProps) {
+  if (props.location.view === 'teacher') return (
+    <CanonicalTeacherWorkbench
+      state={props.state}
+      location={props.location}
+      saveState={props.saveState}
+      navigate={props.navigate}
+    />
+  );
+  if (props.location.view === 'ops') return (
+    <CanonicalOpsWorkbench
+      state={props.state}
+      location={props.location}
+      saveState={props.saveState}
+      navigate={props.navigate}
+    />
+  );
+  return <LegacyWorkbench {...props} />;
+}
+
+export function Workbench() {
+  const repositoryRef = useRef<WorkspaceRepository | null>(null);
+  const workspaceRef = useRef<WorkspaceState | null>(null);
+  const locationRef = useRef<AppLocation>({ view: 'landing' });
+  const neisSession = useMemo(createNeisSession, []);
+  const [state, setState] = useState<WorkspaceState | null>(null);
+  const [location, setLocation] = useState<AppLocation>({ view: 'landing' });
+  const [neisKey, setNeisKey] = useState('');
+  const [saveError, setSaveError] = useState('');
+
+  const updateLocation = useCallback((next: AppLocation) => {
+    if (locationRef.current.view === 'setup' && next.view !== 'setup') {
+      neisSession.clear();
+      setNeisKey('');
+    }
+    locationRef.current = next;
+    setLocation(next);
+    const workspaceId = workspaceIdOf(next);
+    if (!workspaceId) return;
+    if (workspaceRef.current?.workspace.id === workspaceId) return;
+    const loaded = repositoryRef.current?.load(workspaceId) ?? null;
+    workspaceRef.current = loaded;
+    setState(loaded);
+  }, [neisSession]);
+
+  useEffect(() => {
+    repositoryRef.current = createWorkspaceRepository(window.localStorage);
+    const initial = parseLocation(window.location);
+    updateLocation(initial);
+    return subscribeToPopState(updateLocation);
+  }, [updateLocation]);
+
+  const saveState = useCallback((next: WorkspaceState): SaveResult => {
+    const result = repositoryRef.current?.save(next) ?? { ok: false, reason: 'unavailable' as const };
+    if (!result.ok) {
+      setSaveError(result.reason === 'quota'
+        ? '브라우저 저장 공간이 부족합니다. 요청을 저장하지 않았습니다. 진단 보고서를 내보내고 저장 공간을 확보한 뒤 다시 시도하십시오.'
+        : '이 브라우저에 학교 자료를 저장할 수 없습니다. 요청을 저장하지 않았습니다. 진단 보고서를 내보낸 뒤 브라우저 저장 설정을 확인하십시오.');
+      return result;
+    }
+    workspaceRef.current = next;
+    setState(next);
+    setSaveError('');
+    return result;
+  }, []);
+
+  const navigate = useCallback((next: AppLocation) => {
+    pushLocation(next);
+    updateLocation(next);
+  }, [updateLocation]);
+
+  const sessionValue = useMemo(() => ({
+    key: neisKey,
+    setKey(next: string) {
+      neisSession.setKey(next);
+      setNeisKey(neisSession.getKey());
+    },
+    clear() {
+      neisSession.clear();
+      setNeisKey('');
+    },
+  }), [neisKey, neisSession]);
+
+  return (
+    <NeisSessionProvider value={sessionValue}>
+      <RoleViewAdapterProvider adapter={RoleWorkbench}>
+        {saveError && <div className="warn-bar" role="alert">{saveError}</div>}
+        <AppShell state={state} location={location} saveState={saveState} navigate={navigate} />
+      </RoleViewAdapterProvider>
+    </NeisSessionProvider>
   );
 }

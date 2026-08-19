@@ -17,6 +17,12 @@ import {
 import { BRAND } from './brand';
 import type { NeisEvent, NeisSchool } from './neis';
 
+export {
+  createDemoWorkspace,
+  loadDemoScenario,
+  type DemoScenarioId,
+} from './demo';
+
 export const STORAGE_KEY = 'timeswap:v0:data';
 export const TEACHER_KEY = 'timeswap:v0:teacher';
 export const CHANGES_KEY = 'timeswap:v0:changes';
@@ -24,7 +30,6 @@ export const UNAVAIL_KEY = 'timeswap:v0:unavail';
 export const THEME_KEY = 'timeswap:v0:theme';
 export const REASON_KEY = 'timeswap:v0:reason';
 export const OFFDAY_KEY = 'timeswap:v0:offdays';
-export const NEIS_KEY_STORE = 'timeswap:v0:neiskey';
 
 export type ThemeMode = 'auto' | 'light' | 'dark';
 
@@ -146,23 +151,6 @@ export function loadUnavail(): Record<string, number[]> {
 export function saveUnavail(u: Record<string, number[]>): void {
   try {
     localStorage.setItem(UNAVAIL_KEY, JSON.stringify(u));
-  } catch {
-    /* 무시 */
-  }
-}
-
-export function loadNeisKey(): string {
-  try {
-    return localStorage.getItem(NEIS_KEY_STORE) ?? '';
-  } catch {
-    return '';
-  }
-}
-
-export function saveNeisKey(key: string): void {
-  try {
-    if (key) localStorage.setItem(NEIS_KEY_STORE, key);
-    else localStorage.removeItem(NEIS_KEY_STORE);
   } catch {
     /* 무시 */
   }

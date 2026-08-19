@@ -18,6 +18,8 @@ const fixture = JSON.parse(
  */
 describe('나이스 개방 자료 어댑터', () => {
   const report = fromNeis(fixture.rows);
+  const classKey = (label: string): string =>
+    report.cells.find((cell) => cell.classLabel === label)?.klass ?? label;
 
   it('일자 문자열에서 요일을 센다', () => {
     expect(dayOfYmd('20260622')).toBe(0); // 월요일
@@ -48,7 +50,7 @@ describe('나이스 개방 자료 어댑터', () => {
 
   it('기준 시간표를 최빈 과목으로 잡는다', () => {
     // 월요일 1교시부터 5교시까지. 한 칸에 과목 하나인 보통의 학교라 목록 길이가 모두 1이다.
-    const mon = [0, 1, 2, 3, 4].map((p) => report.base.get(`1-1|0|${p}`));
+    const mon = [0, 1, 2, 3, 4].map((p) => report.base.get(`${classKey('1-1')}|0|${p}`));
     expect(mon).toEqual([['한국사1'], ['공통영어1'], ['공통국어1'], ['기술·가정'], ['과학탐구실험1']]);
   });
 
@@ -56,7 +58,8 @@ describe('나이스 개방 자료 어댑터', () => {
     expect(report.swaps).toHaveLength(1);
     const swap = report.swaps[0]!;
     expect(swap.date).toBe('20260622');
-    expect(swap.klass).toBe('1-1');
+    expect(swap.klass).toBe(classKey('1-1'));
+    expect(report.cells[0]?.classLabel).toBe('1-1');
     expect([swap.periodA, swap.periodB].sort()).toEqual([2, 3]); // 3교시와 4교시
     expect([swap.subjectA, swap.subjectB].sort()).toEqual(['공통국어1', '기술·가정'].sort());
   });
@@ -76,7 +79,7 @@ describe('나이스 개방 자료 어댑터', () => {
         '기술·가정': '최기가',
         과학탐구실험1: '정과학',
       };
-      return klass === '1-1' ? table[subject] : undefined;
+      return klass === classKey('1-1') ? table[subject] : undefined;
     };
     const input = neisToTimetable(report, teacherOf);
     expect(input.assignments).toHaveLength(5);
@@ -86,7 +89,7 @@ describe('나이스 개방 자료 어댑터', () => {
 
   it('되살린 시간표로 교환 탐색이 돈다', () => {
     const teacherOf = (klass: string, subject: string): string | undefined =>
-      klass === '1-1' ? `${subject}교사` : undefined;
+      klass === classKey('1-1') ? `${subject}교사` : undefined;
     const input = neisToTimetable(report, teacherOf);
     // 월요일 3교시 공통국어1 을 바꿀 방법을 찾는다
     const target = input.assignments.find((a) => a.subject === '공통국어1');

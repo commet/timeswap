@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   applyAll,
   buildClosures,
@@ -17,6 +17,7 @@ import {
   type Loaded,
 } from '../lib/app';
 import type { NeisEvent } from '../lib/neis';
+import { createNeisSession } from '../lib/neis-session';
 import type { ScheduleConfig, TimetableInput } from '@timeswap/engine';
 
 const cfg = { days: 5, periods: 7, dayNames: ['월', '화', '수', '목', '금'] };
@@ -27,6 +28,19 @@ const ev = (date: string, name: string, kind: string, grades = [true, true, true
   kind,
   grades,
   isHoliday: kind === '휴업일' || kind === '공휴일',
+});
+
+describe('나이스 인증키 세션', () => {
+  it('메모리 안에서만 바꾸고 Storage에는 쓰지 않는다', () => {
+    const storage = { getItem: vi.fn(), setItem: vi.fn(), removeItem: vi.fn() };
+    const session = createNeisSession();
+    session.setKey(' secret ');
+    expect(session.getKey()).toBe('secret');
+    expect(storage.setItem).not.toHaveBeenCalled();
+    expect(storage.removeItem).not.toHaveBeenCalled();
+    session.clear();
+    expect(session.getKey()).toBe('');
+  });
 });
 
 // 2026-08-17 은 월요일이다.

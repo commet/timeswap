@@ -43,9 +43,12 @@ function headersFor(pathname) {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   let pathname = decodeURIComponent(url.pathname);
-  const safe = normalize(pathname).replace(/^(\.\.[/\\])+/, '');
-  let file = join(ROOT, safe);
-  if (safe.endsWith('/')) file = join(file, 'index.html');
+  // URL 경로는 항상 / 로 시작한다. Windows 에서 그 값을 그대로 join 하면
+  // 정적 출력 루트를 버리고 드라이브의 절대 경로로 해석해 / 가 404가 된다.
+  const relative = pathname.replace(/^[/\\]+/, '');
+  const safe = normalize(relative).replace(/^(\.\.[/\\])+/, '');
+  let file = relative === '' ? join(ROOT, 'index.html') : join(ROOT, safe);
+  if (relative !== '' && safe.endsWith('/')) file = join(file, 'index.html');
   if (!existsSync(file)) {
     if (existsSync(`${file}.html`)) file = `${file}.html`;
     else if (existsSync(join(file, 'index.html'))) file = join(file, 'index.html');
