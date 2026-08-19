@@ -18,6 +18,7 @@ export type OpsCommandCenterProps = {
   onOpenScenario(id: DemoScenarioId): SaveResult;
   scenarioState: WorkspaceState;
   detail: ReactNode;
+  administration: ReactNode;
   onBackToList(): void;
   onReturnToCase(): void;
   step?: 'case' | 'admin';
@@ -41,13 +42,14 @@ export function OpsCommandCenter({
   onOpenScenario,
   scenarioState,
   detail,
+  administration,
   onBackToList,
   onReturnToCase,
   step,
 }: OpsCommandCenterProps) {
   const mobileStep = step ?? 'list';
   return (
-    <main className="ops-command-center" data-ops-command-center data-ops-step={mobileStep}>
+    <main id="main-content" tabIndex={-1} className="ops-command-center" data-ops-command-center data-ops-step={mobileStep}>
       <header className="ops-command-heading">
         <div>
           <span className="eyebrow">일과 담당 · 변경 관제판</span>
@@ -104,12 +106,15 @@ export function OpsCommandCenter({
         <aside className="ops-case-region" aria-label="선택 사건과 행정 마감">
           <div className="ops-case-panel">{detail}</div>
           <section className="ops-administration-step" aria-labelledby="ops-admin-title">
-            <button className="btn ghost ops-mobile-back" onClick={onBackToList}>← 사건 목록으로</button>
-            <span className="eyebrow">행정 마감</span>
-            <h3 id="ops-admin-title">게시 전 행정 상태</h3>
-            <p>나이스 입력 {dashboard.neisTasks}건, 학급 게시 확인 {dashboard.publicationTasks}건이 남았습니다.</p>
-            <p>게시와 공지 실행은 다음 게시 센터 단계에서 처리합니다.</p>
-            <button className="btn" onClick={onReturnToCase}>사건 상세로 돌아가기</button>
+            <h3 id="ops-admin-title" className="visually-hidden">행정 마감과 게시</h3>
+            {administration ?? (
+              <>
+                <button className="btn ghost ops-mobile-back" onClick={onBackToList}>← 사건 목록으로</button>
+                <span className="eyebrow">행정 마감</span>
+                <p>나이스 입력 {dashboard.neisTasks}건, 학급 게시 확인 {dashboard.publicationTasks}건이 남았습니다.</p>
+                <button className="btn" onClick={onReturnToCase}>사건 상세로 돌아가기</button>
+              </>
+            )}
           </section>
         </aside>
       </div>

@@ -33,7 +33,7 @@ export function Landing({
   const [entry, setEntry] = useState('');
 
   return (
-    <main className="landing school-entry" aria-labelledby="landing-title">
+    <main id="main-content" tabIndex={-1} className="landing school-entry" aria-labelledby="landing-title">
       <div className="landing-card">
         <header className="entry-hero">
           <div className="entry-copy">

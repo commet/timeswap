@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { BRAND_FULL, TAGLINE } from '../lib/brand';
+import { SkipLink } from '../components/SkipLink';
 
 export const metadata: Metadata = {
   title: BRAND_FULL,
@@ -30,7 +31,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {/* 키보드로 들어온 사람이 머리말 전체를 지나지 않고 본문에 닿게 한다. */}
+        <SkipLink />
+        {children}
+      </body>
     </html>
   );
 }

@@ -1,0 +1,187 @@
+/* 시간표. 격자, 수업 칸, 교시 레일, 학급 공개 시간표가 여기 있다. */
+
+.grid-wrap { flex: 1.6; min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.card-head { display: flex; align-items: baseline; gap: 10px; padding: 14px 18px 0; }
+.card-head h2 { font-size: 15px; font-weight: 800; margin: 0; }
+.card-head .sub { font-size: 13px; color: var(--muted); }
+/* 격자 */
+.grid-scroll  { overflow-x: auto; padding: 12px 14px 16px; }
+.tt-grid { display: grid; gap: 4px; min-width: 560px; font-variant-numeric: tabular-nums; }
+.tt-head { text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); padding: 4px 0; }
+.tt-period { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--muted); }
+.cell {
+  position: relative; border: none; text-align: left; width: 100%;
+  border-radius: 7px; padding: 7px 9px; min-height: 52px;
+  background: var(--surface-2); color: var(--muted);
+  display: flex; flex-direction: column; gap: 1px; justify-content: center;
+  transition: box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+}
+.cell.lesson {
+  background: hsl(var(--hue) var(--cell-sat) var(--cell-lit));
+  border: 1px solid hsl(var(--hue) var(--cell-sat) var(--cell-line-lit));
+  color: var(--ink); cursor: pointer;
+}
+.cell.lesson:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
+.cell .k { font-size: 12px; font-weight: 800; line-height: 1.3; }
+.cell .s { font-size: 12px; line-height: 1.3; opacity: 0.85; }
+.cell .gmark {
+  display: inline-block; margin-left: 5px; padding: 0 5px; border-radius: 999px;
+  font-size: 10px; font-weight: 800; background: var(--surface); color: var(--muted);
+  border: 1px solid var(--line); vertical-align: 1px;
+}
+.cell.empty { background: transparent; border: 1px dashed var(--line); }
+button.cell.empty { cursor: pointer; align-items: flex-start; }
+/* 수업은 있는데 담당 교사를 아직 안 채운 자리. 빈 칸과 구분해야 한다 */
+.cell.unknown  {
+  background: repeating-linear-gradient(
+    -45deg, transparent, transparent 5px, var(--surface-2) 5px, var(--surface-2) 10px
+  );
+  border: 1px dashed var(--line);
+  align-items: center; justify-content: center;
+}
+.cell.unknown .s { color: var(--muted); font-size: 11px; font-weight: 700; }
+button.cell.empty:hover { border-color: var(--muted); }
+.cell.locked {
+  background: repeating-linear-gradient(45deg, var(--surface-2) 0 5px, transparent 5px 10px);
+  border: 1px dashed var(--muted);
+  color: var(--muted);
+}
+.lock-mark {
+  font-size: 10px; font-weight: 800; color: var(--muted);
+  border: 1px solid var(--muted); border-radius: 999px; padding: 0 6px;
+}
+.cell.today-col { box-shadow: inset 0 0 0 1px var(--line); }
+.cell.absent {
+  outline: 2px dashed var(--warn); outline-offset: -2px;
+  background: var(--warn-soft); color: var(--warn);
+}
+.cell.absent .badge-absent {
+  position: absolute; top: -7px; right: 6px; font-size: 10px; font-weight: 800;
+  background: var(--warn); color: var(--surface); border-radius: 999px; padding: 0 7px;
+}
+.cell.leaving { opacity: 0.35; }
+.cell.leaving::after {
+  content: ''; position: absolute; left: 8px; right: 8px; top: 50%;
+  border-top: 2px solid var(--warn);
+}
+.cell.arriving {
+  background: var(--accent); border-color: var(--accent); color: var(--on-accent);
+}
+.cell.arriving .k, .cell.arriving .s { color: var(--on-accent); opacity: 1; }
+.cell.incoming {
+  outline: 2px dashed var(--accent); outline-offset: -2px;
+  background: var(--accent-soft); color: var(--accent);
+}
+/* 수업 없는 날 지정. 학사일정에 안 잡히는 정기고사와 학교 행사를 위한 것이다. */
+.offdays  {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 10px 14px 0; font-size: 12.5px; color: var(--muted);
+}
+.offdays-label { font-weight: 700; color: var(--ink); margin-right: 2px; }
+.offday {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 7px;
+  padding: 3px 11px; font-size: 12.5px; font-weight: 700; color: var(--muted);
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.offday:hover { border-color: var(--warn); }
+.offday.on { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+/* 본인 근무 요일은 학교 전체 휴업과 성격이 달라 색을 나눈다. */
+.offday.mine:hover  { border-color: var(--accent); }
+.offday.mine.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.offdays + .offdays { padding-top: 6px; }
+.offdays-hint { margin-left: 4px; font-size: 11.5px; opacity: 0.85; }
+.grid-legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 0 18px 14px; font-size: 12px; color: var(--muted); }
+.grid-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.grid-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+/* 결강 대기열과 요일 선택 */
+.tt-head.day-btn  { border: none; background: transparent; border-radius: 6px; cursor: pointer; }
+.tt-head.day-btn:hover { background: var(--accent-soft); color: var(--accent); }
+.tt-head.today, .tt-head.day-btn.today { color: var(--accent); }
+.tt-head.today::after, .tt-head.day-btn.today::after { content: ''; display: block; width: 18px; height: 3px; border-radius: 2px; background: var(--accent); margin: 2px auto 0; }
+.cell.today-col { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 30%, transparent); }
+/* 휴업일. 그 요일로는 옮길 수 없으니 눈에 먼저 들어와야 한다. */
+.tt-head.closed  { color: var(--warn); }
+.tt-head.day-btn.closed:hover { background: var(--warn-soft); color: var(--warn); }
+.day-closed {
+  display: block; font-size: 10.5px; font-weight: 700; line-height: 1.3;
+  color: var(--warn); margin-top: 1px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cell.closed-col { opacity: 0.45; }
+.cell.closed-col.absent { opacity: 1; }
+.cell.absent.queued { background: transparent; color: var(--warn); opacity: 0.85; }
+.badge-absent.queued { background: var(--surface); color: var(--warn); border: 1px solid var(--warn); }
+/* 좁은 화면 정비 */
+.tt-period, .tt-head.corner  { position: sticky; left: 0; z-index: 2; background: var(--surface); }
+.teacher-work .grid-wrap { flex: 0 1 48%; }
+.teacher-work .card { box-shadow: 0 1px 2px rgb(23 32 51 / 0.04); }
+.schedule-window { min-height: 280px; padding: 20px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: var(--shadow); transform: rotate(1.2deg); }
+.schedule-ruler { display: flex; justify-content: space-between; padding-bottom: 10px; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--line); }
+.schedule-board { position: relative; min-height: 220px; margin-top: 10px; background: repeating-linear-gradient(90deg, transparent 0, transparent calc(25% - 1px), var(--line) calc(25% - 1px), var(--line) 25%); }
+.schedule-line { position: absolute; top: 73px; right: 0; left: 0; height: 2px; background: var(--warn); }
+.schedule-now { position: absolute; top: 59px; left: -6px; z-index: 2; padding: 1px 7px; border-radius: 999px; background: var(--warn); color: white; font-size: 9px; font-weight: 850; }
+.schedule-block { position: absolute; display: flex; flex-direction: column; min-width: 142px; padding: 12px 14px; border-radius: 12px; background: var(--accent-soft); border: 1px solid var(--accent); }
+.schedule-block b { color: var(--accent); font-size: 10px; }
+.schedule-block span { font-weight: 850; }
+.schedule-block small { color: var(--muted); }
+.schedule-block.first { top: 20px; left: 12%; }
+.schedule-block.moved { right: 7%; bottom: 17px; background: var(--success-soft); border-color: var(--success); }
+.schedule-block.moved b { color: var(--success); }
+.schedule-swap { position: absolute; top: 95px; left: 52%; color: var(--accent); font-size: 28px; font-weight: 900; }
+.teacher-command-intro, .teacher-today, .absence-composer, .teacher-projection-grid { border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: 0 1px 2px rgb(23 32 51 / .04); }
+.teacher-command-intro p, .teacher-today p, .teacher-projection-grid header p { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+.teacher-today { overflow: hidden; }
+.teacher-today-head { padding: 20px 24px 12px; display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
+.teacher-today-head h2 { font-size: 24px; }
+.teacher-today-head > p { flex: none; margin: 0; padding: 7px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 800; }
+.teacher-today-head > p b { font-size: 16px; }
+.teacher-focus-tabs { padding: 0 24px; display: flex; gap: 5px; border-bottom: 1px solid var(--line); }
+.teacher-focus-tabs button { min-height: var(--tap); padding: 7px 13px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); font-weight: 800; }
+.teacher-focus-tabs button.on { border-color: var(--accent); color: var(--accent); }
+.period-rail { padding: 16px 24px 22px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 9px; }
+.now-next, .period-rail-lesson { min-height: 88px; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); text-align: left; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.now-next > span, .period-rail-lesson > span { color: var(--muted); font-size: 11px; font-weight: 850; }
+.now-next b, .period-rail-lesson b { font-size: 15px; }
+.period-rail-lesson { background: var(--surface); }
+.period-rail-lesson:hover { border-color: var(--accent); }
+.period-rail-lesson.planned, .teacher-grid-lesson.planned { border-style: dashed; border-color: var(--accent); background: var(--accent-soft); }
+.period-rail-lesson em, .teacher-grid-lesson em { color: var(--accent); font-size: 10px; font-style: normal; font-weight: 850; }
+.period-rail-lesson small, .teacher-grid-lesson small { color: var(--muted); font-size: 11px; }
+.teacher-projection-grid { overflow: hidden; }
+.teacher-projection-grid > header { padding: 21px 24px 15px; display: flex; align-items: end; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--line); }
+.teacher-projection-grid h2 { font-size: 24px; }
+.teacher-grid-scroll { overflow-x: auto; }
+.teacher-grid { min-width: 100%; display: grid; gap: 1px; background: var(--line); }
+.teacher-grid-corner, .teacher-grid-day, .teacher-grid-period, .teacher-grid-empty-cell, .teacher-grid-slot, .teacher-grid-lesson { min-height: 92px; background: var(--surface); }
+.teacher-grid-day { padding: 14px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-weight: 850; }
+.teacher-grid-day small { color: var(--muted); font-size: 10px; }
+.teacher-grid-row { display: contents; }
+.teacher-grid-period { display: grid; place-items: center; color: var(--muted); font-size: 11px; font-weight: 850; }
+.teacher-grid-empty-cell { background: var(--surface-2); }
+.teacher-grid-slot { display: grid; gap: 1px; background: var(--line); }
+.teacher-grid-lesson { padding: 12px; border: 0; text-align: left; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.teacher-grid-lesson:hover { background: var(--accent-soft); }
+.teacher-grid-lesson.planned { outline: 1px dashed var(--accent); outline-offset: -5px; }
+.teacher-grid-lesson.published { background: var(--success-soft); }
+.teacher-grid-lesson b { font-size: 14px; }
+.teacher-grid-lesson span { color: var(--muted); font-size: 11px; }
+.teacher-grid-empty { padding: 30px; color: var(--muted); }
+.teacher-grid-lesson[data-resolution-from='true'] { outline: 2px solid var(--warn); outline-offset: -4px; background: var(--warn-soft); animation: resolution-slot 720ms ease-out both; }
+.teacher-grid-slot[data-resolution-to='true'], .teacher-grid-empty-cell[data-resolution-to='true'] { outline: 2px solid var(--accent); outline-offset: -4px; background: var(--accent-soft); animation: resolution-slot 720ms ease-out both; }
+.public-class { width: min(880px, calc(100% - 40px)); margin: 26px auto 60px; }
+.public-class-heading h2 { margin: 0; font-size: clamp(26px, 3.2vw, 38px); letter-spacing: -.04em; }
+.public-class-heading p { margin: 8px 0 0; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.public-class-section { margin-top: 18px; }
+.public-class-section h3 { margin: 0 0 8px; font-size: 17px; letter-spacing: -.03em; }
+.public-class-empty { margin: 0; padding: 14px; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); font-size: 13px; }
+.public-class-lessons { margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); overflow: clip; }
+.public-class-lessons > li { padding: 13px 15px; display: grid; grid-template-columns: 64px minmax(120px, 1fr) minmax(0, 1.2fr) 104px; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); }
+.public-class-lessons > li:last-child { border-bottom: 0; }
+.public-class-lessons > li.changed { background: var(--accent-soft); }
+.public-class-period { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.public-class-subject b { display: block; font-size: 15px; }
+.public-class-subject small, .public-class-date { display: block; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.public-class-badge { display: inline-block; margin-right: 6px; padding: 2px 7px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 11px; }
+.public-class-change small { display: block; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.public-class-date { text-align: right; }

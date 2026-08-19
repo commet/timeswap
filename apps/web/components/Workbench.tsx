@@ -24,6 +24,8 @@ import { TeacherHome } from './TeacherHome';
 import { ResolutionMatrix } from './ResolutionMatrix';
 import { OpsCommandCenter } from './OpsCommandCenter';
 import { CaseDetail } from './CaseDetail';
+import { PublicationCenter } from './PublicationCenter';
+import { PublicClassTimetable } from './PublicClassTimetable';
 import {
   projectTeacherDiagnostic,
   type AbsenceComposerSubmission,
@@ -1155,7 +1157,7 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
       </header>
 
       {!loaded || !input ? (
-        <main className="missing-workspace"><p>학교 시간표를 읽지 못했습니다.</p></main>
+        <main id="main-content" tabIndex={-1} className="missing-workspace"><p>학교 시간표를 읽지 못했습니다.</p></main>
       ) : needsPick ? (
         <TeacherPick
           schoolName={loaded.schoolName}
@@ -1168,7 +1170,7 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
           <p>이전 요청함은 더 이상 운영 상태를 직접 수정하지 않습니다.</p>
         </main>
       ) : (
-        <main className={'teacher-work focus-' + scheduleFocus + (activeSlot !== null ? ' has-selection' : '')}>
+        <main id="main-content" tabIndex={-1} className={'teacher-work focus-' + scheduleFocus + (activeSlot !== null ? ' has-selection' : '')}>
           {(scheduleFocus === 'week' || view === 'klass') && (
             <div className="work">
               <Grid
@@ -1478,13 +1480,20 @@ function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleVi
   );
 }
 
-function CanonicalOpsWorkbench({ state, location, saveState, navigate }: OpsRoleViewAdapterProps) {
+/** The demo corpus is fixed in time so its screens stay reproducible. */
+function todayOf(state: WorkspaceState): string {
   const activeRevision = state.revisions.find((item) => item.id === state.workspace.activeRevisionId);
-  const today = activeRevision?.source === 'demo'
+  return activeRevision?.source === 'demo'
     ? '2026-08-18'
     : new Date().toISOString().slice(0, 10);
+}
+
+function CanonicalOpsWorkbench({ state, location, saveState, navigate }: OpsRoleViewAdapterProps) {
+  const today = todayOf(state);
   const dashboard = useMemo(() => projectOpsCommandCenter(state, today), [state, today]);
-  const selectedCaseId = dashboard.cases.some((item) => item.caseId === location.caseId)
+  // 게시된 사건은 관제 목록에서 빠지지만 방금 마감한 화면은 그대로 남아야 한다.
+  // 그래서 선택은 관제 목록이 아니라 실제 사건 존재 여부로 판정한다.
+  const selectedCaseId = state.cases.some((item) => item.id === location.caseId)
     ? location.caseId
     : dashboard.cases[0]?.caseId;
 
@@ -1523,6 +1532,22 @@ function CanonicalOpsWorkbench({ state, location, saveState, navigate }: OpsRole
       onBackToList={backToList}
       onReturnToCase={returnToCase}
       step={location.step}
+      administration={selectedCaseId ? (
+        <PublicationCenter
+          state={state}
+          caseId={selectedCaseId}
+          onChange={saveState}
+          onBackToCase={returnToCase}
+          onBackToList={backToList}
+          onExportDiagnostic={() => downloadDiagnostic(state)}
+          onOpenClassTimetable={(grade, className) => navigate({
+            view: 'class', school: state.workspace.id, grade, className,
+          })}
+          onOpenCase={(nextCaseId) => navigate({
+            view: 'ops', school: state.workspace.id, caseId: nextCaseId, step: 'case',
+          })}
+        />
+      ) : null}
       detail={selectedCaseId ? (
         <CaseDetail
           state={state}
@@ -1552,6 +1577,14 @@ function RoleWorkbench(props: RoleViewAdapterProps) {
       location={props.location}
       saveState={props.saveState}
       navigate={props.navigate}
+    />
+  );
+  if (props.location.view === 'class') return (
+    <PublicClassTimetable
+      state={props.state}
+      grade={props.location.grade}
+      className={props.location.className}
+      today={todayOf(props.state)}
     />
   );
   return <LegacyWorkbench {...props} />;

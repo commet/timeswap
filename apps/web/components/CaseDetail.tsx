@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 
 import {
+  createPrototypeAdminTasks,
   replaceCaseResolution,
   returnCaseForRecomputation,
   transitionCase,
@@ -25,6 +26,32 @@ function resolutionLabel(kind: string): string {
   return ({
     move: '빈 교시 이동', swap2: '맞교환', cycle3: '연쇄 교환', cover: '보강', manual: '수동 처리', unresolved: '미해결',
   } as Record<string, string>)[kind] ?? '해결안';
+}
+
+/**
+ * Approval and the administrative closure it creates are one decision, so the
+ * tasks are generated in the same save.  A case can never sit approved with no
+ * work attached to it.
+ */
+function approveWithAdministrativeTasks(
+  approved: WorkspaceState,
+  caseId: string,
+  at: string,
+): WorkspaceState {
+  const suffix = auditId('tasks', caseId);
+  return createPrototypeAdminTasks(approved, {
+    caseId,
+    actorId: OPERATOR_ID,
+    at,
+    auditEventId: `${suffix}:transition`,
+    taskAuditEventId: `${suffix}:created`,
+    taskIds: {
+      neis: `task:neis:${suffix}`,
+      teacher_notice: `task:teacher_notice:${suffix}`,
+      class_publication: `task:class_publication:${suffix}`,
+      internal_document: `task:internal_document:${suffix}`,
+    },
+  });
 }
 
 function saveFailureMessage(result: SaveResult): string {
@@ -174,10 +201,18 @@ export function CaseDetail({
             <button
               className="btn primary"
               disabled={!item.validation.valid}
-              onClick={() => commit(transitionCase(state, {
-                caseId, to: 'resolution_approved', actorId: OPERATOR_ID,
-                at: new Date().toISOString(), auditEventId: auditId('approve', caseId),
-              }), '해결안을 승인했습니다. 게시 전 행정 마감이 남아 있습니다.')}
+              onClick={() => {
+                const at = new Date().toISOString();
+                const approved = transitionCase(state, {
+                  caseId, to: 'resolution_approved', actorId: OPERATOR_ID,
+                  at, auditEventId: auditId('approve', caseId),
+                });
+                commit(
+                  approveWithAdministrativeTasks(approved, caseId, at),
+                  '해결안을 승인했습니다. 게시 전 행정 마감이 남아 있습니다.',
+                );
+                onOpenAdministrativeStep?.();
+              }}
             >해결안 승인</button>
             <label className="ops-reject-reason">
               <span>반려 사유</span>

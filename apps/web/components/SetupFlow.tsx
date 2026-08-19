@@ -361,7 +361,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
   };
 
   return (
-    <main className="setup-page" aria-labelledby="setup-title">
+    <main id="main-content" tabIndex={-1} className="setup-page" aria-labelledby="setup-title">
       <header className="setup-header">
         <div>
           <span className="eyebrow">학교에서 한 번만</span>
