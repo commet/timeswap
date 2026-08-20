@@ -113,7 +113,16 @@ for (const [key, expected] of Object.entries(expectedOpsMetrics)) {
 }
 if (!(await page.locator('[data-case-detail]').count())) failures.push('데스크톱 관제판에 선택 사건 상세 레일이 없음');
 if (!(await page.locator('.ops-period-timeline button').count())) failures.push('오늘 교시별 변경 타임라인이 없음');
-if (!(await page.locator('.ops-source-health').innerText().catch(() => '')).includes('완전 · demo')) failures.push('관제판에 시간표 자료 상태가 없음');
+{
+  /*
+   * 무엇을 보고 있는지와 온전한지를 관제판이 밝혀야 한다. 예시 자료를 실제 학교 자료로
+   * 착각하고 결재하면 안 되고, 자료가 덜 왔는데 승인해도 안 된다.
+   */
+  const health = await page.locator('.ops-source-health').innerText().catch(() => '');
+  for (const fact of ['출처', '예시 자료', '자료', '완전', '수업']) {
+    if (!health.includes(fact)) failures.push(`관제판 자료 상태에 "${fact}" 이 없음: ${health}`);
+  }
+}
 if (!(await page.locator('.ops-period-timeline').innerText()).includes('1명 교사 · 1개 학급')) failures.push('교시 표식에 영향 교사·학급 수가 없음');
 if ((await page.locator('body').innerText()).includes('teacher:seo-jun')) failures.push('관제판에 내부 교사 ID가 노출됨');
 const initialNavigationCount = await page.evaluate(() => performance.getEntriesByType('navigation').length);
