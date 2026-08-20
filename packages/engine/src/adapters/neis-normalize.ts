@@ -74,6 +74,31 @@ export interface ParallelLessonGroup {
 export interface NeisNormalizationReport {
   accepted: NormalizedNeisRow[];
   quarantined: Array<{ row: NeisRow; missing: string[] }>;
+  /**
+   * 학급에 매이지 않는 강좌. 고교학점제 선택과목이다.
+   *
+   * 반 번호(`CLASS_NM`)만 비어 있고 날짜와 학년, 교시, 과목은 다 있다. 수강생이 여러
+   * 학급에서 모이는 강좌라 반 번호를 붙일 자리가 없어서다. 강의실 이름이 `3탐구`,
+   * `2기초` 같은 교과교실로 온다.
+   *
+   * 자료가 깨진 것이 아니다. 그런데 결손으로 보고 격리하고 있었고, 완전성 관문이
+   * 격리 0을 요구해서 **그런 학교는 설정을 끝낼 수 없었다.**
+   *
+   * | 학교급 | 그런 학교 | 전체 행 가운데 | 한 학교 최대 |
+   * |---|---|---|---|
+   * | 초등학교 | 0 / 57 | 0.0% | 0% |
+   * | 중학교 | 0 / 65 | 0.0% | 0% |
+   * | 고등학교 | **127 / 217** | 9.4% | **77%** |
+   * | 특수학교 | 6 / 32 | 0.5% | 3% |
+   *
+   * 3학년 8,576행, 2학년 5,648행으로 고교학점제 학년에 몰려 있고 과목도
+   * 확률과 통계, 화법과 작문, 미적분처럼 전형적인 선택과목이다.
+   *
+   * 지금은 여기 담아 두고 세어서 알리기만 한다. 시간표에 넣지는 않는다.
+   * 어느 학급 학생이 듣는지 모르는 채로 넣으면 그 학생들의 다른 수업과 겹치는지
+   * 확인할 수 없기 때문이다. 모르는 것을 아는 척하지 않는다.
+   */
+  courseOnly: NeisRow[];
   duplicateCount: number;
   parallelGroups: ParallelLessonGroup[];
 }
@@ -123,6 +148,7 @@ const factKey = (row: NormalizedNeisRow): string =>
 export function normalizeNeisRows(rows: NeisRow[]): NeisNormalizationReport {
   const accepted: NormalizedNeisRow[] = [];
   const quarantined: Array<{ row: NeisRow; missing: string[] }> = [];
+  const courseOnly: NeisRow[] = [];
   const seenFacts = new Set<string>();
   let duplicateCount = 0;
 
@@ -140,7 +166,9 @@ export function normalizeNeisRows(rows: NeisRow[]): NeisNormalizationReport {
       ['ITRT_CNTNT', rawSubject],
     ].filter(([, value]) => !value).map(([field]) => field!);
     if (missing.length > 0) {
-      quarantined.push({ row, missing });
+      // 반 번호만 없고 나머지가 다 있으면 학급에 매이지 않는 강좌다. 결손이 아니다.
+      if (missing.length === 1 && missing[0] === 'CLASS_NM') courseOnly.push(row);
+      else quarantined.push({ row, missing });
       return;
     }
 
@@ -189,5 +217,5 @@ export function normalizeNeisRows(rows: NeisRow[]): NeisNormalizationReport {
       rowIds: group.map((acceptedRow) => acceptedRow.id),
     }));
 
-  return { accepted, quarantined, duplicateCount, parallelGroups };
+  return { accepted, quarantined, courseOnly, duplicateCount, parallelGroups };
 }

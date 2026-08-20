@@ -164,3 +164,49 @@ describe('특수학교의 학교 과정', () => {
     expect(withoutCourse.accepted[0]?.classIdentity.schoolCourse).toBe('');
   });
 });
+
+/**
+ * 학급에 매이지 않는 강좌.
+ *
+ * 고교학점제 선택과목은 수강생이 여러 학급에서 모여 반 번호를 붙일 자리가 없다.
+ * 나이스는 `CLASS_NM` 을 비운 채로 그 수업을 준다. 강의실은 `3탐구` 같은 교과교실이다.
+ *
+ * 이것을 결손으로 보고 격리하고 있었고, 완전성 관문이 격리 0을 요구했다.
+ * 그래서 고등학교 217곳 가운데 127곳(59%)이 설정을 끝낼 수 없었다.
+ * 한 학교는 행의 77%가 이것이라 시간표의 4분의 1만 보였다.
+ * 3학년 8,576행, 2학년 5,648행으로 고교학점제 학년에 몰려 있다.
+ */
+describe('학급에 매이지 않는 강좌', () => {
+  it('반 번호만 없으면 결손이 아니라 강좌로 본다', () => {
+    const report = normalizeNeisRows([
+      row({ GRADE: '3', CLASS_NM: null as unknown as string, ITRT_CNTNT: '미적분', CLRM_NM: '3탐구' }),
+    ]);
+    expect(report.quarantined).toEqual([]);
+    expect(report.courseOnly).toHaveLength(1);
+    expect(report.accepted).toEqual([]);
+  });
+
+  it('과목까지 없으면 그대로 격리한다', () => {
+    const report = normalizeNeisRows([
+      row({ GRADE: '3', CLASS_NM: null as unknown as string, ITRT_CNTNT: '' }),
+    ]);
+    expect(report.courseOnly).toEqual([]);
+    expect(report.quarantined).toHaveLength(1);
+    expect(report.quarantined[0]?.missing).toContain('ITRT_CNTNT');
+  });
+
+  it('교시나 날짜가 없으면 그대로 격리한다', () => {
+    const report = normalizeNeisRows([
+      row({ GRADE: '3', CLASS_NM: null as unknown as string, PERIO: '' }),
+      row({ GRADE: '3', CLASS_NM: '1', ALL_TI_YMD: '' }),
+    ]);
+    expect(report.courseOnly).toEqual([]);
+    expect(report.quarantined).toHaveLength(2);
+  });
+
+  it('보통 수업은 그대로 받는다', () => {
+    const report = normalizeNeisRows([row({ GRADE: '1', CLASS_NM: '3', ITRT_CNTNT: '국어' })]);
+    expect(report.courseOnly).toEqual([]);
+    expect(report.accepted).toHaveLength(1);
+  });
+});

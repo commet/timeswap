@@ -18,7 +18,8 @@ import {
 } from '../lib/app';
 import type { NeisEvent } from '../lib/neis';
 import { createNeisSession } from '../lib/neis-session';
-import { gradeShapes } from '@timeswap/engine';
+import { canOpenInvitations } from '../components/SetupFlow';
+import { gradeShapes, normalizeNeisRows } from '@timeswap/engine';
 import type { ScheduleConfig, TimetableInput } from '@timeswap/engine';
 
 const cfg = { days: 5, periods: 7, dayNames: ['월', '화', '수', '목', '금'] };
@@ -459,5 +460,35 @@ describe('자료가 없는 요일', () => {
       })),
     };
     expect(blankDaysOf(input)).toEqual([]);
+  });
+});
+
+/**
+ * 학급에 매이지 않는 강좌가 있어도 설정을 끝낼 수 있어야 한다.
+ *
+ * 고교학점제 선택과목은 반 번호가 없다. 그것을 결손으로 보고 막으면 고등학교 217곳
+ * 가운데 127곳(59%)이 도구를 아예 못 쓴다. 사용자에게는 "확인이 필요한 행이 있습니다,
+ * 초대 링크와 추천 기능은 잠긴 상태로 둡니다"만 뜨고 앞으로 갈 길이 없었다.
+ */
+describe('학급에 매이지 않는 강좌와 완전성', () => {
+  const row = (over: Record<string, unknown> = {}) => ({
+    SD_SCHUL_CODE: '7010084', AY: '2026', ALL_TI_YMD: '20260608',
+    GRADE: '3', CLASS_NM: '1', PERIO: '1', ITRT_CNTNT: '국어', ...over,
+  });
+
+  it('강좌만 있으면 격리가 0이라 다음 단계로 간다', () => {
+    const report = normalizeNeisRows([
+      row(),
+      row({ CLASS_NM: null, ITRT_CNTNT: '확률과 통계', CLRM_NM: '3탐구' }),
+    ] as never);
+    expect(report.quarantined).toHaveLength(0);
+    expect(report.courseOnly).toHaveLength(1);
+    expect(canOpenInvitations({ sourceComplete: report.quarantined.length === 0, unresolvedTeacherCount: 0 })).toBe(true);
+  });
+
+  it('진짜 결손이면 그대로 막는다', () => {
+    const report = normalizeNeisRows([row(), row({ PERIO: '' })] as never);
+    expect(report.quarantined).toHaveLength(1);
+    expect(canOpenInvitations({ sourceComplete: report.quarantined.length === 0, unresolvedTeacherCount: 0 })).toBe(false);
   });
 });
