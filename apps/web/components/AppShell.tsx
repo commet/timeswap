@@ -82,6 +82,7 @@ export function AppShell({ state, location, saveState, navigate }: AppShellProps
       initialSchoolQuery={location.schoolQuery ?? ''}
       saveState={saveState}
       navigate={navigate}
+      existing={state}
     />
   );
 

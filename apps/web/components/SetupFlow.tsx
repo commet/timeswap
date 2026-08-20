@@ -85,6 +85,18 @@ export function createWorkspaceFromNeis(
   bundle: NeisLoadBundle,
   teacherMap: TeacherMap,
   now = new Date().toISOString(),
+  /**
+   * 이미 쓰던 작업 공간. 주마다 다시 불러올 때 넘긴다.
+   *
+   * 학교는 주마다 나이스를 다시 받는다. 그때 작업 공간을 통째로 새로 만들면서 사건과
+   * 게시 기록, 감사 기록을 빈 배열로 두고 있었다. 한 주를 쓰고 다음 주 시간표를 받는
+   * 순간 지난주에 누가 무엇을 결재했는지가 사라졌다. 결재가 있는 도구에서 감사 기록이
+   * 사라지는 것은 기능 하나가 없는 것과 다르다.
+   *
+   * 지난 기록은 남기되 이번 주 계산에는 끼어들지 않는다. 수업과 사건, 게시는 개정판
+   * 번호를 달고 있고 이번 주 계산은 활성 개정판만 본다.
+   */
+  previous?: WorkspaceState,
 ): WorkspaceState {
   const workspaceId = bundle.school.code;
   const revisionId = `${workspaceId}:revision:${bundle.range.from}-${bundle.range.to}`;
@@ -201,6 +213,17 @@ export function createWorkspaceFromNeis(
     if (!already) allClosures.push(holiday);
   }
 
+  /** 수업을 남겨 둘 개정판. 이번 주와 바로 앞 주다. 이유는 lessons 옆에 적었다. */
+  const KEPT_WEEKS = 1;
+  const keptRevisionIds = new Set(
+    [...(previous?.revisions ?? [])]
+      .filter((item) => item.id !== revisionId)
+      // 시각이 없는 옛 자료가 있어도 무너지지 않게 한다. 다시 불러오는 길이다.
+      .sort((left, right) => (right.loadedAt ?? '').localeCompare(left.loadedAt ?? ''))
+      .slice(0, KEPT_WEEKS)
+      .map((item) => item.id),
+  );
+
   const academicYear = normalization.accepted[0]?.classIdentity.academicYear ?? '';
   const complete = bundle.result.complete && normalization.quarantined.length === 0;
 
@@ -228,10 +251,43 @@ export function createWorkspaceFromNeis(
       complete,
       checksum: `neis:${workspaceId}:${bundle.range.from}-${bundle.range.to}:${bundle.result.total}`,
       ...(allClosures.length ? { closures: allClosures } : {}),
-    }],
-    lessons,
-    teacherLabels,
-    cases: [], adminTasks: [], publications: [], audit: [],
+    },
+    /*
+     * 지난 개정판도 남긴다. 게시된 변경과 감사 기록이 그 번호를 가리키고 있어서,
+     * 개정판을 지우면 "무엇을 근거로 그렇게 바꿨는가"를 되짚을 수 없다.
+     * 같은 기간을 다시 받으면 번호가 같으므로 새 것으로 덮는다.
+     */
+    ...(previous?.revisions ?? []).filter((item) => item.id !== revisionId),
+    ],
+    /*
+     * 지난주 수업은 **한 주치만** 남긴다.
+     *
+     * 사건과 게시, 감사 기록은 작아서 다 남겨도 된다. 수업은 다르다. 가장 큰 학교
+     * (안양예술고, 한 주 2,088행)를 주마다 이어 붙이면 이렇게 는다.
+     *
+     * | 주차 | 저장 크기 |
+     * |---|---|
+     * | 1 | 0.52MB |
+     * | 8 | 4.16MB |
+     * | 10 | **5MB 넘음** |
+     * | 20 | 10.40MB |
+     *
+     * `localStorage` 한도가 5MB 라 학기 중반에 저장이 막힌다. 지난주 것을 한 주만
+     * 남기면 1MB 안쪽이다. 지난주까지 두는 이유는 게시한 변경을 그 주 안에 정정하는
+     * 일이 흔해서다. 그보다 오래된 주의 수업은 지금 화면 어디에도 안 쓴다.
+     * 이번 주 계산은 활성 개정판만 본다.
+     */
+    lessons: [
+      ...lessons,
+      ...(previous?.lessons ?? []).filter((item) =>
+        item.revisionId !== revisionId && keptRevisionIds.has(item.revisionId)),
+    ],
+    teacherLabels: { ...(previous?.teacherLabels ?? {}), ...teacherLabels },
+    // 지난 기록을 이어 간다. 처음 설정할 때는 previous 가 없어 예전처럼 빈 상태다.
+    cases: previous?.cases ?? [],
+    adminTasks: previous?.adminTasks ?? [],
+    publications: previous?.publications ?? [],
+    audit: previous?.audit ?? [],
   };
 }
 
@@ -240,8 +296,15 @@ export async function completeSetupReview(
   teacherMap: TeacherMap,
   credential: Pick<NeisSessionValue, 'clear'>,
   save: (state: WorkspaceState) => SaveResult | Promise<SaveResult>,
+  /** 이미 쓰던 작업 공간. 주마다 다시 불러올 때 넘겨 지난 기록을 이어 간다. */
+  previous?: WorkspaceState,
 ): Promise<{ ok: true; state: WorkspaceState } | { ok: false; reason: 'quota' | 'unavailable' }> {
-  const next = createWorkspaceFromNeis(bundle, teacherMap);
+  /*
+   * 지난 기록은 **같은 학교일 때만** 이어 간다. 작업 공간 번호가 학교 코드다.
+   * 다른 학교를 설정하는데 앞 학교의 사건을 끌고 오면 남의 학교 기록이 섞인다.
+   */
+  const carry = previous && previous.workspace.id === bundle.school.code ? previous : undefined;
+  const next = createWorkspaceFromNeis(bundle, teacherMap, undefined, carry);
   const result = await save(next);
   if (!result.ok) return result;
   credential.clear();
@@ -355,10 +418,12 @@ function firstAssignedTeacher(state: WorkspaceState): string | null {
   return null;
 }
 
-export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
+export function SetupFlow({ initialSchoolQuery = '', saveState, navigate, existing }: {
   initialSchoolQuery?: string;
   saveState(next: WorkspaceState): SaveResult;
   navigate(next: AppLocation): void;
+  /** 이미 쓰던 작업 공간. 같은 학교를 다시 불러오면 지난 기록을 이어 간다. */
+  existing?: WorkspaceState | null;
 }) {
   const session = useContext(NeisSessionContext);
   const [stage, setStage] = useState<SetupStage>('학교 검색');
@@ -424,7 +489,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
 
   const completeReview = useCallback(async () => {
     if (!bundle || !invitationsReady) return;
-    const result = await completeSetupReview(bundle, teacherMap, session, saveState);
+    const result = await completeSetupReview(bundle, teacherMap, session, saveState, existing ?? undefined);
     if (!result.ok) {
       setMessage(messageForSetupPersistenceFailure(result.reason));
       return;
