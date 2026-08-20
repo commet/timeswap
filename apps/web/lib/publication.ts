@@ -9,6 +9,8 @@ import type {
   WorkspaceState,
 } from './domain';
 import {
+  caseRevisionId,
+  effectiveLessons,
   projectPublicClassSchedule,
   validateCasePlan,
   type PublicClassView,
@@ -33,9 +35,15 @@ function findCase(state: WorkspaceState, caseId: string): AbsenceCase {
   return absenceCase;
 }
 
-function activeLessons(state: WorkspaceState): Map<string, Lesson> {
-  return new Map(state.lessons
-    .filter((lesson) => lesson.revisionId === state.workspace.activeRevisionId)
+/**
+ * 그 사건의 주를, 게시된 변경을 얹은 채로.
+ *
+ * 활성 개정판으로 걸렀다. 금요일에 승인과 행정 마감이 끝나고 게시 단추만 남았는데
+ * 주말이 지나 월요일 아침에 새 주를 불러오면, 그 사건의 수업이 하나도 안 잡혀 나이스
+ * 입력 목록과 교사 통지가 통째로 비었다. 가장 흔한 모양인데 그때 게시를 못 했다.
+ */
+function caseLessons(state: WorkspaceState, absenceCase: AbsenceCase): Map<string, Lesson> {
+  return new Map(effectiveLessons(state, caseRevisionId(state, absenceCase))
     .map((lesson) => [lesson.id, lesson]));
 }
 
@@ -197,7 +205,7 @@ interface DocumentRow {
 /** Both documents read the same rows so a notice can never drift from NEIS. */
 function documentRows(state: WorkspaceState, caseId: string): DocumentRow[] {
   const absenceCase = findCase(state, caseId);
-  const lessons = activeLessons(state);
+  const lessons = caseLessons(state, absenceCase);
   return caseChanges(absenceCase)
     .flatMap((change) => {
       const lesson = lessons.get(change.lessonId);
@@ -256,7 +264,7 @@ export function buildClassPublicationPreview(
   caseId: string,
 ): PublicClassView[] {
   const absenceCase = findCase(state, caseId);
-  const lessons = activeLessons(state);
+  const lessons = caseLessons(state, absenceCase);
   const classKeys = [...new Set(caseChanges(absenceCase)
     .flatMap((change) => {
       const lesson = lessons.get(change.lessonId);

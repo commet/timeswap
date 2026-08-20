@@ -9,6 +9,8 @@ import type {
   WorkspaceState,
 } from './domain';
 import {
+  caseRevisionId,
+  effectiveLessons,
   projectPublicClassSchedule,
   validateCasePlan,
   type PublicClassView,
@@ -155,8 +157,8 @@ export function projectPublicationCenter(
   const stage = stageOf(absenceCase);
   const tasks = taskViews(state, caseId);
   const validation = validateCasePlan(state, caseId);
-  const lessons = new Map(state.lessons
-    .filter((lesson) => lesson.revisionId === state.workspace.activeRevisionId)
+  // 그 사건의 주를 게시된 채로 본다. 이유는 `publication.ts` 의 `caseLessons` 옆에 적었다.
+  const lessons = new Map(effectiveLessons(state, caseRevisionId(state, absenceCase))
     .map((lesson) => [lesson.id, lesson] as const));
   const changedLessonIds = changedLessonIdsOf(absenceCase);
   const changedLessons = changedLessonIds

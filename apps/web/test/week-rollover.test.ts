@@ -9,6 +9,7 @@ import {
   transitionCase,
 } from '../lib/case-service';
 import { publishCase } from '../lib/publication';
+import { projectPublicationCenter } from '../lib/publication-center';
 import { validateCasePlan } from '../lib/projections';
 import { resolutionRowsForLesson } from '../lib/resolution';
 import { CaseDetail } from '../components/CaseDetail';
@@ -199,5 +200,43 @@ describe('주가 넘어가도 진행 중인 사건이 살아 있다', () => {
     }));
     expect(html).toContain('2교시 과목2');
     expect(html).not.toContain('확인할 수업');
+  });
+
+  /*
+   * 행정 마감까지 끝내 놓고 주가 넘어간 뒤 게시한다.
+   *
+   * 이것이 가장 흔한 모양이다. 금요일에 승인과 행정 마감이 끝나고 게시 단추만 남았는데
+   * 주말이 지나 월요일 아침에 새 주를 불러온다. 그 상태에서 게시가 되어야 한다.
+   */
+  it('행정 마감까지 끝낸 사건을 다시 불러온 뒤 게시할 수 있다', () => {
+    let state = afterApproval();
+    state = createPrototypeAdminTasks(state, {
+      caseId: 'case-1', actorId: 'ops', at: '2026-08-21T10:00:00.000Z',
+      auditEventId: 'case-1:admin', taskAuditEventId: 'case-1:tasks',
+      taskIds: {
+        neis: 't1', teacher_notice: 't2', class_publication: 't3', internal_document: 't4',
+      },
+    });
+    let seq = 0;
+    for (const kind of PROTOTYPE_REQUIRED_ADMIN_TASKS) {
+      const taskId = { neis: 't1', teacher_notice: 't2', class_publication: 't3' }[kind];
+      seq += 1;
+      state = completeAdminTask(state, {
+        taskId, actorId: 'ops',
+        at: `2026-08-21T1${seq}:00:00.000Z`, auditEventId: `case-1:done:${seq}`,
+      });
+    }
+    expect(state.cases[0]!.status).toBe('ready_to_publish');
+
+    const after = reloadNextWeek(state);
+    // 게시 화면이 무엇을 바꾸는지 보여 줘야 게시 단추를 누를 수 있다.
+    const center = projectPublicationCenter(after, 'case-1');
+    expect(center.changedLessonCount).toBeGreaterThan(0);
+    expect(center.affectedClassLabels.length).toBeGreaterThan(0);
+    expect(center.canPublish).toBe(true);
+
+    const published = publishCase(after, 'case-1', 'ops', '2026-08-24T09:00:00.000Z');
+    expect(published.cases[0]!.status).toBe('published');
+    expect(published.publications).toHaveLength(1);
   });
 });
