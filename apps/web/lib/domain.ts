@@ -45,6 +45,15 @@ export interface Lesson {
   room: string;
   teacher: TeacherAssignment;
   parallelGroupId?: string;
+  /**
+   * 전문교과 실습인지. 나이스가 과목명 앞에 별표를 붙여 알려 준다.
+   *
+   * 학과 전용 실습실에서 그 학과 교사만 맡는 수업이라 아무나 대신 들어갈 수 없다.
+   * 엔진은 이 표시로 보강 후보를 고른다. 그런데 나이스에서 받은 표시를 여기 안 담아
+   * 두어서 엔진까지 못 갔고, 특성화고에서 전공이 아닌 분이 실습 보강 후보로 나왔다.
+   * 실측에서 특성화고 10곳은 수업 칸의 14~34%가 이 표시였다. 일반고 12곳은 0%다.
+   */
+  pro?: boolean;
 }
 
 export interface ParallelLessonGroup {

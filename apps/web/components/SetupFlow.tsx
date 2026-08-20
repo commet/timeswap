@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { NeisReport, NeisRow } from '@timeswap/engine';
+import { stripMarks, type NeisReport, type NeisRow } from '@timeswap/engine';
 
 import { DataHealthPanel } from './DataHealthPanel';
 import { NeisLoader } from './NeisLoader';
@@ -113,6 +113,9 @@ export function createWorkspaceFromNeis(
         ? { state: 'assigned' as const, teacherId }
         : { state: 'unassigned' as const },
       ...(groupByRow.has(row.id) ? { parallelGroupId: groupByRow.get(row.id)! } : {}),
+      // 과목명 앞의 별표가 전문교과 실습 표시다. 정규화가 과목명에서 떼어 내므로
+      // 원문에서 다시 읽는다. 이 표시가 있어야 엔진이 전공 교사를 가려 보강을 고른다.
+      ...(stripMarks(row.rawSubject).pro ? { pro: true } : {}),
     };
   });
   const knownClasses = [...new Map(lessons.map((lesson) => [

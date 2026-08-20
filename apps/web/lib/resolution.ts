@@ -390,6 +390,8 @@ export function targetWeekInput(state: WorkspaceState, targetDate: string): Targ
       subject: lesson.subject,
       slot,
       ...(groups.has(lesson.id) ? { group: groups.get(lesson.id) } : {}),
+      // 전문교과 실습 표시. 엔진이 보강 후보에서 전공 교사를 가리는 데 쓴다.
+      ...(lesson.pro ? { pro: true } : {}),
     };
     input.assignments.push(assignment);
     lessonByAssignment.set(assignment, lesson);
