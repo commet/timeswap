@@ -3,7 +3,7 @@ import { fromNeis, normalizeNeisRows, type NeisRow } from '@timeswap/engine';
 import { createWorkspaceFromNeis, type NeisLoadBundle } from '../components/SetupFlow';
 import { mapKey } from '../lib/app';
 import { emptyReason } from '../components/PublicClassTimetable';
-import { projectPublicClassSchedule } from '../lib/projections';
+import { projectOpsDashboard, projectPublicClassSchedule } from '../lib/projections';
 import { DataHealthPanel } from '../components/DataHealthPanel';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
@@ -155,5 +155,63 @@ describe('자료 점검 화면이 쉬는 날 행을 밝힌다', () => {
     expect(html).toContain('쉬는 날');
     // 월요일 두 학급 네 교시씩 여덟 행이 쉬는 날로 갔다.
     expect(html).toMatch(/쉬는 날<\/dt><dd>8행/);
+  });
+});
+
+/**
+ * 한 주가 통째로 쉬는 주.
+ *
+ * 방학이나 수능 휴업 주를 불러오면 이렇게 된다. 나이스는 닷새 모든 칸에 "재량휴업일"을
+ * 넣어 돌려주고, 휴업 걸러 내기가 그것을 모두 빼므로 수업이 하나도 안 남는다.
+ * 남은 것이 없으니 계산할 것도 없다. 그런데 화면이 무너지거나, 텅 빈 시간표를 정상인
+ * 것처럼 보여 주면 안 된다.
+ */
+function closedWeekRows(): NeisRow[] {
+  const out: NeisRow[] = [];
+  for (const date of ['20260817', '20260818', '20260819', '20260820', '20260821']) {
+    for (const className of ['1', '2']) {
+      for (let period = 1; period <= 4; period += 1) {
+        out.push(row(date, className, String(period), '재량휴업일'));
+      }
+    }
+  }
+  return out;
+}
+
+describe('한 주가 통째로 쉬는 주', () => {
+  const state = build(closedWeekRows());
+
+  it('수업이 하나도 안 남는다', () => {
+    expect(state.lessons).toHaveLength(0);
+  });
+
+  it('닷새가 모두 쉬는 날로 남는다', () => {
+    const closures = state.revisions[0]!.closures ?? [];
+    expect([...new Set(closures.map((item) => item.date))].sort()).toEqual([
+      '2026-08-17', '2026-08-18', '2026-08-19', '2026-08-20', '2026-08-21',
+    ]);
+  });
+
+  /*
+   * 수업이 하나도 없는 주를 "완전하게 불러왔다"고 적으면 안 된다. 그 표시를 보고
+   * 검증이 개정판을 믿을 만한 것으로 다루고, 화면은 텅 빈 시간표를 정상으로 보여 준다.
+   * 실제로는 사람이 주를 잘못 골랐을 가능성이 훨씬 높다.
+   */
+  it('쓸 수 있는 주가 아니라고 표시한다', () => {
+    expect(state.revisions[0]!.complete).toBe(false);
+  });
+
+  it('관제판이 무너지지 않는다', () => {
+    const view = projectOpsDashboard(state, '2026-08-18');
+    expect(view.unresolvedLessons).toBe(0);
+    expect(Number.isFinite(view.todayChanges)).toBe(true);
+  });
+
+  it('학급 공개 화면이 쉬는 날 사유를 보여 준다', () => {
+    // 수업이 하나도 없으니 학급 식별자는 쉬는 날 기록에서 가져온다.
+    const closure = (state.revisions[0]!.closures ?? [])
+      .find((item) => item.date === '2026-08-18' && item.classIdentities?.length);
+    const view = projectPublicClassSchedule(state, classIdentityKey(closure!.classIdentities![0]!));
+    expect(view.closedDays.map((item) => item.date)).toContain('2026-08-18');
   });
 });

@@ -66,6 +66,28 @@ export function canEnterSetupStage(stage: SetupStage, state: {
   return state.invitationsReady;
 }
 
+/**
+ * 실제로 수업이 되는 행 수. 휴업 칸을 뺀 나머지다.
+ *
+ * 방학이나 수능 휴업 주를 고르면 닷새 모든 칸이 휴업으로 와서 이 값이 0이 된다.
+ * 받은 행 수는 온전하므로 "완전하게 불러왔다"고 표시되고, 사람은 텅 빈 시간표를
+ * 정상으로 본다. 주를 잘못 골랐다는 사실이 어디에도 안 뜬다.
+ */
+export function teachableRowCount(report: NeisLoadBundle['report']): number {
+  const holidays = new Set(report.cells
+    .filter((cell) => cell.kind === '휴업')
+    .map((cell) => `${cell.klass}|${cell.date}`));
+  return report.normalization.accepted
+    .filter((row) => !holidays.has(`${row.classKey}|${row.date}`)).length;
+}
+
+/** 이 자료로 시간표를 세울 수 있는지. 완전성 확인과 개정판 표시가 같은 것을 본다. */
+export function isUsableBundle(bundle: Pick<NeisLoadBundle, 'result' | 'report'>): boolean {
+  return Boolean(bundle.result.complete)
+    && bundle.report.normalization.quarantined.length === 0
+    && teachableRowCount(bundle.report) > 0;
+}
+
 const isoDate = (value: string): string =>
   value.length === 8 ? `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}` : value;
 const classLabel = (grade: string, className: string): string => `${grade}-${className}`;
@@ -225,7 +247,7 @@ export function createWorkspaceFromNeis(
   );
 
   const academicYear = normalization.accepted[0]?.classIdentity.academicYear ?? '';
-  const complete = bundle.result.complete && normalization.quarantined.length === 0;
+  const complete = isUsableBundle(bundle);
 
   return {
     schemaVersion: 2,
@@ -439,8 +461,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate, existi
       ?? teacherMap[mapKey(pair.classLabel, pair.subject)]
   ));
   const duplicateNames = useMemo(() => duplicateNameConflicts(bundle, teacherMap), [bundle, teacherMap]);
-  const sourceComplete = Boolean(bundle?.result.complete)
-    && (bundle?.report.normalization.quarantined.length ?? 1) === 0;
+  const sourceComplete = bundle ? isUsableBundle(bundle) : false;
   const invitationsReady = canOpenInvitations({
     sourceComplete,
     unresolvedTeacherCount: unresolved.length,
