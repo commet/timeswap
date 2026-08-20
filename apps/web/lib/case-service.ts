@@ -126,6 +126,31 @@ export function findDuplicateAbsenceCase(
     && [...item.lessonIds].sort().every((lessonId, index) => lessonId === selected[index]));
 }
 
+/**
+ * 같은 수업을 물고 있는, 살아 있는 다른 요청.
+ *
+ * 중복 검사는 기간과 수업이 **똑같을 때만** 잡는다. 출장이 하루 늘어 월~수를 화~목으로
+ * 다시 내면 그냥 통과하고, 화요일과 수요일 수업이 살아 있는 요청 둘에 동시에 들어간다.
+ *
+ * 한 수업이 두 요청에 동시에 들어가는 것은 언제나 틀렸다. 그런데 지금은 일과 담당이
+ * 둘 다 풀어 본 뒤 승인 관문에서야 막힌다. 낸 사람은 아무 말도 못 듣고, 일과 담당은
+ * 같은 수업을 두 번 푼다. 낼 때 알려 주는 편이 양쪽 모두에게 낫다.
+ */
+export function findOverlappingAbsenceCases(
+  state: WorkspaceState,
+  input: Pick<CreateAbsenceCaseInput, 'requesterTeacherId' | 'lessonIds'>,
+): Array<{ absenceCase: AbsenceCase; lessonIds: string[] }> {
+  const wanted = new Set(input.lessonIds);
+  return state.cases
+    .filter((item) => !VOID_STATUSES.has(item.status)
+      && item.requesterTeacherId === input.requesterTeacherId)
+    .map((absenceCase) => ({
+      absenceCase,
+      lessonIds: absenceCase.lessonIds.filter((lessonId) => wanted.has(lessonId)),
+    }))
+    .filter((item) => item.lessonIds.length > 0);
+}
+
 function isISODate(value: string): boolean {
   if (!ISO_DATE.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00.000Z`);

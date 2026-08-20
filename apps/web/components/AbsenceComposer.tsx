@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CASE_STATUS_LABEL,
   findDuplicateAbsenceCase,
+  findOverlappingAbsenceCases,
   lessonsAffectedByAbsence,
 } from '../lib/case-service';
 import type { AbsenceCase, Lesson, WorkspaceState } from '../lib/domain';
@@ -236,6 +237,16 @@ export function AbsenceComposer({
     });
     if (duplicate) {
       setMessage(`같은 기간과 수업으로 ${CASE_STATUS_LABEL[duplicate.status]} 상태의 요청이 이미 있습니다. 기존 요청을 확인하거나 날짜 또는 수업 선택을 바꾸십시오.`);
+      return;
+    }
+    const overlapping = findOverlappingAbsenceCases(state, {
+      requesterTeacherId: teacherId, lessonIds: selected.map((lesson) => lesson.id),
+    });
+    if (overlapping.length > 0) {
+      const dates = [...new Set(overlapping.flatMap((item) => item.lessonIds)
+        .map((lessonId) => state.lessons.find((lesson) => lesson.id === lessonId)?.date)
+        .filter((date): date is string => Boolean(date)))].sort();
+      setMessage(`${dates.join(', ')} 수업은 이미 낸 요청에 들어 있습니다. 그 요청을 취소하거나 겹치지 않는 날짜를 고르십시오.`);
       return;
     }
     const result = onSubmit({
