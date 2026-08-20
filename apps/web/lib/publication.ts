@@ -82,7 +82,9 @@ function buildPublicationRecord(
     id,
     workspaceId: absenceCase.workspaceId,
     caseId: absenceCase.id,
-    revisionId: state.workspace.activeRevisionId,
+    // 그 사건이 딛고 선 주다. 활성 개정판으로 찍으면, 주가 넘어간 뒤 게시한 기록이
+    // 지난주 수업을 바꿔 놓고 이번 주 것이라고 적힌다. 되짚을 때 어긋난다.
+    revisionId: caseRevisionId(state, absenceCase),
     changedLessonIds: changedLessonIdsOf(absenceCase),
     publishedAt: at,
     publishedBy: actorId,

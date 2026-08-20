@@ -239,6 +239,8 @@ describe('주가 넘어가도 진행 중인 사건이 살아 있다', () => {
     const published = publishCase(after, 'case-1', 'ops', '2026-08-24T09:00:00.000Z');
     expect(published.cases[0]!.status).toBe('published');
     expect(published.publications).toHaveLength(1);
+    // 게시 기록은 그 사건의 주를 가리켜야 한다. 이번 주라고 적으면 되짚을 때 어긋난다.
+    expect(published.publications[0]!.revisionId).toBe(W1);
   });
 
   /*
