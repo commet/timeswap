@@ -180,10 +180,19 @@ function resolutionCoversLesson(absenceCase: AbsenceCase, lessonId: string): boo
   });
 }
 
+/**
+ * 게시된 변경을 수업 번호로 찾는 표.
+ *
+ * 개정판을 안 가린다. 수업 번호에 개정판이 들어 있어 다른 주의 게시가 이 주 수업에
+ * 걸릴 수 없다. 앞서는 활성 개정판만 봤는데, 그러면 주가 넘어가는 순간 지난주 게시가
+ * 통째로 안 보인다. 지난주 격자가 게시 전 모습으로 되돌아가고, 그 위에서 정정 후보를
+ * 고르면 이미 비운 자리를 차 있다고 보고 이미 찬 자리를 비었다고 본다.
+ *
+ * 같은 주를 다시 불러오면 개정판 번호가 같아 그 주 게시는 그대로 남는다.
+ */
 export function publishedChanges(state: WorkspaceState): Map<string, PublishedChange> {
   const byLesson = new Map<string, PublishedChange>();
   const publications = [...state.publications]
-    .filter((publication) => publication.revisionId === state.workspace.activeRevisionId)
     .sort((left, right) => left.publishedAt.localeCompare(right.publishedAt));
 
   for (const publication of publications) {

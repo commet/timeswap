@@ -12,6 +12,7 @@ import { publishCase } from '../lib/publication';
 import { projectPublicationCenter } from '../lib/publication-center';
 import { validateCasePlan } from '../lib/projections';
 import { resolutionRowsForLesson } from '../lib/resolution';
+import { effectiveLessons } from '../lib/projections';
 import { CaseDetail } from '../components/CaseDetail';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
@@ -238,5 +239,41 @@ describe('주가 넘어가도 진행 중인 사건이 살아 있다', () => {
     const published = publishCase(after, 'case-1', 'ops', '2026-08-24T09:00:00.000Z');
     expect(published.cases[0]!.status).toBe('published');
     expect(published.publications).toHaveLength(1);
+  });
+
+  /*
+   * 지난주 게시가 지난주 격자에 그대로 얹혀 있어야 한다.
+   *
+   * 게시 기록을 활성 개정판으로 걸러 읽고 있었다. 주가 넘어가면 지난주 게시가 통째로
+   * 안 보이고, 지난주 격자가 게시 전 모습으로 되돌아간다. 그 격자 위에서 정정 후보를
+   * 고르면 이미 비운 자리를 차 있다고 보고 이미 찬 자리를 비었다고 본다.
+   */
+  it('주가 넘어가도 지난주 게시가 지난주 격자에 얹혀 있다', () => {
+    let state = afterApproval();
+    state = createPrototypeAdminTasks(state, {
+      caseId: 'case-1', actorId: 'ops', at: '2026-08-21T10:00:00.000Z',
+      auditEventId: 'case-1:admin', taskAuditEventId: 'case-1:tasks',
+      taskIds: {
+        neis: 't1', teacher_notice: 't2', class_publication: 't3', internal_document: 't4',
+      },
+    });
+    let seq = 0;
+    for (const kind of PROTOTYPE_REQUIRED_ADMIN_TASKS) {
+      const taskId = { neis: 't1', teacher_notice: 't2', class_publication: 't3' }[kind];
+      seq += 1;
+      state = completeAdminTask(state, {
+        taskId, actorId: 'ops',
+        at: `2026-08-21T1${seq}:00:00.000Z`, auditEventId: `case-1:done:${seq}`,
+      });
+    }
+    state = publishCase(state, 'case-1', 'ops', '2026-08-21T15:00:00.000Z');
+    const lessonId = state.cases[0]!.lessonIds[0]!;
+    const before = effectiveLessons(state, W1).find((item) => item.id === lessonId)!;
+    // 게시로 2교시가 4교시가 되었다.
+    expect(before.period).toBe('4');
+
+    const after = reloadNextWeek(state);
+    const moved = effectiveLessons(after, W1).find((item) => item.id === lessonId)!;
+    expect(moved.period).toBe('4');
   });
 });
