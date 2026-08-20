@@ -143,7 +143,7 @@ function resolutionCoversLesson(absenceCase: AbsenceCase, lessonId: string): boo
   });
 }
 
-function publishedChanges(state: WorkspaceState): Map<string, PublishedChange> {
+export function publishedChanges(state: WorkspaceState): Map<string, PublishedChange> {
   const byLesson = new Map<string, PublishedChange>();
   const publications = [...state.publications]
     .filter((publication) => publication.revisionId === state.workspace.activeRevisionId)

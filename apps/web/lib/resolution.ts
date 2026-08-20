@@ -13,7 +13,7 @@ import {
   type TimetableInput,
   type TraceEntry,
 } from '@timeswap/engine';
-import { validateCasePlan } from './projections';
+import { publishedChanges, validateCasePlan } from './projections';
 
 export interface ResolutionRow {
   id: string;
@@ -334,10 +334,35 @@ function recentBurdenOf(state: WorkspaceState, monday: string): Record<string, n
 /** Builds the active calendar week without turning unknown teacher rows into free class time. */
 export function targetWeekInput(state: WorkspaceState, targetDate: string): TargetWeekInput {
   const monday = mondayOf(targetDate);
-  const lessons = activeLessons(state).filter((lesson) => {
-    const day = dayIndex(lesson.date, monday);
-    return day >= 0 && day < 5;
-  });
+  /*
+   * 이미 게시된 변경을 격자에 얹는다.
+   *
+   * `activeLessons` 는 학교가 준 원래 시간표다. 지난주에 낸 변경이 게시되어 3교시
+   * 수업이 4교시로 옮겨 갔어도 여기서는 그대로 3교시다. 그 격자로 다음 안을 찾으면
+   * 이미 비어 있는 3교시는 차 있다고 보고, 이미 찬 4교시는 비었다고 본다.
+   *
+   * 뒤의 충돌 검사가 잘못된 안을 걸러 내기는 한다. 그러나 엔진은 그 전에 다섯 개를
+   * 골라 순위를 매긴다. 틀린 격자로 고른 다섯이라 좋은 자리를 아예 못 보고 지나간다.
+   *
+   * 게시된 것만 얹는다. 결재 중인 변경은 아직 확정이 아니고, 지금 풀고 있는 사건
+   * 자신의 변경까지 얹으면 두 번 적용된다. 그쪽은 충돌 검사가 맡는다.
+   */
+  const published = publishedChanges(state);
+  const lessons = activeLessons(state)
+    .map((lesson) => {
+      const moved = published.get(lesson.id);
+      if (!moved) return lesson;
+      return {
+        ...lesson,
+        date: moved.change.toDate,
+        period: moved.change.toPeriod,
+        teacher: moved.change.teacher,
+      };
+    })
+    .filter((lesson) => {
+      const day = dayIndex(lesson.date, monday);
+      return day >= 0 && day < 5;
+    });
   const periods = Math.max(7, ...lessons.map((lesson) => Number(lesson.period) || 1));
   const input: TimetableInput = {
     config: { days: 5, periods, dayNames: ['월', '화', '수', '목', '금'] },
