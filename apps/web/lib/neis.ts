@@ -221,14 +221,39 @@ export async function findRecentTeachingWeek(query: TimetableQuery): Promise<Tea
   throw new NeisFailure('NO_DATA', '최근 5주에 공개된 시간표가 없습니다. 빈 시간표로 시작하지 마십시오.');
 }
 
-export interface NeisEvent { date: string; name: string; kind: string; grades: boolean[]; isHoliday: boolean; }
-interface ScheduleRow { AA_YMD: string; EVENT_NM: string; SBTR_DD_SC_NM?: string; ONE_GRADE_EVENT_YN?: string; TW_GRADE_EVENT_YN?: string; THREE_GRADE_EVENT_YN?: string; FR_GRADE_EVENT_YN?: string; FIV_GRADE_EVENT_YN?: string; SIX_GRADE_EVENT_YN?: string; }
+export interface NeisEvent {
+  date: string;
+  name: string;
+  kind: string;
+  grades: boolean[];
+  isHoliday: boolean;
+  /**
+   * 그 행사가 걸린 학교 과정. 특수학교에서만 갈린다.
+   *
+   * 특수학교 학사일정은 과정마다 따로 온다. 실측한 32곳 가운데 31곳이 유치원,
+   * 초등학교, 중학교, 고등학교, 전공과 가운데 셋에서 다섯 과정을 함께 운영하고,
+   * 6곳에서는 과정마다 쉬는 날이 달랐다. 유치원 여름방학이 먼저 시작하는 식이다.
+   *
+   * 이 값을 안 보면 유치원만 쉬는 날에 초등부와 중학부 수업까지 쉬는 것으로 읽는다.
+   * 시간표에서 고친 것과 같은 종류다.
+   */
+  schoolCourse: string;
+}
+interface ScheduleRow { AA_YMD: string; EVENT_NM: string; SBTR_DD_SC_NM?: string; SCHUL_CRSE_SC_NM?: string; ONE_GRADE_EVENT_YN?: string; TW_GRADE_EVENT_YN?: string; THREE_GRADE_EVENT_YN?: string; FR_GRADE_EVENT_YN?: string; FIV_GRADE_EVENT_YN?: string; SIX_GRADE_EVENT_YN?: string; }
 
 export async function loadSchedule(q: { school: NeisSchool; from: string; to: string; key?: string; fetch?: typeof globalThis.fetch; now?: () => Date }): Promise<CompleteNeisResult<NeisEvent>> {
   const result = await fetchAllNeisRows<ScheduleRow>({ endpoint: 'SchoolSchedule', params: { ATPT_OFCDC_SC_CODE: q.school.office, SD_SCHUL_CODE: q.school.code, AA_FROM_YMD: q.from, AA_TO_YMD: q.to }, key: q.key, fetch: q.fetch, now: q.now });
   return { ...result, rows: result.rows.map((r) => {
     const kind = r.SBTR_DD_SC_NM ?? '해당없음';
-    return { date: r.AA_YMD, name: r.EVENT_NM, kind, grades: [r.ONE_GRADE_EVENT_YN, r.TW_GRADE_EVENT_YN, r.THREE_GRADE_EVENT_YN, r.FR_GRADE_EVENT_YN, r.FIV_GRADE_EVENT_YN, r.SIX_GRADE_EVENT_YN].map((v) => v === 'Y'), isHoliday: kind === '휴업일' || kind === '공휴일' };
+    return {
+      date: r.AA_YMD,
+      name: r.EVENT_NM,
+      kind,
+      // 값은 Y, N, 그리고 그 학년이 없는 학교의 * 다. Y 만 해당으로 본다.
+      grades: [r.ONE_GRADE_EVENT_YN, r.TW_GRADE_EVENT_YN, r.THREE_GRADE_EVENT_YN, r.FR_GRADE_EVENT_YN, r.FIV_GRADE_EVENT_YN, r.SIX_GRADE_EVENT_YN].map((v) => v === 'Y'),
+      isHoliday: kind === '휴업일' || kind === '공휴일',
+      schoolCourse: (r.SCHUL_CRSE_SC_NM ?? '').trim(),
+    };
   }) };
 }
 

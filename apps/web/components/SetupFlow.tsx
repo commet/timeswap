@@ -118,16 +118,35 @@ export function createWorkspaceFromNeis(
   const knownClasses = [...new Map(lessons.map((lesson) => [
     JSON.stringify(lesson.classIdentity), lesson.classIdentity,
   ])).values()];
-  const closures = bundle.events.filter((event) => event.isHoliday).map((event) => {
+  /*
+   * 학사일정을 쉬는 날로 옮긴다.
+   *
+   * 학년과 과정 둘 다로 좁힌다. 특수학교 학사일정은 과정마다 따로 오고, 실측한 32곳
+   * 가운데 6곳에서 과정마다 쉬는 날이 달랐다. 유치원 여름방학이 먼저 시작하는 식이다.
+   * 과정을 안 보면 그날 초등부와 중학부 수업까지 쉬는 것으로 읽는다.
+   *
+   * 과정으로 좁히는 것은 학급 쪽에 과정 값이 있을 때만 한다. 초중고 시간표에는
+   * 과정 항목이 아예 없어서 그때 좁히면 아무 학급도 안 남는다.
+   */
+  const hasCourses = knownClasses.some((identity) => (identity.schoolCourse ?? '') !== '');
+  const closures = bundle.events.filter((event) => event.isHoliday).flatMap((event) => {
     const selectedGrades = event.grades.flatMap((on, index) => on ? [String(index + 1)] : []);
-    const partial = selectedGrades.length > 0 && selectedGrades.length < event.grades.length;
-    return {
+    const byCourse = hasCourses && event.schoolCourse !== '';
+    const scoped = knownClasses.filter((identity) =>
+      (selectedGrades.length === 0 || selectedGrades.includes(identity.grade))
+      && (!byCourse || (identity.schoolCourse ?? '') === event.schoolCourse));
+    const whole = !byCourse
+      && (selectedGrades.length === 0 || selectedGrades.length >= event.grades.length);
+    if (!whole && scoped.length === 0) {
+      // 해당하는 학급이 하나도 없다. 학교 전체가 쉬는 것으로 넓히면 안 된다.
+      // 특수학교 전공과나 유치원처럼 시간표에 없는 과정의 행사가 여기 온다.
+      return [];
+    }
+    return [{
       date: isoDate(event.date),
       reason: event.name || event.kind,
-      ...(partial ? {
-        classIdentities: knownClasses.filter((identity) => selectedGrades.includes(identity.grade)),
-      } : {}),
-    };
+      ...(whole ? {} : { classIdentities: scoped }),
+    }];
   });
   const academicYear = normalization.accepted[0]?.classIdentity.academicYear ?? '';
   const complete = bundle.result.complete && normalization.quarantined.length === 0;

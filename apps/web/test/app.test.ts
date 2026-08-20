@@ -18,7 +18,7 @@ import {
 } from '../lib/app';
 import type { NeisEvent } from '../lib/neis';
 import { createNeisSession } from '../lib/neis-session';
-import { canOpenInvitations } from '../components/SetupFlow';
+import { canOpenInvitations, createWorkspaceFromNeis } from '../components/SetupFlow';
 import { gradeShapes, normalizeNeisRows } from '@timeswap/engine';
 import type { ScheduleConfig, TimetableInput } from '@timeswap/engine';
 
@@ -30,6 +30,7 @@ const ev = (date: string, name: string, kind: string, grades = [true, true, true
   kind,
   grades,
   isHoliday: kind === '휴업일' || kind === '공휴일',
+  schoolCourse: '',
 });
 
 describe('나이스 인증키 세션', () => {
@@ -284,6 +285,7 @@ describe('학급 이름에서 학년 뽑기', () => {
         kind: '휴업일',
         grades: [false, true, false],
         isHoliday: true,
+        schoolCourse: '',
       },
     ];
     const out = buildClosures(events, ['1학년 1반', '2학년 1반', '2학년 2반'], MON);
@@ -490,5 +492,77 @@ describe('학급에 매이지 않는 강좌와 완전성', () => {
     const report = normalizeNeisRows([row(), row({ PERIO: '' })] as never);
     expect(report.quarantined).toHaveLength(1);
     expect(canOpenInvitations({ sourceComplete: report.quarantined.length === 0, unresolvedTeacherCount: 0 })).toBe(false);
+  });
+});
+
+/**
+ * 특수학교 학사일정은 과정마다 따로 온다.
+ *
+ * 실측한 32곳 가운데 31곳이 유치원, 초등학교, 중학교, 고등학교, 전공과 가운데 셋에서
+ * 다섯 과정을 함께 운영하고, 6곳에서는 과정마다 쉬는 날이 달랐다. 유치원 여름방학이
+ * 다른 과정보다 먼저 시작하는 식이다. 휴업일 1,227일 가운데 30일(2%)이 그렇다.
+ *
+ * 과정을 안 보면 유치원만 쉬는 날에 초등부와 중학부 수업까지 쉬는 것으로 읽는다.
+ */
+describe('과정마다 다른 쉬는 날', () => {
+  const identity = (course: string, grade: string, className: string) => ({
+    schoolCode: '7010084', academicYear: '2026', schoolCourse: course,
+    dayCourse: '주간', affiliation: '', major: '', grade, className,
+  });
+  const event = (over: Partial<NeisEvent> = {}): NeisEvent => ({
+    date: '20260715', name: '여름방학', kind: '휴업일',
+    grades: [true, true, true, true, true, true], isHoliday: true, schoolCourse: '', ...over,
+  });
+
+  const bundle = (events: NeisEvent[]) => ({
+    school: { office: 'B10', code: '7010084', name: '명현학교', kind: '특수학교', officeName: '서울' },
+    range: { from: '20260713', to: '20260717' },
+    result: { total: 3, pageCount: 1, complete: true, truncated: false, fetchedAt: '2026-07-13T00:00:00.000Z' },
+    rows: [], events,
+    report: {
+      normalization: {
+        accepted: [
+          { id: 'r1', row: {}, classIdentity: identity('유치원', '1', '1'), classKey: 'k1', factKey: 'f1',
+            date: '20260713', period: '1', rawSubject: '놀이', subject: '놀이', room: '' },
+          { id: 'r2', row: {}, classIdentity: identity('초등학교', '1', '1'), classKey: 'k2', factKey: 'f2',
+            date: '20260713', period: '1', rawSubject: '국어', subject: '국어', room: '' },
+        ],
+        quarantined: [], courseOnly: [], duplicateCount: 0, parallelGroups: [],
+      },
+    },
+  }) as unknown as Parameters<typeof createWorkspaceFromNeis>[0];
+
+  it('유치원만 쉬는 날에 초등부를 쉬게 하지 않는다', () => {
+    const state = createWorkspaceFromNeis(bundle([event({ schoolCourse: '유치원' })]), {}, '2026-07-13T00:00:00.000Z');
+    const closures = state.revisions[0]?.closures ?? [];
+    expect(closures).toHaveLength(1);
+    expect(closures[0]?.classIdentities?.map((x) => x.schoolCourse)).toEqual(['유치원']);
+  });
+
+  it('과정이 다 쉬면 각 과정마다 그 과정만 닫는다', () => {
+    const state = createWorkspaceFromNeis(
+      bundle([event({ schoolCourse: '유치원' }), event({ schoolCourse: '초등학교' })]),
+      {}, '2026-07-13T00:00:00.000Z',
+    );
+    const closures = state.revisions[0]?.closures ?? [];
+    expect(closures).toHaveLength(2);
+    expect(closures.flatMap((c) => c.classIdentities?.map((x) => x.schoolCourse) ?? [])).toEqual(['유치원', '초등학교']);
+  });
+
+  it('시간표에 없는 과정의 행사는 아무 학급도 안 닫는다', () => {
+    // 전공과는 학사일정에 오지만 시간표에는 없다. 학교 전체로 넓히면 안 된다.
+    const state = createWorkspaceFromNeis(bundle([event({ schoolCourse: '전공과' })]), {}, '2026-07-13T00:00:00.000Z');
+    expect(state.revisions[0]?.closures ?? []).toEqual([]);
+  });
+
+  it('초중고는 과정 항목이 없으므로 예전처럼 학교 전체로 닫는다', () => {
+    const hs = bundle([event({ schoolCourse: '고등학교' })]) as unknown as {
+      report: { normalization: { accepted: Array<{ classIdentity: { schoolCourse: string } }> } };
+    };
+    for (const row of hs.report.normalization.accepted) row.classIdentity.schoolCourse = '';
+    const state = createWorkspaceFromNeis(hs as never, {}, '2026-07-13T00:00:00.000Z');
+    const closures = state.revisions[0]?.closures ?? [];
+    expect(closures).toHaveLength(1);
+    expect(closures[0]?.classIdentities).toBeUndefined();
   });
 });
