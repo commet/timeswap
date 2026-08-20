@@ -376,6 +376,31 @@ describe('projectOpsDashboard', () => {
     expect(projectOpsDashboard(state, '2026-08-24').unresolvedLessons).toBe(1);
   });
 
+  /*
+   * 결강 당사자는 협조로 세지 않는다. 자기 수업을 옮긴 것이지 남을 도운 것이 아니다.
+   * 그런데 세고 있었다. 빈 교시 이동은 바뀌는 수업이 당사자 것 하나뿐이라, 부재를
+   * 세 번 낸 분이 "협조 3건"으로 잡혀 부담 경고에 올랐다.
+   */
+  it('결강 당사자가 자기 수업을 옮긴 것은 협조로 세지 않는다', () => {
+    const state = stateAt('resolution_approved');
+    const requester = state.cases[0]!.requesterTeacherId;
+    // 세 번 부재를 내고 매번 자기 수업만 옮겼다. 아무도 도와주지 않았다.
+    state.cases[0]!.resolutionItems[0]!.changes = [{
+      lessonId: 'lesson-1',
+      toDate: '2026-08-24',
+      toPeriod: '4',
+      teacher: { state: 'assigned', teacherId: requester },
+    }];
+    state.cases.push(
+      { ...state.cases[0]!, id: 'case-2' },
+      { ...state.cases[0]!, id: 'case-3' },
+    );
+    expect(projectOpsDashboard(state, '2026-08-24')).toMatchObject({
+      burdenAlerts: 0,
+      burden: [],
+    });
+  });
+
   it('reports a burden alert after three accepted assignments to one teacher', () => {
     const state = stateAt('resolution_approved');
     state.lessons.push({

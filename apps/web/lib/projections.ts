@@ -287,6 +287,17 @@ function unresolvedLessonCount(state: WorkspaceState): number {
   return count;
 }
 
+/**
+ * 최근에 자리를 내어 준 분과 그 횟수. 관제판의 부담 경고에 쓴다.
+ *
+ * 결강 당사자는 세지 않는다. 자기 수업을 옮긴 것이지 남을 도운 것이 아니다.
+ * 그런데 세고 있었다. 빈 교시 이동은 바뀌는 수업이 당사자 것 하나뿐이라, 부재를
+ * 세 번 낸 분이 "협조 3건"으로 잡혀 부담 경고에 올랐다. 도움을 받은 쪽이 도와준
+ * 쪽으로 뒤집혀 보이던 셈이다.
+ *
+ * 한 해결안에서 같은 분의 수업이 둘 움직이면 둘로 센다. 이 값의 이름이 "협조 건수"
+ * 이고 화면도 건수로 읽는다. 수업 셋을 옮기는 것은 하나를 옮기는 것보다 무겁다.
+ */
 function deriveBurden(state: WorkspaceState): TeacherBurdenView[] {
   const counts = new Map<string, number>();
   for (const absenceCase of state.cases) {
@@ -295,6 +306,7 @@ function deriveBurden(state: WorkspaceState): TeacherBurdenView[] {
       if (resolution.computedAgainstRevisionId !== state.workspace.activeRevisionId) continue;
       for (const change of resolution.changes) {
         if (change.teacher.state !== 'assigned') continue;
+        if (change.teacher.teacherId === absenceCase.requesterTeacherId) continue;
         counts.set(change.teacher.teacherId, (counts.get(change.teacher.teacherId) ?? 0) + 1);
       }
     }
