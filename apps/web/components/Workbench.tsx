@@ -368,6 +368,8 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
       result.target.subject,
       8,
       currentTeacher ?? undefined,
+      // 그 학급만 쉬는 날이면 보강도 세울 자리가 아니다
+      result.target.klass,
     );
   }, [input, result, currentTeacher]);
 
