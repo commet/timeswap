@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadDemoScenario } from '../lib/demo';
-import { targetWeekInput } from '../lib/resolution';
+import { resolutionRowsForLesson, targetWeekInput } from '../lib/resolution';
 import type { WorkspaceState } from '../lib/domain';
 
 /**
@@ -60,5 +60,41 @@ describe('게시된 변경을 엔진 격자에 얹는다', () => {
     const lessonId = publication.changedLessonIds[0]!;
     const original = base.lessons.find((item) => item.id === lessonId)!;
     expect(placement(state, lessonId)?.period).toBe(Number(original.period));
+  });
+});
+
+/**
+ * 게시된 변경으로 비게 된 교시를 "그날 없는 교시"로 읽지 않는지.
+ *
+ * 그날 어떤 교시가 있는가는 학교 편성의 성질이고, 우리가 낸 변경으로 달라지지 않는다.
+ * 그런데 게시된 자리를 얹은 뒤의 격자로 교시 구조를 세고 있었다. 3교시 수업을 4교시로
+ * 옮겨 게시한 예시에서 3교시가 통째로 비었고, 그것을 없는 교시로 막는 바람에 **그
+ * 사건을 정정할 후보가 하나도 안 나왔다.** 브라우저 검사가 잡았다.
+ */
+describe('게시로 비게 된 교시', () => {
+  it('없는 교시로 막지 않는다', () => {
+    const state = loadDemoScenario('published-correction');
+    const publication = state.publications[0]!;
+    const lessonId = publication.changedLessonIds[0]!;
+    const original = state.lessons.find((item) => item.id === lessonId)!;
+    const { input } = targetWeekInput(state, original.date);
+
+    const day = new Date(`${original.date}T00:00:00.000Z`).getUTCDay() - 1;
+    const slot = day * input.config.periods + (Number(original.period) - 1);
+    // 원래 자리가 klassBusy 로 막혀 있으면 그 자리로 되돌리는 정정을 못 낸다.
+    for (const [, slots] of Object.entries(input.klassBusy ?? {})) {
+      expect(slots).not.toContain(slot);
+    }
+    // 그날 마지막 교시도 원래 자리로 세므로 게시 전후가 같다.
+    expect(input.config.periodsPerDay?.[day]).toBeGreaterThanOrEqual(Number(original.period));
+  });
+
+  it('정정 사건에 후보가 남는다', () => {
+    const state = loadDemoScenario('published-correction');
+    const target = state.cases.find((item) => item.status !== 'published');
+    if (!target) return;
+    const rows = target.lessonIds.flatMap((lessonId) =>
+      resolutionRowsForLesson(state, target.id, lessonId));
+    expect(rows.length).toBeGreaterThan(0);
   });
 });

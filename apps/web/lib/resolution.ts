@@ -363,7 +363,25 @@ export function targetWeekInput(state: WorkspaceState, targetDate: string): Targ
       const day = dayIndex(lesson.date, monday);
       return day >= 0 && day < 5;
     });
-  const periods = Math.max(7, ...lessons.map((lesson) => Number(lesson.period) || 1));
+  /*
+   * 그 주에 어떤 교시가 있는지는 **학교가 준 원래 자리**로 센다.
+   *
+   * 게시된 변경을 얹은 뒤의 자리로 세면 안 된다. 우리가 옮겨서 비게 된 교시를 "그날
+   * 없는 교시"로 잘못 읽는다. 실제로 그랬다. 3교시 수업을 4교시로 옮겨 게시한 학교에서
+   * 3교시가 통째로 비었고, 그것을 없는 교시로 막는 바람에 그 사건을 정정할 후보가
+   * 하나도 안 나왔다.
+   *
+   * 어떤 교시가 있는 날인가는 학교 편성의 성질이고, 우리가 낸 변경으로 달라지지 않는다.
+   */
+  const structure = activeLessons(state).filter((lesson) => {
+    const day = dayIndex(lesson.date, monday);
+    return day >= 0 && day < 5;
+  });
+  const periods = Math.max(
+    7,
+    ...lessons.map((lesson) => Number(lesson.period) || 1),
+    ...structure.map((lesson) => Number(lesson.period) || 1),
+  );
   const input: TimetableInput = {
     config: { days: 5, periods, dayNames: ['월', '화', '수', '목', '금'] },
     assignments: [],
@@ -415,7 +433,16 @@ export function targetWeekInput(state: WorkspaceState, targetDate: string): Targ
   const lastOfDay = new Array<number>(5).fill(0);
   const gradeLast = new Map<string, number[]>();
   const gradeKlasses = new Map<string, Set<string>>();
-  for (const lesson of lessons) {
+  const usedOnDay = new Map<number, Set<number>>();
+  const klassesOnDay = new Map<number, Set<string>>();
+  /*
+   * 원래 자리와 게시된 자리를 **둘 다** 있는 교시로 센다.
+   *
+   * 원래 자리만 세면 게시로 옮겨 간 자리가 없는 교시가 되어, 정작 거기 있는 수업이
+   * 규칙을 어기는 자리에 앉는다. 게시된 자리만 세면 우리가 비운 교시가 없는 교시가
+   * 된다. 수업이 있었거나 지금 있는 교시는 그날 있는 교시다.
+   */
+  for (const lesson of [...structure, ...lessons]) {
     const day = dayIndex(lesson.date, monday);
     const period = Number(lesson.period);
     if (day < 0 || day >= 5 || !Number.isInteger(period) || period < 1 || period > periods) continue;
@@ -424,6 +451,8 @@ export function targetWeekInput(state: WorkspaceState, targetDate: string): Targ
     const arr = gradeLast.get(grade) ?? gradeLast.set(grade, new Array<number>(5).fill(0)).get(grade)!;
     if (period > arr[day]!) arr[day] = period;
     (gradeKlasses.get(grade) ?? gradeKlasses.set(grade, new Set()).get(grade)!).add(classKey(lesson));
+    (usedOnDay.get(day) ?? usedOnDay.set(day, new Set()).get(day)!).add(period);
+    (klassesOnDay.get(day) ?? klassesOnDay.set(day, new Set()).get(day)!).add(classKey(lesson));
   }
   if (lastOfDay.some((last) => last < periods)) input.config.periodsPerDay = lastOfDay;
 
@@ -441,17 +470,19 @@ export function targetWeekInput(state: WorkspaceState, targetDate: string): Targ
    * 담당을 모르는 자리와 같은 뜻이라 `klassBusy` 로 넘긴다. 그 자리로는 안 옮기고,
    * 우리가 옮길 수업으로도 삼지 않는다.
    */
-  const usedOnDay = new Map<number, Set<number>>();
-  for (const lesson of lessons) {
-    const day = dayIndex(lesson.date, monday);
-    const period = Number(lesson.period);
-    if (day < 0 || day >= 5 || !Number.isInteger(period) || period < 1 || period > periods) continue;
-    (usedOnDay.get(day) ?? usedOnDay.set(day, new Set()).get(day)!).add(period);
-  }
   const gapSlots: number[] = [];
   for (let day = 0; day < 5; day += 1) {
     const used = usedOnDay.get(day);
     if (!used || used.size === 0) continue;
+    /*
+     * 학급 둘 이상이 그날 수업을 가지고 있을 때만 본다.
+     *
+     * 학급 하나만 보고 "이 교시는 그날 없다"고 할 수 없다. 그 학급이 그때 공강일
+     * 뿐일 수 있다. 학급별 교시 제한에 쓰는 것과 같은 근거 기준이다. 이 조건이
+     * 없을 때 수업이 하나뿐인 자료에서 1, 2교시를 없는 교시로 막아 정정 후보가
+     * 통째로 사라졌다.
+     */
+    if ((klassesOnDay.get(day)?.size ?? 0) < 2) continue;
     for (let period = 1; period < lastOfDay[day]!; period += 1) {
       if (!used.has(period)) gapSlots.push(day * periods + (period - 1));
     }
