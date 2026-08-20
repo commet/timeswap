@@ -11,7 +11,8 @@ import {
 import type { Lesson, WorkspaceState } from '../lib/domain';
 import { caseRevisionId, effectiveLessons } from '../lib/projections';
 import { projectOpsCommandCenter } from '../lib/ops-command-center';
-import { resolutionRowsForLesson } from '../lib/resolution';
+import { crossingForResolution, resolutionRowsForLesson } from '../lib/resolution';
+import { CrossingCheck } from './CrossingCheck';
 import type { SaveResult } from '../lib/repository';
 
 const OPERATOR_ID = 'operator:demo';
@@ -205,6 +206,11 @@ export function CaseDetail({
                       }), '보강 해결안을 감사 기록과 함께 저장했습니다.')}
                     >보강으로 바꾸기</button>
                   )}
+                  {/*
+                    * 고른 안이 왜 되는지 보여 준다. 목록에서 이름만 고르고 승인하면
+                    * 무엇을 승인하는지 모른 채 누르는 것이 된다.
+                    */}
+                  {row && <CrossingCheck views={crossingForResolution(state, row.resolution)} />}
                 </div>
               ) : selected ? <small>{selected.changes.length}개 수업 변경</small> : (
                 <small className="ops-no-candidate">

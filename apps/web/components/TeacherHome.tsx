@@ -86,6 +86,11 @@ export function TeacherHome({
     scheduleValue(lesson).date === todayDate), [schedule.lessons, todayDate]);
   const todayChanges = todayLessons.filter((lesson) => lesson.status !== 'base').length;
   const label = teacherLabel(state, teacherId);
+  /* 바뀐 교시를 번호로 부른다. "주홍 표시"라고 안내하면 색을 못 보는 분에게 쓸모가 없다. */
+  const changedPeriods = useMemo(() => [...new Set(todayLessons
+    .filter((lesson) => lesson.status !== 'base')
+    .map((lesson) => Number(scheduleValue(lesson).period) || 0))]
+    .sort((left, right) => left - right), [todayLessons]);
   /*
    * 하루를 교시 순서로 세운다. 수업이 없는 교시도 줄에 남긴다.
    *
@@ -118,9 +123,9 @@ export function TeacherHome({
           <h1 id="teacher-home-title">{dayTitle(todayDate)}</h1>
           {/* 표를 보여 주기 전에 물음에 먼저 답한다. 오늘 내 수업이 바뀌었는가. */}
           <p className="teacher-verdict" data-now-next data-today-change-count>
-            {todayChanges > 0
-              ? <><b className="mark">오늘 바뀐 수업 {todayChanges}개</b> 아래 주홍 표시를 확인하십시오.</>
-              : <>오늘 바뀐 수업은 없습니다.</>}
+            {changedPeriods.length > 0
+              ? <><b className="mark">{changedPeriods.join(', ')}교시</b>가 바뀌었습니다.</>
+              : <>바뀐 수업이 없습니다.</>}
           </p>
         </div>
         <button className="btn primary teacher-request-button" onClick={() => openComposer()}>변경 요청</button>
@@ -128,7 +133,7 @@ export function TeacherHome({
 
       <section className="teacher-today" aria-labelledby="teacher-today-title">
         <div className="teacher-today-head">
-          <h2 id="teacher-today-title">{today.label === '오늘' ? '오늘 수업' : '불러온 수업일'}</h2>
+          <h2 id="teacher-today-title">{today.label === '오늘' ? '오늘' : dayTitle(todayDate)}</h2>
           <div className="teacher-focus-tabs" role="tablist" aria-label="시간표 범위">
             <button role="tab" aria-selected={focus === 'today'} className={focus === 'today' ? 'on' : ''}
               onClick={() => setFocus('today')}>하루</button>
@@ -142,7 +147,7 @@ export function TeacherHome({
               <li key={slot.period} className="rail-row">
                 <span className="rail-period num" aria-hidden>{slot.period}</span>
                 {slot.lessons.length === 0 ? (
-                  <span className="rail-free">{slot.period}교시 비어 있음</span>
+                  <span className="rail-free">수업 없음</span>
                 ) : slot.lessons.map((lesson) => {
                   const value = scheduleValue(lesson);
                   const changed = lesson.status !== 'base';

@@ -792,6 +792,83 @@ function toRow(
  * Invalid plans are deliberately excluded so no display text needs to be
  * parsed back into a domain action later.
  */
+/**
+ * 교차 확인.
+ *
+ * 이 도구가 하는 일은 하나다. **교사와 학급이 동시에 비는 칸**을 찾는 것. 지금까지 그
+ * 결과를 문장으로 적어 왔다. "정비2 선생님이 월요일 3교시에 비어 있습니다", "국어4
+ * 선생님이 월요일 2교시에 비어 있습니다" 하는 식이다. 세 문장을 읽고 머릿속에서 표를
+ * 그려야 맞는지 안다.
+ *
+ * 그럴 필요가 없다. 그날 그 교사의 자리와 그 학급의 자리를 나란히 그리고, 가려는 교시에
+ * 세로로 표시를 하면 교차가 눈에 보인다. 엔진이 찾은 것을 그대로 보여 주는 것이다.
+ *
+ * 옮기는 수업 자신은 뺀 자리로 센다. 그 수업은 이 안이 비우고 갈 자리라, 차 있다고 세면
+ * 자기 자리 때문에 자기가 못 가는 것으로 보인다.
+ */
+export interface CrossingTrack {
+  label: string;
+  kind: 'teacher' | 'klass';
+  busy: number[];
+}
+
+export interface CrossingView {
+  changeId: string;
+  date: string;
+  /** 그날 있는 교시 수. 없는 교시를 빈 칸으로 그리면 갈 수 있는 자리로 오해한다. */
+  periods: number;
+  target: number;
+  subject: string;
+  tracks: CrossingTrack[];
+}
+
+export function crossingForResolution(
+  state: WorkspaceState,
+  item: ResolutionItem,
+): CrossingView[] {
+  const lessonById = anyLessonById(state);
+  const source = lessonById.get(item.lessonId);
+  if (!source) return [];
+  const week = effectiveLessons(state, source.revisionId);
+  /* 이 안이 움직이는 수업. 어느 자리도 이들 때문에 막히지 않는다. */
+  const moving = new Set(item.changes.map((change) => change.lessonId));
+
+  return item.changes.flatMap((change): CrossingView[] => {
+    const lesson = lessonById.get(change.lessonId);
+    if (!lesson || change.teacher.state !== 'assigned') return [];
+    const onDay = week.filter((current) => current.date === change.toDate);
+    const periods = Math.max(0, ...onDay.map((current) => Number(current.period) || 0));
+    if (periods === 0) return [];
+    const free = onDay.filter((current) => !moving.has(current.id));
+    const teacherId = change.teacher.teacherId;
+    const klass = classKey(lesson);
+    return [{
+      changeId: change.lessonId,
+      date: change.toDate,
+      periods,
+      target: Number(change.toPeriod) || 0,
+      subject: lesson.subject,
+      tracks: [
+        {
+          kind: 'teacher',
+          label: `${teacherLabel(state, teacherId)} 선생님`,
+          busy: [...new Set(free
+            .filter((current) => current.teacher.state === 'assigned'
+              && current.teacher.teacherId === teacherId)
+            .map((current) => Number(current.period) || 0))].sort((a, b) => a - b),
+        },
+        {
+          kind: 'klass',
+          label: `${lesson.classIdentity.grade}-${lesson.classIdentity.className}`,
+          busy: [...new Set(free
+            .filter((current) => classKey(current) === klass)
+            .map((current) => Number(current.period) || 0))].sort((a, b) => a - b),
+        },
+      ],
+    }];
+  });
+}
+
 export function resolutionRowsForLesson(
   state: WorkspaceState,
   caseId: string,

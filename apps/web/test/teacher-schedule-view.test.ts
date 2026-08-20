@@ -57,7 +57,7 @@ describe('teacher schedule view helpers', () => {
      * 세우므로 순서가 화면에 그대로 있다.
      */
     expect(html).toContain('rail-period');
-    expect(html).toContain('교시 비어 있음');
+    expect(html).toContain('수업 없음');
     expect(html).not.toContain('>지금<');
     expect(html).not.toContain('>다음<');
     expect(html).not.toContain('오늘 첫 수업');

@@ -3,10 +3,12 @@
 import { useRef } from 'react';
 
 import {
+  crossingForResolution,
   resolutionDetailForRow,
   type ResolutionRow,
 } from '../lib/resolution';
 import type { WorkspaceState } from '../lib/domain';
+import { CrossingCheck } from './CrossingCheck';
 
 const STATUS_LABEL: Record<ResolutionRow['state'], string> = {
   recommended: '추천',
@@ -138,6 +140,8 @@ export function ResolutionMatrix({
           <h3 id="resolution-detail-title">{selected.method} 변경 전과 후</h3>
           <p>{detail.groupedUnitCount}개 수업 단위를 함께 확인합니다.</p>
         </div>
+        {/* 왜 되는지를 먼저 보여 준다. 자세한 값은 그 아래에 있다. */}
+        <CrossingCheck views={crossingForResolution(state, selected.resolution)} />
         <dl className="resolution-detail-list">
           {detail.changes.map((change) => <div key={change.lessonId}>
             <dt>{change.original.date} {change.original.period}교시</dt>
