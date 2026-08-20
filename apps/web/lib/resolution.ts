@@ -240,7 +240,7 @@ function engineGroupIds(state: WorkspaceState, lessons: readonly Lesson[]): Map<
 }
 
 /** Builds the active calendar week without turning unknown teacher rows into free class time. */
-function targetWeekInput(state: WorkspaceState, targetDate: string): TargetWeekInput {
+export function targetWeekInput(state: WorkspaceState, targetDate: string): TargetWeekInput {
   const monday = mondayOf(targetDate);
   const lessons = activeLessons(state).filter((lesson) => {
     const day = dayIndex(lesson.date, monday);
@@ -281,6 +281,46 @@ function targetWeekInput(state: WorkspaceState, targetDate: string): TargetWeekI
   if (busy.size) {
     input.klassBusy = Object.fromEntries([...busy].map(([klass, slots]) => [klass, [...slots]]));
   }
+
+  /*
+   * 자료에 없는 날과 교시는 빈 자리가 아니다.
+   *
+   * 나이스가 한 주를 다 주지 않거나 그날이 휴업일이면 그 요일이 통째로 비어 온다.
+   * 그것을 빈 자리로 세면 도구는 자료가 없는 날로 옮기라는 안을 내고, 재어 보니
+   * 그 안이 맨 위에 왔다. 모르는 자리를 빈 자리로 세는 잘못이며 이 저장소에서
+   * 되풀이되는 모양이다.
+   *
+   * 담당 교사를 모르는 수업도 함께 센다. 누가 맡는지 몰라도 그 교시가 있다는 사실은
+   * 그 줄이 증명한다.
+   */
+  const lastOfDay = new Array<number>(5).fill(0);
+  const gradeLast = new Map<string, number[]>();
+  const gradeKlasses = new Map<string, Set<string>>();
+  for (const lesson of lessons) {
+    const day = dayIndex(lesson.date, monday);
+    const period = Number(lesson.period);
+    if (day < 0 || day >= 5 || !Number.isInteger(period) || period < 1 || period > periods) continue;
+    if (period > lastOfDay[day]!) lastOfDay[day] = period;
+    const grade = lesson.classIdentity.grade;
+    const arr = gradeLast.get(grade) ?? gradeLast.set(grade, new Array<number>(5).fill(0)).get(grade)!;
+    if (period > arr[day]!) arr[day] = period;
+    (gradeKlasses.get(grade) ?? gradeKlasses.set(grade, new Set()).get(grade)!).add(classKey(lesson));
+  }
+  if (lastOfDay.some((last) => last < periods)) input.config.periodsPerDay = lastOfDay;
+
+  /*
+   * 학년으로 재고 학급에 붙인다. 엔진이 나이스 자료에 쓰는 것과 같은 규칙이다.
+   * 학급 하나만 보면 그저 비어 있는 칸과 그 학년에 없는 교시를 가릴 수 없다.
+   * 그래서 학급이 하나뿐인 학년에는 안 붙인다.
+   */
+  const klassPeriodsPerDay: Record<string, number[]> = {};
+  for (const [grade, arr] of gradeLast) {
+    const klasses = gradeKlasses.get(grade);
+    if (!klasses || klasses.size < 2) continue;
+    if (arr.every((last, day) => last === (input.config.periodsPerDay?.[day] ?? periods))) continue;
+    for (const klass of klasses) klassPeriodsPerDay[klass] = arr;
+  }
+  if (Object.keys(klassPeriodsPerDay).length > 0) input.klassPeriodsPerDay = klassPeriodsPerDay;
   const activeRevision = state.revisions.find((revision) => revision.id === state.workspace.activeRevisionId);
   const closures = (activeRevision?.closures ?? []).flatMap((closure) => {
     const day = dayIndex(closure.date, monday);

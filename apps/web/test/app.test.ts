@@ -6,10 +6,15 @@ import {
   deriveBurden,
   calendarCoversThisWeek,
   blankDaysOf,
+  clearRaw,
   fromFile,
   gradeOf,
+  loadOffDays,
+  loadUnavail,
   normalizeName,
   sameGradeSubject,
+  saveOffDays,
+  saveUnavail,
   toFile,
   weekMondayOf,
   type AppliedEntry,
@@ -660,5 +665,94 @@ describe('과정이 다른 같은 학년 같은 반의 링크', () => {
     expect(classes).toHaveLength(1);
     expect(classes[0]?.label).toBe('1학년 1반');
     expect(classes[0]?.href).not.toContain('course=');
+  });
+});
+
+/**
+ * 근무 불가와 수업 없는 요일이 새로고침을 견디는지.
+ *
+ * 저장 함수는 있었는데 아무도 부르지 않았다. 그래서 시간강사가 오지 않는 요일을
+ * 눌러 두어도 페이지를 다시 열면 사라졌고, 도구는 그 자리를 빈 자리로 보고
+ * 수업을 옮기라고 했다. 모르는 자리를 빈 자리로 세는 잘못이다.
+ */
+describe('근무 불가와 수업 없는 요일 저장', () => {
+  class MemStore implements Storage {
+    private readonly v = new Map<string, string>();
+    get length(): number { return this.v.size; }
+    clear(): void { this.v.clear(); }
+    getItem(k: string): string | null { return this.v.get(k) ?? null; }
+    key(i: number): string | null { return [...this.v.keys()][i] ?? null; }
+    removeItem(k: string): void { this.v.delete(k); }
+    setItem(k: string, val: string): void { this.v.set(k, val); }
+  }
+
+  const withStore = <T,>(run: (store: MemStore) => T): T => {
+    const store = new MemStore();
+    const had = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', { value: store, configurable: true });
+    try {
+      return run(store);
+    } finally {
+      if (had) Object.defineProperty(globalThis, 'localStorage', had);
+      else Reflect.deleteProperty(globalThis, 'localStorage');
+    }
+  };
+
+  it('저장한 근무 불가를 그대로 읽는다', () => {
+    withStore(() => {
+      saveUnavail('school-a', { 김영희: [3, 1, 2] });
+      expect(loadUnavail('school-a')).toEqual({ 김영희: [1, 2, 3] });
+    });
+  });
+
+  it('학교가 다르면 서로 섞이지 않는다', () => {
+    withStore(() => {
+      saveUnavail('school-a', { 김영희: [1] });
+      saveUnavail('school-b', { 박철수: [4] });
+      expect(loadUnavail('school-a')).toEqual({ 김영희: [1] });
+      expect(loadUnavail('school-b')).toEqual({ 박철수: [4] });
+    });
+  });
+
+  it('수업 없는 요일도 학교별로 남는다', () => {
+    withStore(() => {
+      saveOffDays('school-a', [2]);
+      saveOffDays('school-b', [0, 4]);
+      expect(loadOffDays('school-a')).toEqual([2]);
+      expect(loadOffDays('school-b')).toEqual([0, 4]);
+    });
+  });
+
+  it('저장한 적 없는 학교는 빈 값이다', () => {
+    withStore(() => {
+      expect(loadUnavail('없는학교')).toEqual({});
+      expect(loadOffDays('없는학교')).toEqual([]);
+    });
+  });
+
+  // 손으로 고칠 수 있는 자리다. 이상한 값이 들어오면 그 자리만 버리고 나머지를 살린다.
+  it('망가진 값은 버리고 읽는다', () => {
+    withStore((store) => {
+      store.setItem('timeswap:v0:unavail:s', JSON.stringify({ 김영희: [1, -2, 'x', 1], 박철수: '통째로틀림' }));
+      expect(loadUnavail('s')).toEqual({ 김영희: [1] });
+      store.setItem('timeswap:v0:offdays:s', JSON.stringify([1, 9, -1, 1, 'x']));
+      expect(loadOffDays('s')).toEqual([1]);
+      store.setItem('timeswap:v0:unavail:s', '{"깨진');
+      expect(loadUnavail('s')).toEqual({});
+      store.setItem('timeswap:v0:offdays:s', 'null');
+      expect(loadOffDays('s')).toEqual([]);
+    });
+  });
+
+  it('초기화하면 학교별로 나눠 담은 것까지 지운다', () => {
+    withStore((store) => {
+      saveUnavail('school-a', { 김영희: [1] });
+      saveOffDays('school-b', [2]);
+      store.setItem('남길것', '1');
+      clearRaw();
+      expect(loadUnavail('school-a')).toEqual({});
+      expect(loadOffDays('school-b')).toEqual([]);
+      expect(store.getItem('남길것')).toBe('1');
+    });
   });
 });

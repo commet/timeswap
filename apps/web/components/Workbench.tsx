@@ -82,6 +82,9 @@ import {
   buildPhrase,
   deriveBurden,
   loadOffDays,
+  loadUnavail,
+  saveOffDays,
+  saveUnavail,
   loadTheme,
   weekMondayOf,
   REASON_KEY,
@@ -188,6 +191,7 @@ function defaultTeacher(input: TimetableInput): string | null {
 
 function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleViewAdapterProps) {
   const seed = useMemo(() => workspaceToLoaded(workspaceState), [workspaceState]);
+  const workspaceKey = workspaceState.workspace.id;
   const [loaded, setLoaded] = useState<Loaded | null>(seed);
   /** 로고를 누르면 시작 화면으로 돌아온다. 불러온 시간표는 지우지 않는다. */
   const [atHome, setAtHome] = useState(false);
@@ -234,9 +238,9 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
     setAtHome(false);
     setNeedsPick(false);
     setEntries([]);
-    setUnavail({});
+    setUnavail(loadUnavail(workspaceState.workspace.id));
     setReason(localStorage.getItem(REASON_KEY) ?? '출장');
-    setOffDays(loadOffDays());
+    setOffDays(loadOffDays(workspaceState.workspace.id));
     setTheme(loadTheme());
     const wd = new Date().getDay(); // 일 0, 월 1
     setTodayIdx(wd >= 1 && wd <= 5 ? wd - 1 : null);
@@ -592,26 +596,29 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
     (s: number) => {
       if (currentTeacher === null) return;
       setHovered(null);
-      setUnavail((u) => {
-        const cur = new Set(u[currentTeacher] ?? []);
-        if (cur.has(s)) cur.delete(s);
-        else cur.add(s);
-        const next: Record<string, number[]> = { ...u };
-        if (cur.size === 0) delete next[currentTeacher];
-        else next[currentTeacher] = [...cur].sort((x, y) => x - y);
-        return next;
-      });
+      const cur = new Set(unavail[currentTeacher] ?? []);
+      if (cur.has(s)) cur.delete(s);
+      else cur.add(s);
+      const next: Record<string, number[]> = { ...unavail };
+      if (cur.size === 0) delete next[currentTeacher];
+      else next[currentTeacher] = [...cur].sort((x, y) => x - y);
+      setUnavail(next);
+      saveUnavail(workspaceKey, next);
     },
-    [currentTeacher],
+    [currentTeacher, unavail, workspaceKey],
   );
 
-  const onToggleOffDay = useCallback((d: number) => {
-    setHovered(null);
-    setOffDays((cur) => {
-      const next = cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d].sort((a, b) => a - b);
-      return next;
-    });
-  }, []);
+  const onToggleOffDay = useCallback(
+    (d: number) => {
+      setHovered(null);
+      const next = offDays.includes(d)
+        ? offDays.filter((x) => x !== d)
+        : [...offDays, d].sort((a, b) => a - b);
+      setOffDays(next);
+      saveOffDays(workspaceKey, next);
+    },
+    [offDays, workspaceKey],
+  );
 
   /**
    * 그 교사가 학교에 오지 않는 요일을 통째로 잠근다.
@@ -634,20 +641,19 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
         (sl) => !busy.has(sl),
       );
       if (daySlots.length === 0) return;
-      setUnavail((u) => {
-        const cur = new Set(u[currentTeacher] ?? []);
-        const allLocked = daySlots.every((s) => cur.has(s));
-        for (const s of daySlots) {
-          if (allLocked) cur.delete(s);
-          else cur.add(s);
-        }
-        const next: Record<string, number[]> = { ...u };
-        if (cur.size === 0) delete next[currentTeacher];
-        else next[currentTeacher] = [...cur].sort((x, y) => x - y);
-        return next;
-      });
+      const cur = new Set(unavail[currentTeacher] ?? []);
+      const allLocked = daySlots.every((s) => cur.has(s));
+      for (const s of daySlots) {
+        if (allLocked) cur.delete(s);
+        else cur.add(s);
+      }
+      const next: Record<string, number[]> = { ...unavail };
+      if (cur.size === 0) delete next[currentTeacher];
+      else next[currentTeacher] = [...cur].sort((x, y) => x - y);
+      setUnavail(next);
+      saveUnavail(workspaceKey, next);
     },
-    [input, currentTeacher],
+    [input, currentTeacher, unavail, workspaceKey],
   );
 
   /** 그 교사가 빈 시간을 통째로 잠가 둔 요일 */
