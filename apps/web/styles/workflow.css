@@ -227,14 +227,24 @@
 .status-rows time { color: var(--muted); }
 .status-rows article > div { display: flex; flex-direction: column; }
 .status-rows article > div span { color: var(--muted); }
-.status-pill { display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; padding: 4px 9px; font-size: 13px; font-weight: 850; white-space: nowrap; }
-.status-pill.pending { background: var(--accent-soft); color: var(--accent); }
-.status-pill.approved { background: var(--success-soft); color: var(--success); }
-.status-pill.published { background: var(--ink); color: var(--surface); }
-.status-pill.rejected, .status-pill.cancelled, .status-pill.superseded { background: var(--warn-soft); color: var(--warn); }
-.status-pill.submitted, .status-pill.in_review, .status-pill.draft { background: var(--accent-soft); color: var(--accent); }
-.status-pill.resolution_approved, .status-pill.admin_in_progress, .status-pill.ready_to_publish { background: var(--success-soft); color: var(--success); }
-.request-reject-note { color: var(--warn); }
+/*
+ * 상태는 색으로 안 가른다. 테두리와 채움과 글자로 가른다.
+ *
+ * 진행 중은 테두리만, 끝난 것은 채워서, 손이 필요한 것(반려, 취소)만 주홍이다. 색을 못
+ * 보는 분도 같은 것을 읽는다.
+ */
+.status-pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px;
+  font-size: var(--t-label); font-weight: 500; white-space: nowrap; color: var(--muted);
+}
+.status-pill.published { border-color: var(--ink); background: var(--ink); color: var(--surface); }
+.status-pill.pending, .status-pill.submitted, .status-pill.in_review, .status-pill.draft { color: var(--ink); }
+.status-pill.approved, .status-pill.resolution_approved,
+.status-pill.admin_in_progress, .status-pill.ready_to_publish { border-color: var(--ink); color: var(--ink); }
+.status-pill.rejected, .status-pill.cancelled, .status-pill.superseded { border-color: var(--mark); color: var(--mark); }
+.request-reject-note { color: var(--mark); }
+.request-count { color: var(--muted); font-size: var(--t-aux); }
 .ops-detail { border: 1px solid var(--line); border-radius: 16px; background: var(--surface); overflow: hidden; }
 .ops-detail { position: sticky; top: 88px; min-height: 420px; }
 .ops-detail > header { display: flex; justify-content: space-between; gap: 16px; align-items: start; padding: 22px; border-bottom: 1px solid var(--line); }
@@ -289,7 +299,8 @@
 .invitation-columns > div { padding: 17px; border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; }
 .invitation-columns h3 { margin: 0 0 9px; }
 .invitation-columns a { min-height: var(--tap); display: flex; align-items: center; color: var(--accent); }
-.demo-provenance { margin: 0; padding: 6px 18px; text-align: center; background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 750; }
+/* 출처 고지는 지워선 안 되는 사실이다. 다만 화면의 주인공은 아니다. 조용히 둔다. */
+.demo-provenance { margin: 0; padding: 5px 18px; text-align: center; border-bottom: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: var(--t-label); font-weight: 400; }
 .absence-composer { padding: clamp(20px, 4vw, 34px); }
 .absence-composer > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
 .absence-composer h2 { font-size: clamp(23px, 3vw, 31px); }
@@ -395,9 +406,11 @@
 .ops-metrics dd { margin: 0; color: var(--muted); font-size: var(--t-aux); font-weight: 400; }
 .ops-metrics > div.on dt { color: var(--ink); font-weight: 500; }
 .ops-metrics > div.on dd { color: var(--mark); font-size: var(--t-section); font-weight: 600; }
-.ops-source-health { margin: 12px; padding: 11px 12px; display: flex; flex-direction: column; gap: 3px; border-radius: 11px; background: var(--surface-2); font-size: 13px; }
-.ops-source-health b { color: var(--accent); }
-.ops-source-health span { color: var(--muted); line-height: 1.4; }
+.ops-source-health { margin: 12px 20px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: var(--t-label); }
+.ops-source-health > div { display: flex; align-items: baseline; gap: 6px; }
+.ops-source-health dt { color: var(--muted); }
+.ops-source-health dd { margin: 0; color: var(--ink); }
+.ops-source-health .mark dt, .ops-source-health .mark dd { color: var(--mark); }
 .ops-period-timeline { position: relative; margin: 18px 16px 20px; padding-left: 10px; border-left: 2px solid var(--line); }
 .ops-period-timeline li { position: relative; min-height: 58px; padding: 0 0 11px 14px; display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 8px; }
 .ops-period-timeline li::before { content: ''; position: absolute; left: -7px; top: 13px; width: 10px; height: 10px; border: 2px solid var(--surface); border-radius: 99px; background: var(--accent); }
@@ -413,10 +426,9 @@
 .ops-case-detail { padding: 20px; }
 .ops-case-detail.empty { min-height: 260px; display: grid; align-content: center; gap: 10px; }
 .ops-case-detail header > p { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
-.ops-case-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin: 18px 0 0; background: var(--line); }
-.ops-case-facts > div { min-height: 62px; padding: 10px; background: var(--surface-2); }
-.ops-case-facts dt { color: var(--muted); font-size: 13px; font-weight: 850; }
-.ops-case-facts dd { margin: 5px 0 0; font-size: 13px; font-weight: 800; line-height: 1.35; }
+.ops-case-facts { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 16px 0 0; color: var(--muted); font-size: var(--t-aux); }
+.ops-case-facts b { color: var(--ink); font-weight: 600; }
+.ops-case-facts .mark, .ops-case-facts .mark b { color: var(--mark); }
 .ops-plan-validation { margin-top: 14px; padding: 11px; display: flex; flex-direction: column; gap: 4px; border-radius: 10px; font-size: 13px; }
 .ops-plan-validation.valid { background: var(--success-soft); color: var(--success); }
 .ops-plan-validation.invalid { background: var(--warn-soft); color: var(--warn); }

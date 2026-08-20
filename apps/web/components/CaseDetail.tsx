@@ -142,12 +142,18 @@ export function CaseDetail({
         <p>{item.priorityReason}</p>
       </header>
 
-      <dl className="ops-case-facts">
-        <div><dt>영향 수업</dt><dd>{item.affectedLessonCount}건</dd></div>
-        <div><dt>해결됨</dt><dd>{item.solvedLessonCount}건</dd></div>
-        <div><dt>긴급도</dt><dd>{item.priority === 'same-day-unresolved' ? '오늘 처리' : item.priorityReason}</dd></div>
-        <div><dt>겹치는 사건</dt><dd>{item.intersectingCaseIds.length ? `${item.intersectingCaseIds.length}건` : '없음'}</dd></div>
-      </dl>
+      {/*
+        * 네 값을 담으려고 2×2 표를 만들었다. 그중 "긴급도"는 문장이라 칸 안에서 줄이
+        * 바뀌었고, "겹치는 사건 없음"은 없다는 사실에 칸 하나를 썼다. 셀 것은 세고,
+        * 없는 것은 안 적는다.
+        */}
+      <p className="ops-case-facts">
+        <span>영향 수업 <b className="num">{item.affectedLessonCount}</b></span>
+        <span>해결됨 <b className="num">{item.solvedLessonCount}</b></span>
+        {item.intersectingCaseIds.length > 0 && (
+          <span className="mark">겹치는 사건 <b className="num">{item.intersectingCaseIds.length}</b></span>
+        )}
+      </p>
 
       <section className={'ops-plan-validation ' + (item.validation.valid ? 'valid' : 'invalid')} aria-live="polite">
         <b>사건 전체 충돌 검사</b>

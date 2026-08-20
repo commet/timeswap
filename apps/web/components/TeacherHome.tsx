@@ -133,7 +133,8 @@ export function TeacherHome({
 
       <section className="teacher-today" aria-labelledby="teacher-today-title">
         <div className="teacher-today-head">
-          <h2 id="teacher-today-title">{today.label === '오늘' ? '오늘' : dayTitle(todayDate)}</h2>
+          {/* 날짜는 화면 제목이 이미 말했다. 여기서는 읽는 기계에게만 남긴다. */}
+          <h2 id="teacher-today-title" className="visually-hidden">{dayTitle(todayDate)} 수업</h2>
           <div className="teacher-focus-tabs" role="tablist" aria-label="시간표 범위">
             <button role="tab" aria-selected={focus === 'today'} className={focus === 'today' ? 'on' : ''}
               onClick={() => setFocus('today')}>하루</button>

@@ -104,10 +104,18 @@ export function OpsCommandCenter({
 
         <section className="ops-timeline-region" aria-labelledby="ops-timeline-title">
           <header><span className="eyebrow">{dashboard.today}</span><h3 id="ops-timeline-title">오늘 교시 흐름</h3></header>
-          <section className="ops-source-health" aria-label="시간표 자료 상태">
-            <b>자료 상태</b>
-            <span>{dashboard.sourceHealth.complete ? '완전' : '불완전'} · {dashboard.sourceHealth.source ?? '미확인'} · 수업 {dashboard.sourceHealth.lessonCount}건 · 미배정 {dashboard.sourceHealth.unassignedLessons}건</span>
-          </section>
+          {/* 이름과 값이 짝인데 중간점으로 죽 이어 붙여 두었다. 짝을 짝으로 세운다. */}
+          <dl className="ops-source-health" aria-label="시간표 자료 상태">
+            <div><dt>수업</dt><dd className="num">{dashboard.sourceHealth.lessonCount}</dd></div>
+            {dashboard.sourceHealth.unassignedLessons > 0 && (
+              <div className="mark">
+                <dt>담당 미확정</dt><dd className="num">{dashboard.sourceHealth.unassignedLessons}</dd>
+              </div>
+            )}
+            {!dashboard.sourceHealth.complete && (
+              <div className="mark"><dt>자료</dt><dd>불완전</dd></div>
+            )}
+          </dl>
           <ol className="ops-period-timeline" aria-label="오늘 변경 교시">
             {timeline.map((marker) => (
               <li key={marker.id} className={marker.state}>

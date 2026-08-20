@@ -22,8 +22,7 @@ export function TeacherRequestList({
   return (
     <section className="request-status-list" aria-labelledby="my-requests-title">
       <div className="section-heading">
-        <span className="eyebrow">내 변경 요청</span>
-        <h2 id="my-requests-title">낸 요청과 진행 상태</h2>
+        <h2 id="my-requests-title">낸 요청</h2>
       </div>
       <div className="status-rows">
         {cases.map((item) => (
@@ -32,7 +31,8 @@ export function TeacherRequestList({
               ? item.fromDate
               : `${item.fromDate} ~ ${item.toDate}`}</time>
             <div>
-              <b>{item.reason} · 수업 {item.lessonCount}건</b>
+              <b>{item.reason}</b>
+              <span className="request-count">수업 {item.lessonCount}건</span>
               {item.rejectionNote
                 ? <span className="request-reject-note">반려 사유: {item.rejectionNote}</span>
                 : item.note ? <span>{item.note}</span> : null}

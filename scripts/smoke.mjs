@@ -205,15 +205,26 @@ if (stored.some((state) => JSON.stringify(state).includes('secret-key'))) failur
 await page.goto(`${BASE}/?view=teacher&school=simple-swap%3Aworkspace&teacher=teacher%3Aseo-jun`, { waitUntil: 'networkidle' });
 await shot(page, 'task-8-teacher-desktop');
 if (!(await page.locator('[data-teacher-home]').count())) failures.push('교사 링크가 canonical 교사 시간표를 열지 않음');
-if ((await page.getByRole('tab', { name: '오늘', exact: true }).getAttribute('aria-selected')) !== 'true') {
-  failures.push('교사 시간표가 오늘 탭으로 시작하지 않음');
+if ((await page.getByRole('tab', { name: '하루', exact: true }).getAttribute('aria-selected')) !== 'true') {
+  failures.push('교사 시간표가 하루 탭으로 시작하지 않음');
 }
 for (const selector of ['[data-now-next]', '[data-today-change-count]']) {
   if (!(await page.locator(selector).count())) failures.push(`교사 첫 화면에 ${selector} 정보가 없음`);
 }
-if (!(await page.locator('[data-now-next]').first().innerText()).includes('오늘 첫 수업')) {
-  failures.push('교사 첫 수업 카드가 근거 없는 현재 시각 표현을 사용함');
+/*
+ * 벽시계를 모르는 화면이다. 무엇이 바뀌었는지는 교시 번호로 말해야 하고, "지금"이나
+ * "다음"처럼 시각을 아는 척하는 말은 안 쓴다.
+ */
+{
+  const verdict = await page.locator('[data-now-next]').first().innerText();
+  if (!/교시가 바뀌었습니다|바뀐 수업이 없습니다/.test(verdict)) {
+    failures.push(`교사 첫 화면이 바뀐 교시를 짚지 않음: ${verdict}`);
+  }
+  if (/지금|다음 수업/.test(verdict)) {
+    failures.push('교사 첫 화면이 근거 없는 현재 시각 표현을 사용함');
+  }
 }
+if (!(await page.locator('.rail-period').count())) failures.push('교사 화면에 교시 레일이 없음');
 if (!(await page.getByRole('button', { name: '변경 요청', exact: true }).count())) failures.push('교사 첫 화면에 변경 요청 행동이 없음');
 if ((await page.locator('body').innerText()).includes('teacher:seo-jun')) failures.push('교사 화면에 내부 교사 ID가 이름처럼 노출됨');
 
@@ -485,7 +496,7 @@ const teacherFirstViewport = await mobile.evaluate(() => {
 for (const [selector, box] of Object.entries(teacherFirstViewport)) {
   if (!box || box.top < 0 || box.bottom > 844) failures.push(`390px 첫 화면에 ${selector}가 보이지 않음`);
 }
-if ((await mobile.getByRole('tab', { name: '오늘', exact: true }).getAttribute('aria-selected')) !== 'true') {
+if ((await mobile.getByRole('tab', { name: '하루', exact: true }).getAttribute('aria-selected')) !== 'true') {
   failures.push('390px 교사 시간표가 오늘 탭으로 시작하지 않음');
 }
 if (await mobile.locator('[data-teacher-week]').count()) failures.push('390px 첫 화면에서 주간 시간표가 오늘 흐름보다 먼저 노출됨');

@@ -120,7 +120,7 @@
 .entry-trust { display: flex; align-items: center; gap: 8px; margin: 18px 2px 0; color: var(--muted); font-size: 13px; }
 .entry-trust span { width: 19px; height: 19px; border-radius: 50%; display: grid; place-items: center; background: var(--success-soft); color: var(--success); font-weight: 900; }
 .app-shell { min-height: 100dvh; }
-.shell-header { position: relative; z-index: 5; min-height: 78px; padding: 11px 20px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 18px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.shell-header { position: relative; z-index: 5; min-height: 58px; padding: 8px 20px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 18px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .shell-wordmark { min-height: var(--tap); padding: 6px 10px; border: 0; background: transparent; color: var(--accent); font-weight: 900; font-size: 17px; }
 .shell-wordmark span { margin-right: 7px; }
 .shell-school span { color: var(--muted); font-size: 13px; font-weight: 800; }
