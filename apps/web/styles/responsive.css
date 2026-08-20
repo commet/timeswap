@@ -268,9 +268,5 @@
   .publication-center { padding: 17px 14px 28px; }
   .publication-task-actions .btn, .publication-links .btn { width: 100%; }
   .public-class { width: calc(100% - 20px); margin: 14px auto 40px; }
-  .public-class-lessons > li { grid-template-columns: 54px 1fr; grid-template-areas: 'period subject' 'date change'; row-gap: 7px; }
-  .public-class-period { grid-area: period; }
-  .public-class-subject { grid-area: subject; }
-  .public-class-change { grid-area: change; }
-  .public-class-date { grid-area: date; text-align: left; }
+  .public-class-lesson { padding: 12px 14px; }
 }

@@ -36,6 +36,12 @@ function dayOffset(from: string, days: number): string {
  * 이 화면은 사건 자료를 직접 뒤지지 않는다. 무엇을 내보내도 되는지 정하는 자리는
  * `projectPublicClassSchedule` 한 곳이다.
  */
+/** "8/21". 이번 주 칸에서만 쓴다. 오늘과 내일 칸은 절 제목이 이미 날짜를 말한다. */
+function shortDate(date: string): string {
+  const [, month, day] = date.split('-');
+  return month && day ? `${Number(month)}/${Number(day)}` : date;
+}
+
 export function emptyReason(
   sectionId: string,
   closedDays: ReadonlyArray<{ date: string; note: string }>,
@@ -122,24 +128,31 @@ export function PublicClassTimetable({
             {lessons.length === 0
               ? <p className="public-class-empty">{emptyReason(section.id, view.closedDays, today, tomorrow)}</p>
               : (
-                <ol className="public-class-lessons">
+                /*
+                 * 교사 화면과 같은 교시 레일을 쓴다. 이 화면은 교실 뒤에 붙거나 학생이
+                 * 폰으로 여는 자리라 셋 가운데 가장 또렷해야 한다.
+                 *
+                 * 앞서는 교시가 과목명보다 작고 옅었고, 절 제목이 "오늘"인데 행마다 날짜를
+                 * 또 적었다. 그 날짜가 좁은 화면에서 `2026-08-` 과 `18` 로 갈라졌다.
+                 */
+                <ol className="period-rail public-class-lessons">
                   {lessons.map((lesson) => (
-                    <li key={lesson.lessonId} className={lesson.changed ? 'changed' : ''}>
-                      <span className="public-class-period">{lesson.period}교시</span>
-                      <span className="public-class-subject">
+                    <li key={lesson.lessonId} className="rail-row">
+                      <span className="rail-period num" aria-hidden>{lesson.period}</span>
+                      <div className={`public-class-lesson ${lesson.changed ? 'changed' : ''}`}>
                         <b>{lesson.subject}</b>
-                        <small>{lesson.room}</small>
-                      </span>
-                      {lesson.changed ? (
-                        <span className="public-class-change">
-                          <b className="public-class-badge">변경</b>
-                          <small>
-                            원래 {lesson.originalDate} {lesson.originalPeriod}교시 {lesson.originalSubject}
-                          </small>
-                          {lesson.publishedAt && <small>게시 {publishedTimeLabel(lesson.publishedAt)}</small>}
+                        <span className="rail-where">
+                          <span className="visually-hidden">{lesson.period}교시</span>
+                          <i>{lesson.room}</i>
+                          {section.id === 'week' && <i className="num">{shortDate(lesson.date)}</i>}
                         </span>
-                      ) : <span className="public-class-change" />}
-                      <span className="public-class-date">{lesson.date}</span>
+                        {lesson.changed && (
+                          <span className="rail-from">
+                            원래 {lesson.originalPeriod}교시 {lesson.originalSubject}
+                            {lesson.publishedAt ? ` · ${publishedTimeLabel(lesson.publishedAt)} 게시` : ''}
+                          </span>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ol>
