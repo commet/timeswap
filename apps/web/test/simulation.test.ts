@@ -651,3 +651,61 @@ describe.skipIf(!PATH || !existsSync(PATH))('여러 날에 걸친 부재', () =>
     expect(stats.published).toBeGreaterThan(0);
   }, 1_800_000);
 });
+
+/**
+ * 가장 큰 학교에서 화면이 얼마나 멎는가.
+ *
+ * 일과 담당 화면은 사건에 걸린 결강마다 후보를 센다. 예전에는 목록을 그리면서 한 번,
+ * 고른 것을 찾으면서 또 한 번 불렀고 그리기마다 다시 셌다. 결강 열여섯 건인 학교에서
+ * 한 건이 240ms 라 그리기 한 번에 7초 넘게 멎었다. 사유를 한 글자 칠 때마다 그만큼이다.
+ *
+ * 이 검사는 한 사건의 결강 전부를 한 번 세는 데 걸리는 시간을 잰다. 그리기마다가
+ * 아니라 상태가 바뀔 때만 이만큼 든다.
+ */
+describe.skipIf(!PATH || !existsSync(PATH))('가장 큰 학교 응답 시간', () => {
+  it('한 사건을 여는 데 드는 시간이 한도 안이다', () => {
+    const data = (JSON.parse(readFileSync(PATH, 'utf8')) as Array<{
+      school: Record<string, string>; kind?: string; rows?: NeisRow[];
+    }>).filter((entry) => (entry.rows ?? []).length > 0)
+      .sort((left, right) => (right.rows?.length ?? 0) - (left.rows?.length ?? 0))
+      .slice(0, 3);
+
+    const measured: Array<{ name: string; lessons: number; ms: number }> = [];
+    for (const entry of data) {
+      const built = buildWorkspace(entry);
+      if (!built) continue;
+      const pick = nextRound(built, new Set());
+      if (!pick) continue;
+      const lessonIds = pick.lessons.map((lesson) => lesson.id);
+      let state = createAbsenceCase(built, {
+        id: 'perf:case', auditEventId: 'perf:create', workspaceId: built.workspace.id,
+        requesterTeacherId: pick.teacherId, fromDate: pick.date, toDate: pick.date,
+        reason: '업무상 부재', lessonIds, at: '2026-08-18T00:00:00.000Z',
+      });
+      state = transitionCase(state, {
+        caseId: 'perf:case', to: 'submitted', actorId: pick.teacherId,
+        at: '2026-08-18T00:00:00.000Z', auditEventId: 'perf:submit',
+      });
+      state = transitionCase(state, {
+        caseId: 'perf:case', to: 'in_review', actorId: 'ops',
+        at: '2026-08-18T00:00:00.000Z', auditEventId: 'perf:review',
+      });
+      const started = performance.now();
+      for (const lessonId of lessonIds) {
+        resolutionRowsForLesson(state, 'perf:case', lessonId);
+      }
+      measured.push({
+        name: entry.school.SCHUL_NM ?? '?',
+        lessons: lessonIds.length,
+        ms: performance.now() - started,
+      });
+    }
+
+    console.log('응답 시간', JSON.stringify(measured));
+    expect(measured.length).toBeGreaterThan(0);
+    for (const item of measured) {
+      // 결강 하나당 1초를 넘으면 화면이 멎는 것으로 본다. 실측은 그 4분의 1 언저리다.
+      expect(item.ms / item.lessons).toBeLessThan(1000);
+    }
+  }, 600_000);
+});

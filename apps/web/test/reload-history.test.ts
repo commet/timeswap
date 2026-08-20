@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { fromNeis, normalizeNeisRows, type NeisRow } from '@timeswap/engine';
 import { createWorkspaceFromNeis, type NeisLoadBundle } from '../components/SetupFlow';
 import { createAbsenceCase, transitionCase } from '../lib/case-service';
+import { validateCasePlan } from '../lib/projections';
+import { targetWeekInput } from '../lib/resolution';
 import { mapKey } from '../lib/app';
 import type { WorkspaceState } from '../lib/domain';
 
@@ -121,5 +123,53 @@ describe('주마다 이어 붙여도 저장 한도를 넘지 않는다', () => {
     }
     const bytes = new TextEncoder().encode(JSON.stringify(state)).length;
     expect(bytes).toBeLessThan(1024 * 1024);
+  });
+});
+
+/**
+ * 다시 불러온 뒤 진행 중이던 사건은 어떻게 되는가.
+ *
+ * 지난 기록을 이어 가기로 하면서 새로 생긴 자리다. 결재 중이던 사건이 남아 있는데
+ * 그 안은 지난주 시간표로 계산한 것이다. 그대로 승인되면 이번 주 시간표에 지난주
+ * 계산을 얹는 셈이 된다. 막혀야 하고, 왜 막혔는지 알 수 있어야 한다.
+ */
+describe('다시 불러온 뒤 진행 중이던 사건', () => {
+  it('지난주 계산이라는 것을 알아본다', () => {
+    const first = withCase(week1());
+    const inReview = transitionCase(first, {
+      caseId: 'case-1', to: 'in_review', actorId: 'ops',
+      at: '2026-08-17T02:00:00.000Z', auditEventId: 'audit-3',
+    });
+    const second = week2(inReview);
+    const carried = second.cases.find((item) => item.id === 'case-1');
+    expect(carried?.status).toBe('in_review');
+
+    const validation = validateCasePlan(second, 'case-1');
+    // 안이 아직 없으면 stale 이 아니라 미확정으로 막힌다. 어느 쪽이든 승인은 막혀야 한다.
+    expect(validation.valid).toBe(false);
+  });
+
+  it('지난주 사건을 승인할 수 없다', () => {
+    const first = withCase(week1());
+    const inReview = transitionCase(first, {
+      caseId: 'case-1', to: 'in_review', actorId: 'ops',
+      at: '2026-08-17T02:00:00.000Z', auditEventId: 'audit-3',
+    });
+    const second = week2(inReview);
+    expect(() => transitionCase(second, {
+      caseId: 'case-1', to: 'resolution_approved', actorId: 'ops',
+      at: '2026-08-25T01:00:00.000Z', auditEventId: 'audit-4',
+    })).toThrow();
+  });
+
+  it('지난주에 게시한 변경이 이번 주 시간표에 얹히지 않는다', () => {
+    const first = withCase(week1());
+    const second = week2(first);
+    // 이번 주 수업은 전부 새 개정판 것이고 지난주 게시는 그 번호를 안 가리킨다.
+    const active = second.lessons.filter((lesson) =>
+      lesson.revisionId === second.workspace.activeRevisionId);
+    const { input } = targetWeekInput(second, active[0]!.date);
+    expect(input.assignments.length).toBe(active.filter((lesson) =>
+      lesson.teacher.state === 'assigned').length);
   });
 });

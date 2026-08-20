@@ -87,6 +87,21 @@ export function CaseDetail({
   const lessons = useMemo(() => new Map(state.lessons
     .filter((lesson) => lesson.revisionId === state.workspace.activeRevisionId)
     .map((lesson) => [lesson.id, lesson])), [state]);
+  /*
+   * 결강마다 후보를 한 번만 센다.
+   *
+   * 예전에는 목록을 그리면서 한 번, `chooseRow` 에서 또 한 번 불렀고 그리기마다 다시
+   * 셌다. 결강 열여섯 건인 학교(안양예술고)에서 한 건이 240ms 라 그리기 한 번에
+   * 7초 넘게 화면이 멎었다. 사유를 한 글자 칠 때마다 그만큼 멎는다.
+   *
+   * 이제 상태가 바뀔 때만 센다. 열여섯 건이면 4초에서 한 번으로 줄고, 글자를 칠 때는
+   * 다시 세지 않는다.
+   */
+  const rowsByLesson = useMemo(
+    () => new Map((absenceCase?.lessonIds ?? []).map((lessonId) =>
+      [lessonId, resolutionRowsForLesson(state, caseId, lessonId)])),
+    [state, caseId, absenceCase?.lessonIds],
+  );
 
   if (!item || !absenceCase) return (
     <section className="ops-case-detail empty" aria-live="polite">
@@ -101,7 +116,7 @@ export function CaseDetail({
   };
 
   const chooseRow = (lessonId: string) => {
-    const rows = resolutionRowsForLesson(state, caseId, lessonId);
+    const rows = rowsByLesson.get(lessonId) ?? [];
     const currentResolution = absenceCase.resolutionItems.find((resolution) => resolution.lessonId === lessonId);
     return rows.find((row) => row.id === chosenRows[lessonId])
       ?? rows.find((row) => row.id === currentResolution?.id)
@@ -142,7 +157,7 @@ export function CaseDetail({
         <h3>수업별 선택 해결안</h3>
         {absenceCase.lessonIds.map((lessonId) => {
           const lesson = lessons.get(lessonId);
-          const rows = resolutionRowsForLesson(state, caseId, lessonId);
+          const rows = rowsByLesson.get(lessonId) ?? [];
           const row = chooseRow(lessonId);
           const cover = rows.find((candidate) => candidate.method === '보강');
           const selected = absenceCase.resolutionItems.find((resolution) => resolution.lessonId === lessonId);
