@@ -239,6 +239,46 @@ function engineGroupIds(state: WorkspaceState, lessons: readonly Lesson[]): Map<
   return new Map([...grouped].map((lessonId) => [lessonId, `canonical:${rootOf(lessonId)}`]));
 }
 
+/**
+ * 그 주에 못 오시는 분과 그 시간.
+ *
+ * 부재를 낼 때 그 기간의 수업을 골라 담는다. 하루를 통째로 비우기도 하고 회의처럼
+ * 두어 시간만 비우기도 한다. 그래서 "그날은 온종일 못 오신다"고 단정할 수 없다.
+ * 자료가 확실히 말해 주는 것은 담긴 수업의 그 교시뿐이다. 딱 거기까지만 막는다.
+ *
+ * 이것을 엔진에 안 넘기고 있었다. 그래서 결강난 1교시 수업을 같은 분의 결강난
+ * 3교시 자리로 옮기라는 안이 나올 수 있었다. 두 자리 다 그분이 못 맡는 자리다.
+ * 원래 있던 수업을 함께 옮기는 계획이면 자리가 비어 보여서 충돌 검사에도 안 걸린다.
+ *
+ * 반려, 취소, 대체된 사건은 세지 않는다. 그 부재는 없던 일이 되었다.
+ */
+function unavailableOf(
+  state: WorkspaceState,
+  monday: string,
+  periods: number,
+): Record<string, number[]> {
+  const ignored = new Set<AbsenceCase['status']>(['rejected', 'cancelled', 'superseded']);
+  const lessonById = new Map(activeLessons(state).map((lesson) => [lesson.id, lesson]));
+  const slots = new Map<string, Set<number>>();
+  for (const absenceCase of state.cases) {
+    if (ignored.has(absenceCase.status)) continue;
+    for (const lessonId of absenceCase.lessonIds) {
+      const lesson = lessonById.get(lessonId);
+      if (!lesson) continue;
+      const day = dayIndex(lesson.date, monday);
+      const period = Number(lesson.period) - 1;
+      if (day < 0 || day >= 5 || period < 0 || period >= periods) continue;
+      const own =
+        slots.get(absenceCase.requesterTeacherId) ??
+        slots.set(absenceCase.requesterTeacherId, new Set()).get(absenceCase.requesterTeacherId)!;
+      own.add(day * periods + period);
+    }
+  }
+  return Object.fromEntries(
+    [...slots].map(([teacherId, own]) => [teacherId, [...own].sort((left, right) => left - right)]),
+  );
+}
+
 /** 부담을 세는 기간. 이 주와 앞의 세 주다. */
 const BURDEN_WEEKS = 4;
 
@@ -381,6 +421,9 @@ export function targetWeekInput(state: WorkspaceState, targetDate: string): Targ
     return [{ day, reason: closure.reason, ...(klasses?.length ? { klasses } : {}) }];
   });
   if (closures.length) input.closures = closures;
+  const unavailable = unavailableOf(state, monday, periods);
+  if (Object.keys(unavailable).length > 0) input.unavailable = unavailable;
+
   const recentBurden = recentBurdenOf(state, monday);
   if (Object.keys(recentBurden).length > 0) input.recentBurden = recentBurden;
 
