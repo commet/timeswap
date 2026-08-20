@@ -4,6 +4,9 @@ import { createWorkspaceFromNeis, type NeisLoadBundle } from '../components/Setu
 import { mapKey } from '../lib/app';
 import { emptyReason } from '../components/PublicClassTimetable';
 import { projectPublicClassSchedule } from '../lib/projections';
+import { DataHealthPanel } from '../components/DataHealthPanel';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
 import { classIdentityKey } from '@timeswap/engine';
 
 /**
@@ -131,5 +134,26 @@ describe('공개 화면에 넘기는 쉬는 날', () => {
       classIdentityKey(state.lessons[0]!.classIdentity),
     );
     expect(view.closedDays).toEqual([{ date: '2026-08-17', note: '재량휴업일' }]);
+  });
+});
+
+describe('자료 점검 화면이 쉬는 날 행을 밝힌다', () => {
+  it('몇 행이 쉬는 날로 갔는지 적는다', () => {
+    // 사용 가능 행 수와 실제 수업 수가 벌어진다. 어디로 갔는지 안 적으면 숫자가 안 맞는다.
+    const source = rows();
+    const bundle = {
+      school: { code: '7010536', name: '예시중학교', office: 'J10', kind: '중학교' },
+      rows: source,
+      events: [],
+      range: { from: '20260817', to: '20260821' },
+      result: { complete: true, checksum: 'sha256:test', total: source.length, pageCount: 1 },
+      report: fromNeis(source),
+    } as unknown as Parameters<typeof DataHealthPanel>[0]['bundle'];
+    const html = renderToStaticMarkup(
+      createElement(DataHealthPanel, { bundle, now: new Date('2026-08-18T00:00:00.000Z') }),
+    );
+    expect(html).toContain('쉬는 날');
+    // 월요일 두 학급 네 교시씩 여덟 행이 쉬는 날로 갔다.
+    expect(html).toMatch(/쉬는 날<\/dt><dd>8행/);
   });
 });

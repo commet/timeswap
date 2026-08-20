@@ -40,6 +40,18 @@ export function DataHealthPanel({ bundle, now = new Date() }: { bundle: NeisLoad
    */
   const complete = bundle.result.complete && normalization.quarantined.length === 0;
   const courses = normalization.courseOnly.length;
+  /*
+   * 쉬는 날로 옮긴 행. 나이스는 학교가 쉬는 날에도 그 교시 자리에 "재량휴업일" 같은
+   * 문구를 넣어 준다. 그것을 수업으로 만들지 않고 쉬는 날로 옮기므로, 사용 가능
+   * 행 수와 실제 수업 수가 그만큼 벌어진다. 어디로 갔는지 여기 적는다.
+   */
+  const holidayCells = new Set(
+    bundle.report.cells
+      .filter((cell) => cell.kind === '휴업')
+      .map((cell) => `${cell.klass}|${cell.date}`),
+  );
+  const holidayRows = normalization.accepted
+    .filter((row) => holidayCells.has(`${row.classKey}|${row.date}`)).length;
 
   return (
     <section className="data-health" aria-labelledby="data-health-title">
@@ -58,6 +70,7 @@ export function DataHealthPanel({ bundle, now = new Date() }: { bundle: NeisLoad
         <div><dt>사용 가능</dt><dd>{normalization.accepted.length.toLocaleString()}행</dd></div>
         <div><dt>격리</dt><dd>{normalization.quarantined.length.toLocaleString()}행</dd></div>
         <div><dt>학급 없는 강좌</dt><dd>{courses.toLocaleString()}행</dd></div>
+        <div><dt>쉬는 날</dt><dd>{holidayRows.toLocaleString()}행</dd></div>
         <div><dt>정확 중복</dt><dd>{normalization.duplicateCount.toLocaleString()}행</dd></div>
         <div><dt>분반 의심</dt><dd>{normalization.parallelGroups.length.toLocaleString()}묶음</dd></div>
         <div><dt>선택한 수업 주</dt><dd>{displayYmd(bundle.range.from)}–{displayYmd(bundle.range.to)}</dd></div>
