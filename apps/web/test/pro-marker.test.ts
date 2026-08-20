@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeNeisRows, type NeisRow } from '@timeswap/engine';
+import { fromNeis, normalizeNeisRows, type NeisRow } from '@timeswap/engine';
 import { createWorkspaceFromNeis, type NeisLoadBundle } from '../components/SetupFlow';
 import { targetWeekInput } from '../lib/resolution';
 import { mapKey } from '../lib/app';
@@ -36,7 +36,7 @@ function build(rows: NeisRow[]): ReturnType<typeof createWorkspaceFromNeis> {
     events: [],
     range: { from: '20260817', to: '20260821' },
     result: { complete: true, checksum: 'sha256:test' },
-    report: { normalization: normalizeNeisRows(rows) },
+    report: fromNeis(rows),
   } as unknown as NeisLoadBundle;
   const map = Object.fromEntries(
     normalizeNeisRows(rows).accepted.map((accepted) => [mapKey(accepted.classKey, accepted.subject), '김실습']),

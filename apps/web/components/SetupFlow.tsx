@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { stripMarks, type NeisReport, type NeisRow } from '@timeswap/engine';
+import { classIdentityKey, stripMarks, type ClassIdentity, type NeisReport, type NeisRow } from '@timeswap/engine';
 
 import { DataHealthPanel } from './DataHealthPanel';
 import { NeisLoader } from './NeisLoader';
@@ -92,7 +92,28 @@ export function createWorkspaceFromNeis(
   const groupByRow = new Map(normalization.parallelGroups.flatMap((group, index) =>
     group.rowIds.map((rowId) => [rowId, `${revisionId}:parallel:${index + 1}`] as const)));
   const teacherLabels: Record<string, string> = {};
-  const lessons = normalization.accepted.map((row) => {
+
+  /*
+   * 시간표에 온 휴업일을 수업으로 만들지 않는다.
+   *
+   * 학교가 쉬는 날에도 나이스는 그 교시 자리에 "재량휴업일", "기타활동" 같은 문구를
+   * 넣어 돌려준다. 그대로 수업으로 만들면 설정 화면이 "재량휴업일"의 담당 교사를
+   * 채우라고 하고, 학급 공개 시간표에도 과목처럼 뜬다. 실측한 154곳 가운데 한 곳은
+   * 고른 주 닷새 가운데 나흘이 그런 날이었다.
+   *
+   * 엔진이 이미 가려 놓았다. 그 학급 그날의 칸이 모두 같은 값이고 같은 학년의 다른
+   * 학급도 모두 그러면 휴업으로 본다. 실측 51건이 모두 그 학급의 하루 전체였고
+   * 일부만 걸린 경우는 하나도 없었다. 그래서 수업에서 빼고 쉬는 날로 옮긴다.
+   */
+  const holidayReason = new Map<string, string>(
+    bundle.report.cells
+      .filter((cell) => cell.kind === '휴업')
+      .map((cell) => [`${cell.klass}|${cell.date}`, cell.subject]),
+  );
+  const isHolidayRow = (row: { classKey: string; date: string }): boolean =>
+    holidayReason.has(`${row.classKey}|${row.date}`);
+
+  const lessons = normalization.accepted.filter((row) => !isHolidayRow(row)).map((row) => {
     const label = classLabel(row.classIdentity.grade, row.classIdentity.className);
     const teacherReference = teacherMap[mapKey(row.classKey, row.subject)]
       ?? teacherMap[mapKey(label, row.subject)];
@@ -151,6 +172,35 @@ export function createWorkspaceFromNeis(
       ...(whole ? {} : { classIdentities: scoped }),
     }];
   });
+  /* 뺀 자리는 그냥 사라지면 안 된다. 그날 그 학급이 쉰다는 사실로 남긴다. */
+  const timetableHolidays = new Map<string, { date: string; reason: string; classIdentities: ClassIdentity[] }>();
+  for (const row of normalization.accepted) {
+    const cellKey = `${row.classKey}|${row.date}`;
+    const reason = holidayReason.get(cellKey);
+    if (reason === undefined) continue;
+    const date = isoDate(row.date);
+    const key = `${date}|${reason}`;
+    const found = timetableHolidays.get(key)
+      ?? timetableHolidays.set(key, { date, reason, classIdentities: [] }).get(key)!;
+    if (!found.classIdentities.some((identity) => classIdentityKey(identity) === classIdentityKey(row.classIdentity))) {
+      found.classIdentities.push({ ...row.classIdentity });
+    }
+  }
+
+  /*
+   * 학사일정에서 온 것과 시간표에서 온 것을 합친다. 같은 날 같은 사유가 양쪽에서
+   * 오면 하나만 남긴다. 학사일정이 이미 알려 준 재량휴업일이 여기 겹친다.
+   */
+  const allClosures = [...closures];
+  for (const holiday of timetableHolidays.values()) {
+    const already = allClosures.some((closure) =>
+      closure.date === holiday.date
+      && (closure.classIdentities === undefined
+        || holiday.classIdentities.every((identity) =>
+          closure.classIdentities!.some((scoped) => classIdentityKey(scoped) === classIdentityKey(identity)))));
+    if (!already) allClosures.push(holiday);
+  }
+
   const academicYear = normalization.accepted[0]?.classIdentity.academicYear ?? '';
   const complete = bundle.result.complete && normalization.quarantined.length === 0;
 
@@ -177,7 +227,7 @@ export function createWorkspaceFromNeis(
       loadedAt: bundle.result.fetchedAt,
       complete,
       checksum: `neis:${workspaceId}:${bundle.range.from}-${bundle.range.to}:${bundle.result.total}`,
-      ...(closures.length ? { closures } : {}),
+      ...(allClosures.length ? { closures: allClosures } : {}),
     }],
     lessons,
     teacherLabels,

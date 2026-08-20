@@ -529,6 +529,7 @@ describe('과정마다 다른 쉬는 날', () => {
     result: { total: 3, pageCount: 1, complete: true, truncated: false, fetchedAt: '2026-07-13T00:00:00.000Z' },
     rows: [], events,
     report: {
+      cells: [],
       normalization: {
         accepted: [
           { id: 'r1', row: {}, classIdentity: identity('유치원', '1', '1'), classKey: 'k1', factKey: 'f1',
@@ -596,7 +597,7 @@ describe('불러온 주가 언제 것인지', () => {
       rows: sems.map((SEM) => ({ SEM })),
       events: [],
       result: { total: sems.length, pageCount: 1, complete: true, truncated: false, fetchedAt: now },
-      report: { normalization: { accepted: [], quarantined: [], courseOnly: [], duplicateCount: 0, parallelGroups: [] } },
+      report: { cells: [], normalization: { accepted: [], quarantined: [], courseOnly: [], duplicateCount: 0, parallelGroups: [] } },
     } as unknown as NeisLoadBundle;
     return renderToStaticMarkup(createElement(DataHealthPanel, { bundle, now: new Date(now) }));
   };
