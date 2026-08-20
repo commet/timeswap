@@ -19,6 +19,10 @@ import {
 import type { NeisEvent } from '../lib/neis';
 import { createNeisSession } from '../lib/neis-session';
 import { canOpenInvitations, createWorkspaceFromNeis } from '../components/SetupFlow';
+import type { NeisLoadBundle } from '../components/SetupFlow';
+import { DataHealthPanel } from '../components/DataHealthPanel';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
 import { gradeShapes, normalizeNeisRows } from '@timeswap/engine';
 import type { ScheduleConfig, TimetableInput } from '@timeswap/engine';
 
@@ -564,5 +568,53 @@ describe('과정마다 다른 쉬는 날', () => {
     const closures = state.revisions[0]?.closures ?? [];
     expect(closures).toHaveLength(1);
     expect(closures[0]?.classIdentities).toBeUndefined();
+  });
+});
+
+/**
+ * 몇 학기 시간표인지, 몇 주 전 것인지 밝힌다.
+ *
+ * 앱은 최근 5주를 거슬러 보고 수업이 있는 첫 주를 쓴다. 그래서 방학을 건너뛰어
+ * 지난 학기 시간표를 가져오는 일이 생긴다. 2026년 8월 20일 기준으로 실제 학교
+ * 120곳을 재니 16곳이 한 달 전인 7월 20일 주를 찾았고 그 열여섯 곳이 모두 1학기였다.
+ * 학기가 바뀌면 과목도 교사도 교시 수도 달라진다.
+ *
+ * 날짜로 학기를 짐작하지는 않는다. 방학 길이가 학교마다 달라 같은 주에도 1학기인
+ * 학교와 2학기인 학교가 섞인다. 현재 주를 찾은 94곳 가운데 47곳이 1학기, 47곳이
+ * 2학기였다. 그래서 판정하지 않고 사실만 적는다.
+ */
+describe('불러온 주가 언제 것인지', () => {
+  const panel = (from: string, sems: string[], now: string) => {
+    const bundle = {
+      school: { office: 'B10', code: '7010084', name: '보기고', kind: '고등학교', officeName: '서울' },
+      range: { from, to: from },
+      rows: sems.map((SEM) => ({ SEM })),
+      events: [],
+      result: { total: sems.length, pageCount: 1, complete: true, truncated: false, fetchedAt: now },
+      report: { normalization: { accepted: [], quarantined: [], courseOnly: [], duplicateCount: 0, parallelGroups: [] } },
+    } as unknown as NeisLoadBundle;
+    return renderToStaticMarkup(createElement(DataHealthPanel, { bundle, now: new Date(now) }));
+  };
+
+  it('학기를 그대로 적는다', () => {
+    const html = panel('20260817', ['2', '2'], '2026-08-20T00:00:00.000Z');
+    expect(html).toContain('2학기');
+    expect(html).not.toContain('주 전 주간입니다');
+  });
+
+  it('한 학기 이상 지난 주를 가져오면 몇 주 전인지 밝힌다', () => {
+    // 실측에서 나온 그대로다. 8월 20일에 7월 20일 주를 가져온 학교가 16곳 있었다.
+    const html = panel('20260720', ['1'], '2026-08-20T00:00:00.000Z');
+    expect(html).toContain('1학기');
+    expect(html).toContain('4주 전 주간입니다');
+    expect(html).toContain('지난 학기 시간표일 수 있습니다');
+  });
+
+  it('학기가 섞여 오면 둘 다 적는다', () => {
+    expect(panel('20260817', ['1', '2'], '2026-08-20T00:00:00.000Z')).toContain('1학기, 2학기');
+  });
+
+  it('학기를 못 읽으면 확인이 필요하다고 적는다', () => {
+    expect(panel('20260817', [], '2026-08-20T00:00:00.000Z')).toContain('확인 필요');
   });
 });
