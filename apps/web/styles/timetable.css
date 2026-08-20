@@ -202,7 +202,11 @@ button.cell.empty:hover { border-color: var(--muted); }
 .public-class-lessons { border: 1px solid var(--line); border-top: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: clip; }
 .public-class-lessons > .rail-row:last-child { border-bottom: 0; }
 .public-class-lesson { padding: 13px 18px; border-left: 3px solid transparent; display: grid; gap: 2px; }
-.public-class-lesson b { font-size: var(--t-body); font-weight: 600; }
+.public-class-lesson > b { display: flex; align-items: center; gap: 8px; font-size: var(--t-body); font-weight: 600; }
+.public-class-badge {
+  padding: 1px 7px; border: 1px solid var(--mark); border-radius: 999px;
+  color: var(--mark); font-size: var(--t-label); font-weight: 500;
+}
 .public-class-lesson.changed { border-left-color: var(--mark); }
 .rail-row:has(.public-class-lesson.changed) .rail-period { color: var(--mark); font-weight: 600; }
 .rail-row:has(.public-class-lesson) .rail-period { color: var(--muted); }

@@ -137,10 +137,18 @@ export function PublicClassTimetable({
                  */
                 <ol className="period-rail public-class-lessons">
                   {lessons.map((lesson) => (
-                    <li key={lesson.lessonId} className="rail-row">
+                    <li key={lesson.lessonId} className={`rail-row ${lesson.changed ? 'changed' : ''}`}>
                       <span className="rail-period num" aria-hidden>{lesson.period}</span>
                       <div className={`public-class-lesson ${lesson.changed ? 'changed' : ''}`}>
-                        <b>{lesson.subject}</b>
+                        <b>
+                          {lesson.subject}
+                          {/*
+                            * 바뀐 줄에는 "변경"이라고 적는다. 주홍 막대만 두면 색을 못 보는
+                            * 사람에게 아무 말도 안 한 것이 되고, 이 화면은 학생과 학부모가
+                            * 읽는 자리라 규칙을 모르는 사람도 알아봐야 한다.
+                            */}
+                          {lesson.changed && <b className="public-class-badge">변경</b>}
+                        </b>
                         <span className="rail-where">
                           <span className="visually-hidden">{lesson.period}교시</span>
                           <i>{lesson.room}</i>
