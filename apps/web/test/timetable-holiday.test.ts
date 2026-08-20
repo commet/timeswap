@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { fromNeis, normalizeNeisRows, type NeisRow } from '@timeswap/engine';
 import { createWorkspaceFromNeis, type NeisLoadBundle } from '../components/SetupFlow';
 import { mapKey } from '../lib/app';
+import { emptyReason } from '../components/PublicClassTimetable';
+import { projectPublicClassSchedule } from '../lib/projections';
+import { classIdentityKey } from '@timeswap/engine';
 
 /**
  * 시간표에 온 휴업일을 수업으로 만들지 않는지.
@@ -86,5 +89,47 @@ describe('시간표에 온 휴업일', () => {
     const state = build(only);
     expect(state.lessons).toHaveLength(8);
     expect(state.revisions[0]?.closures ?? []).toEqual([]);
+  });
+});
+
+describe('쉬는 날에 왜 비었는지 적는다', () => {
+  const closedDays = [{ date: '2026-08-17', note: '재량휴업일' }];
+
+  it('오늘이 쉬는 날이면 사유를 적는다', () => {
+    expect(emptyReason('today', closedDays, '2026-08-17', '2026-08-18'))
+      .toBe('수업이 없는 날입니다: 재량휴업일');
+  });
+
+  it('내일이 쉬는 날이면 사유를 적는다', () => {
+    expect(emptyReason('tomorrow', closedDays, '2026-08-16', '2026-08-17'))
+      .toBe('수업이 없는 날입니다: 재량휴업일');
+  });
+
+  it('쉬는 날이 아니면 예전 문구 그대로다', () => {
+    // 자료가 안 들어온 것과 쉬는 것을 가리는 것이 목적이다. 아무 때나 쉰다고 하면 안 된다.
+    expect(emptyReason('today', closedDays, '2026-08-18', '2026-08-19'))
+      .toBe('표시할 수업이 없습니다.');
+  });
+
+  it('이번 주 칸은 쉬는 날짜를 모아 적는다', () => {
+    expect(emptyReason('week', closedDays, '2026-08-15', '2026-08-16'))
+      .toBe('수업이 없는 날입니다: 2026-08-17 재량휴업일');
+  });
+
+  it('이번 주 밖의 쉬는 날은 안 적는다', () => {
+    const far = [{ date: '2026-09-20', note: '개교기념일' }];
+    expect(emptyReason('week', far, '2026-08-15', '2026-08-16'))
+      .toBe('표시할 수업이 없습니다.');
+  });
+});
+
+describe('공개 화면에 넘기는 쉬는 날', () => {
+  it('이 학급에 해당하는 것만 넘긴다', () => {
+    const state = build(rows());
+    const view = projectPublicClassSchedule(
+      state,
+      classIdentityKey(state.lessons[0]!.classIdentity),
+    );
+    expect(view.closedDays).toEqual([{ date: '2026-08-17', note: '재량휴업일' }]);
   });
 });

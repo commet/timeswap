@@ -27,6 +27,34 @@ function dayOffset(from: string, days: number): string {
  * reach, so it carries lesson facts and publication time and nothing about
  * who was absent, why, or what it cost anyone.
  */
+/**
+ * 수업이 없는 칸에 적을 말.
+ *
+ * "표시할 수업이 없습니다" 하나로 끝내면 자료가 안 들어온 것과 학교가 쉬는 것을
+ * 가릴 수 없다. 쉬는 날이면 투영이 골라 준 안내 문구를 그대로 적는다.
+ *
+ * 이 화면은 사건 자료를 직접 뒤지지 않는다. 무엇을 내보내도 되는지 정하는 자리는
+ * `projectPublicClassSchedule` 한 곳이다.
+ */
+export function emptyReason(
+  sectionId: string,
+  closedDays: ReadonlyArray<{ date: string; note: string }>,
+  today: string,
+  tomorrow: string,
+): string {
+  const noteOn = (date: string): string | undefined =>
+    closedDays.find((closed) => closed.date === date)?.note;
+  if (sectionId === 'today' || sectionId === 'tomorrow') {
+    const note = noteOn(sectionId === 'today' ? today : tomorrow);
+    return note ? `수업이 없는 날입니다: ${note}` : '표시할 수업이 없습니다.';
+  }
+  const closed = closedDays
+    .filter((day) => day.date > tomorrow && day.date <= dayOffset(today, 7))
+    .map((day) => `${day.date} ${day.note}`);
+  if (closed.length === 0) return '표시할 수업이 없습니다.';
+  return `수업이 없는 날입니다: ${closed.join(', ')}`;
+}
+
 export function PublicClassTimetable({
   state,
   grade,
@@ -72,6 +100,7 @@ export function PublicClassTimetable({
   ];
   const changedCount = view.lessons.filter((lesson) => lesson.changed).length;
 
+
   return (
     <main id="main-content" tabIndex={-1} className="public-class" aria-labelledby="public-class-title" data-public-class={classKey}>
       <header className="public-class-heading">
@@ -91,7 +120,7 @@ export function PublicClassTimetable({
           <section key={section.id} className="public-class-section" aria-labelledby={`public-class-${section.id}`}>
             <h3 id={`public-class-${section.id}`}>{section.title}</h3>
             {lessons.length === 0
-              ? <p className="public-class-empty">표시할 수업이 없습니다.</p>
+              ? <p className="public-class-empty">{emptyReason(section.id, view.closedDays, today, tomorrow)}</p>
               : (
                 <ol className="public-class-lessons">
                   {lessons.map((lesson) => (

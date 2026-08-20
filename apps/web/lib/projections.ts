@@ -100,6 +100,16 @@ export interface PublicClassView {
   classKey: string;
   lessons: PublicClassLessonView[];
   lastPublishedAt?: string;
+  /**
+   * 이 학급이 수업하지 않는 날과 그 안내 문구.
+   *
+   * 학사일정과 시간표에서 온 쉬는 날이다. 여름방학, 개교기념일, 재량휴업일처럼 학교가
+   * 이미 공개한 사실만 들어온다. 누가 왜 빠졌는지는 여기 오지 않는다.
+   *
+   * 공개 화면이 사건 자료를 직접 뒤지지 않게 하려고 여기서 만들어 넘긴다. 무엇을
+   * 내보내도 되는지 정하는 자리를 한 곳에 둔다.
+   */
+  closedDays: Array<{ date: string; note: string }>;
 }
 
 interface PublishedChange {
@@ -725,11 +735,21 @@ export function projectPublicClassSchedule(
     .sort()
     .at(-1);
 
+  const activeRevision = state.revisions.find(
+    (revision) => revision.id === state.workspace.activeRevisionId,
+  );
+  const closedDays = (activeRevision?.closures ?? [])
+    .filter((closure) => !closure.classIdentities?.length
+      || closure.classIdentities.some((identity) => classIdentityKey(identity) === classKey))
+    .map((closure) => ({ date: closure.date, note: closure.reason }))
+    .sort((left, right) => left.date.localeCompare(right.date));
+
   return {
     workspaceId: state.workspace.id,
     schoolName: state.workspace.name,
     classKey,
     lessons,
+    closedDays,
     ...(publishedAt ? { lastPublishedAt: publishedAt } : {}),
   };
 }
