@@ -11,6 +11,8 @@ export type PublicClassTimetableProps = {
   state: WorkspaceState;
   grade: string;
   className: string;
+  /** 특수학교의 학교 과정. 초중고에는 없다 */
+  course?: string;
   today: string;
 };
 
@@ -29,15 +31,26 @@ export function PublicClassTimetable({
   state,
   grade,
   className,
+  course,
   today,
 }: PublicClassTimetableProps) {
+  /*
+   * 학급을 찾을 때 과정까지 본다.
+   *
+   * 특수학교는 초등부와 중학부, 고등부를 함께 운영하고 학년이 과정마다 1부터 다시
+   * 센다. 한 학교에 1학년 1반이 셋 있고 실측한 32곳 가운데 31곳이 그렇다.
+   * 과정을 안 보면 먼저 걸린 하나만 열리고 나머지 둘은 주소로 갈 방법이 없다.
+   *
+   * 과정을 안 넘겨 준 옛 주소는 예전처럼 먼저 걸린 것을 연다.
+   */
   const classKey = useMemo(() => {
     const lesson = state.lessons.find((item) =>
       item.revisionId === state.workspace.activeRevisionId
       && item.classIdentity.grade === grade
-      && item.classIdentity.className === className);
+      && item.classIdentity.className === className
+      && (!course || (item.classIdentity.schoolCourse ?? '') === course));
     return lesson ? classIdentityKey(lesson.classIdentity) : null;
-  }, [state, grade, className]);
+  }, [state, grade, className, course]);
   const view = useMemo(
     () => classKey ? projectPublicClassSchedule(state, classKey) : null,
     [state, classKey],

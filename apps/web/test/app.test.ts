@@ -18,7 +18,7 @@ import {
 } from '../lib/app';
 import type { NeisEvent } from '../lib/neis';
 import { createNeisSession } from '../lib/neis-session';
-import { canOpenInvitations, createWorkspaceFromNeis } from '../components/SetupFlow';
+import { canOpenInvitations, createInvitationLinks, createWorkspaceFromNeis } from '../components/SetupFlow';
 import type { NeisLoadBundle } from '../components/SetupFlow';
 import { DataHealthPanel } from '../components/DataHealthPanel';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -616,5 +616,49 @@ describe('불러온 주가 언제 것인지', () => {
 
   it('학기를 못 읽으면 확인이 필요하다고 적는다', () => {
     expect(panel('20260817', [], '2026-08-20T00:00:00.000Z')).toContain('확인 필요');
+  });
+});
+
+/**
+ * 특수학교 세 과정의 1학년 1반이 링크 하나로 합쳐지던 자리.
+ *
+ * 학급 열쇠와 화면 이름은 고쳤는데 초대 링크와 공개 시간표 주소가 (학년, 반)으로만
+ * 묶고 있었다. 그러면 셋 가운데 하나만 열리고 나머지 둘은 갈 방법이 없다.
+ * 실측한 특수학교 32곳 가운데 31곳이 여기 걸린다.
+ */
+describe('과정이 다른 같은 학년 같은 반의 링크', () => {
+  const lesson = (course: string, id: string) => ({
+    id, workspaceId: 'W', revisionId: 'R', date: '20260817', period: '1',
+    classIdentity: {
+      schoolCode: 'W', academicYear: '2026', schoolCourse: course,
+      dayCourse: '주간', affiliation: '', major: '', grade: '1', className: '1',
+    },
+    subject: '국어', room: '',
+    teacher: { state: 'assigned' as const, teacherId: 'member:t1' },
+  });
+  const state = {
+    schemaVersion: 2,
+    workspace: { id: 'W', name: '명현학교', activeRevisionId: 'R', createdAt: '', updatedAt: '' },
+    revisions: [{ id: 'R', workspaceId: 'W', source: 'neis', loadedAt: '', complete: true, checksum: '' }],
+    lessons: [lesson('초등학교', 'l1'), lesson('중학교', 'l2'), lesson('고등학교', 'l3')],
+    teacherLabels: { 'member:t1': '김선생' },
+  } as unknown as Parameters<typeof createInvitationLinks>[0];
+
+  it('과정마다 따로 링크를 만든다', () => {
+    const { classes } = createInvitationLinks(state, 'https://x.test');
+    expect(classes).toHaveLength(3);
+    expect(classes.map((c) => c.label).sort()).toEqual([
+      '고등학교 1학년 1반', '중학교 1학년 1반', '초등학교 1학년 1반',
+    ]);
+    expect(new Set(classes.map((c) => c.href)).size).toBe(3);
+  });
+
+  it('과정이 없는 학교는 예전 그대로다', () => {
+    const plain = JSON.parse(JSON.stringify(state)) as typeof state;
+    for (const item of plain.lessons) item.classIdentity.schoolCourse = '';
+    const { classes } = createInvitationLinks(plain, 'https://x.test');
+    expect(classes).toHaveLength(1);
+    expect(classes[0]?.label).toBe('1학년 1반');
+    expect(classes[0]?.href).not.toContain('course=');
   });
 });

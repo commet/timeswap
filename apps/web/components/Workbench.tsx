@@ -1604,6 +1604,7 @@ function RoleWorkbench(props: RoleViewAdapterProps) {
       state={props.state}
       grade={props.location.grade}
       className={props.location.className}
+      course={props.location.course}
       today={todayOf(props.state)}
     />
   );

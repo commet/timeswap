@@ -228,18 +228,29 @@ export function createInvitationLinks(
         view: 'teacher', school: state.workspace.id, teacher: teacherId,
       }), origin).toString(),
     }));
+  /*
+   * 학급 링크는 과정까지 넣어 묶는다.
+   *
+   * 특수학교는 초등부와 중학부, 고등부를 함께 운영하고 학년이 과정마다 1부터 다시
+   * 센다. 한 학교에 1학년 1반이 셋 있고 실측한 32곳 가운데 31곳이 그렇다.
+   * (학년, 반)으로만 묶으면 셋이 링크 하나로 합쳐져 두 학급은 갈 방법이 없어진다.
+   */
   const classes = [...new Map(state.lessons.map((lesson) => {
     const identity = lesson.classIdentity;
-    const id = JSON.stringify([identity.grade, identity.className]);
-    return [id, { grade: identity.grade, className: identity.className }] as const;
+    const course = identity.schoolCourse ?? '';
+    const id = JSON.stringify([course, identity.grade, identity.className]);
+    return [id, { grade: identity.grade, className: identity.className, course }] as const;
   })).entries()]
     .sort((left, right) => left[0].localeCompare(right[0], 'ko', { numeric: true }))
     .map(([id, identity]) => ({
       id,
-      label: `${identity.grade}학년 ${identity.className}반`,
+      label: identity.course
+        ? `${identity.course} ${identity.grade}학년 ${identity.className}반`
+        : `${identity.grade}학년 ${identity.className}반`,
       href: new URL(formatLocation({
         view: 'class', school: state.workspace.id,
         grade: identity.grade, className: identity.className,
+        ...(identity.course ? { course: identity.course } : {}),
       }), origin).toString(),
     }));
   return { teachers, classes };
