@@ -10,6 +10,7 @@ import {
   transitionCase,
 } from '../lib/case-service';
 import { publishCase } from '../lib/publication';
+import { createCorrectionCase } from '../lib/case-service';
 import { projectPublicClassSchedule, validateCasePlan } from '../lib/projections';
 import { createWorkspaceRepository, WORKSPACE_KEY_PREFIX } from '../lib/repository';
 import { mapKey } from '../lib/app';
@@ -414,5 +415,239 @@ describe.skipIf(!PATH || !existsSync(PATH))('한 학교를 여러 사건에 걸�
     });
     // 실제로 여러 건을 게시했는지. 안 했으면 검사한 척만 한 것이다.
     expect(stats.published).toBeGreaterThan(stats.schools);
+  }, 1_800_000);
+});
+
+/** 사건 하나를 접수부터 게시까지 민다. 화면이 부르는 그 함수들만 쓴다. */
+function runCase(
+  start: WorkspaceState,
+  options: {
+    caseId: string; tag: string; teacherId: string; fromDate: string; toDate: string;
+    lessonIds: string[]; at: string;
+  },
+): { state: WorkspaceState; published: boolean; reason?: string } {
+  const { caseId, tag, teacherId, fromDate, toDate, lessonIds, at } = options;
+  let state = createAbsenceCase(start, {
+    id: caseId,
+    auditEventId: `${tag}:create`,
+    workspaceId: start.workspace.id,
+    requesterTeacherId: teacherId,
+    fromDate,
+    toDate,
+    reason: '업무상 부재',
+    lessonIds,
+    at,
+  });
+  state = transitionCase(state, {
+    caseId, to: 'submitted', actorId: teacherId, at, auditEventId: `${tag}:submit`,
+  });
+  state = transitionCase(state, {
+    caseId, to: 'in_review', actorId: 'ops', at, auditEventId: `${tag}:review`,
+  });
+  let solved = 0;
+  for (const lessonId of lessonIds) {
+    const rows = resolutionRowsForLesson(state, caseId, lessonId);
+    const chosen = rows.find((row) => row.state !== 'warning') ?? rows[0];
+    if (!chosen) continue;
+    state = selectResolutionForCase(state, caseId, chosen).state;
+    solved += 1;
+  }
+  if (solved === 0) return { state, published: false, reason: '안 없음' };
+  try {
+    state = transitionCase(state, {
+      caseId, to: 'resolution_approved', actorId: 'ops', at, auditEventId: `${tag}:approve`,
+    });
+  } catch {
+    return { state, published: false, reason: '승인 관문' };
+  }
+  state = createPrototypeAdminTasks(state, {
+    caseId, actorId: 'ops', at, auditEventId: `${tag}:tasks`,
+    taskAuditEventId: `${tag}:tasks2`,
+    taskIds: {
+      neis: `${tag}:task:neis`,
+      teacher_notice: `${tag}:task:notice`,
+      class_publication: `${tag}:task:publication`,
+      internal_document: `${tag}:task:document`,
+    },
+  });
+  for (const task of state.adminTasks.filter((item) => item.caseId === caseId && item.required)) {
+    state = completeAdminTask(state, {
+      taskId: task.id, actorId: 'ops', at, auditEventId: `${tag}:done:${task.kind}`,
+    });
+  }
+  state = publishCase(state, caseId, 'ops', at);
+  return { state, published: true };
+}
+
+/**
+ * 게시한 뒤 정정하고 다시 게시하는 흐름.
+ *
+ * 실제로 자주 있는 일이다. 게시한 다음에 그 시간에 회의가 잡히거나 협조 교사가
+ * 못 하게 된다. 게시본 위에 정정을 얹는 자리라 격자 계산이 가장 얽히는 곳이다.
+ */
+describe.skipIf(!PATH || !existsSync(PATH))('게시한 뒤 정정하고 다시 게시한다', () => {
+  it('정정을 얹어도 시간표가 성립한다', () => {
+    const data = (JSON.parse(readFileSync(PATH, 'utf8')) as Array<{
+      school: Record<string, string>; kind?: string; rows?: NeisRow[];
+    }>).filter((entry) => (entry.rows ?? []).length > 0).slice(0, SCHOOLS);
+
+    const fails: string[] = [];
+    const stats = {
+      schools: 0, firstPublished: 0, corrected: 0, correctionPublished: 0,
+      broken: 0, lost: 0,
+    };
+
+    for (const entry of data) {
+      const built = buildWorkspace(entry);
+      if (!built) continue;
+      const name = entry.school.SCHUL_NM ?? '?';
+      stats.schools += 1;
+      const startBag = bag(built);
+      const startViolations = new Set(violations(built));
+
+      const first = nextRound(built, new Set());
+      if (!first) continue;
+      const round1 = runCase(built, {
+        caseId: 'sim:c1', tag: 'sim:c1', teacherId: first.teacherId,
+        fromDate: first.date, toDate: first.date,
+        lessonIds: first.lessons.map((lesson) => lesson.id),
+        at: '2026-08-18T01:00:00.000Z',
+      });
+      if (!round1.published) continue;
+      stats.firstPublished += 1;
+      let state = round1.state;
+
+      // 게시본을 정정한다.
+      state = createCorrectionCase(state, {
+        sourceCaseId: 'sim:c1', id: 'sim:c1:fix', actorId: 'ops',
+        at: '2026-08-18T02:00:00.000Z', auditEventId: 'sim:c1:fix:create',
+      });
+      stats.corrected += 1;
+      const correction = state.cases.find((item) => item.id === 'sim:c1:fix')!;
+      state = transitionCase(state, {
+        caseId: correction.id, to: 'submitted', actorId: 'ops',
+        at: '2026-08-18T02:00:00.000Z', auditEventId: 'sim:c1:fix:submit',
+      });
+      state = transitionCase(state, {
+        caseId: correction.id, to: 'in_review', actorId: 'ops',
+        at: '2026-08-18T02:00:00.000Z', auditEventId: 'sim:c1:fix:review',
+      });
+      let solved = 0;
+      for (const lessonId of correction.lessonIds) {
+        const rows = resolutionRowsForLesson(state, correction.id, lessonId);
+        const chosen = rows.find((row) => row.state !== 'warning') ?? rows[0];
+        if (!chosen) continue;
+        state = selectResolutionForCase(state, correction.id, chosen).state;
+        solved += 1;
+      }
+      if (solved === 0) {
+        fails.push(`${name}: 정정 사건에 후보가 하나도 없음`);
+        continue;
+      }
+      try {
+        state = transitionCase(state, {
+          caseId: correction.id, to: 'resolution_approved', actorId: 'ops',
+          at: '2026-08-18T02:00:00.000Z', auditEventId: 'sim:c1:fix:approve',
+        });
+      } catch {
+        continue;
+      }
+      state = createPrototypeAdminTasks(state, {
+        caseId: correction.id, actorId: 'ops', at: '2026-08-18T02:00:00.000Z',
+        auditEventId: 'sim:c1:fix:tasks', taskAuditEventId: 'sim:c1:fix:tasks2',
+        taskIds: {
+          neis: 'sim:c1:fix:task:neis', teacher_notice: 'sim:c1:fix:task:notice',
+          class_publication: 'sim:c1:fix:task:publication',
+          internal_document: 'sim:c1:fix:task:document',
+        },
+      });
+      for (const task of state.adminTasks.filter((item) => item.caseId === correction.id && item.required)) {
+        state = completeAdminTask(state, {
+          taskId: task.id, actorId: 'ops', at: '2026-08-18T02:00:00.000Z',
+          auditEventId: `sim:c1:fix:done:${task.kind}`,
+        });
+      }
+      state = publishCase(state, correction.id, 'ops', '2026-08-18T02:00:00.000Z');
+      stats.correctionPublished += 1;
+
+      const fresh = violations(state).filter((item) => !startViolations.has(item));
+      if (fresh.length > 0) {
+        stats.broken += 1;
+        if (fails.length < 10) fails.push(`${name}: 정정 뒤 ${fresh[0]}`);
+      }
+      if (bag(state) !== startBag) {
+        stats.lost += 1;
+        if (fails.length < 10) fails.push(`${name}: 정정 뒤 수업이 사라지거나 늘어남`);
+      }
+    }
+
+    console.log('정정 시뮬레이션', JSON.stringify(stats));
+    expect({ fails: fails.slice(0, 5), ...stats }).toMatchObject({ fails: [], broken: 0, lost: 0 });
+    expect(stats.correctionPublished).toBeGreaterThan(0);
+  }, 1_800_000);
+});
+
+/**
+ * 여러 날에 걸친 부재. 연수는 대개 이삼일이다.
+ *
+ * 결강이 여러 날에 흩어지면 그 주 격자를 날짜마다 다시 만든다. 하루짜리만 재고
+ * 넘어가면 그 길이 안 밟힌다.
+ */
+describe.skipIf(!PATH || !existsSync(PATH))('여러 날에 걸친 부재', () => {
+  it('사흘을 비워도 시간표가 성립한다', () => {
+    const data = (JSON.parse(readFileSync(PATH, 'utf8')) as Array<{
+      school: Record<string, string>; kind?: string; rows?: NeisRow[];
+    }>).filter((entry) => (entry.rows ?? []).length > 0).slice(0, SCHOOLS);
+
+    const fails: string[] = [];
+    const stats = { schools: 0, cases: 0, published: 0, broken: 0, lost: 0, days: 0 };
+
+    for (const entry of data) {
+      const built = buildWorkspace(entry);
+      if (!built) continue;
+      const name = entry.school.SCHUL_NM ?? '?';
+      stats.schools += 1;
+      const startBag = bag(built);
+      const startViolations = new Set(violations(built));
+
+      // 그 주에 수업이 가장 많은 교사를 잡아 앞에서 사흘을 통째로 비운다.
+      const byTeacher = new Map<string, Lesson[]>();
+      for (const lesson of built.lessons) {
+        if (lesson.teacher.state !== 'assigned') continue;
+        (byTeacher.get(lesson.teacher.teacherId)
+          ?? byTeacher.set(lesson.teacher.teacherId, []).get(lesson.teacher.teacherId)!).push(lesson);
+      }
+      const busiest = [...byTeacher].sort((left, right) =>
+        right[1].length - left[1].length || left[0].localeCompare(right[0]))[0];
+      if (!busiest) continue;
+      const dates = [...new Set(busiest[1].map((lesson) => lesson.date))].sort().slice(0, 3);
+      if (dates.length < 2) continue;
+      const lessons = busiest[1].filter((lesson) => dates.includes(lesson.date));
+      stats.days += dates.length;
+      stats.cases += 1;
+
+      const run = runCase(built, {
+        caseId: 'sim:multi', tag: 'sim:multi', teacherId: busiest[0],
+        fromDate: dates[0]!, toDate: dates.at(-1)!,
+        lessonIds: lessons.map((lesson) => lesson.id),
+        at: '2026-08-18T03:00:00.000Z',
+      });
+      if (!run.published) continue;
+      stats.published += 1;
+
+      const fresh = violations(run.state).filter((item) => !startViolations.has(item));
+      if (fresh.length > 0) {
+        stats.broken += 1;
+        if (fails.length < 10) fails.push(`${name}: 여러 날 부재 뒤 ${fresh[0]}`);
+      }
+      if (bag(run.state) !== startBag) {
+        stats.lost += 1;
+        if (fails.length < 10) fails.push(`${name}: 여러 날 부재 뒤 수업이 사라지거나 늘어남`);
+      }
+    }
+
+    console.log('여러 날 시뮬레이션', JSON.stringify(stats));
+    expect({ fails: fails.slice(0, 5), ...stats }).toMatchObject({ fails: [], broken: 0, lost: 0 });
+    expect(stats.published).toBeGreaterThan(0);
   }, 1_800_000);
 });
