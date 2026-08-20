@@ -8,7 +8,8 @@ import {
   returnCaseForRecomputation,
   transitionCase,
 } from '../lib/case-service';
-import type { WorkspaceState } from '../lib/domain';
+import type { Lesson, WorkspaceState } from '../lib/domain';
+import { caseRevisionId, effectiveLessons } from '../lib/projections';
 import { projectOpsCommandCenter } from '../lib/ops-command-center';
 import { resolutionRowsForLesson } from '../lib/resolution';
 import type { SaveResult } from '../lib/repository';
@@ -84,9 +85,17 @@ export function CaseDetail({
   const model = useMemo(() => projectOpsCommandCenter(state, today), [state, today]);
   const item = model.cases.find((candidate) => candidate.caseId === caseId);
   const absenceCase = state.cases.find((candidate) => candidate.id === caseId);
-  const lessons = useMemo(() => new Map(state.lessons
-    .filter((lesson) => lesson.revisionId === state.workspace.activeRevisionId)
-    .map((lesson) => [lesson.id, lesson])), [state]);
+  /*
+   * 그 사건의 주를, 게시된 변경을 얹은 채로 본다.
+   *
+   * 활성 개정판으로 거르면 주가 넘어간 뒤 지난주 사건의 수업이 하나도 안 잡혀 "확인할
+   * 수업"만 늘어선다. 원래 표로 보면 게시로 옮겨 간 수업의 교시를 옛 교시로 적는다.
+   */
+  const lessons = useMemo(() => {
+    if (!absenceCase) return new Map<string, Lesson>();
+    return new Map(effectiveLessons(state, caseRevisionId(state, absenceCase))
+      .map((lesson) => [lesson.id, lesson]));
+  }, [state, absenceCase]);
   /*
    * 결강마다 후보를 한 번만 센다.
    *

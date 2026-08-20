@@ -11,6 +11,9 @@ import {
 import { publishCase } from '../lib/publication';
 import { validateCasePlan } from '../lib/projections';
 import { resolutionRowsForLesson } from '../lib/resolution';
+import { CaseDetail } from '../components/CaseDetail';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
 import type { Lesson, WorkspaceState } from '../lib/domain';
 
 /**
@@ -180,5 +183,21 @@ describe('주가 넘어가도 진행 중인 사건이 살아 있다', () => {
     // 정정도 후보부터 다시 고른다. 후보가 0개면 정정할 길이 없다.
     // 막힌 안은 목록에 아예 안 들어온다. 하나라도 있으면 고를 수 있다는 뜻이다.
     expect(resolutionRowsForLesson(corrected, 'case-1-fix', lessonId).length).toBeGreaterThan(0);
+  });
+
+  /*
+   * 사건 화면이 그 사건의 수업을 알아본다.
+   *
+   * 활성 개정판으로 거르면 주가 넘어간 뒤 지난주 사건의 수업이 하나도 안 잡혀
+   * "확인할 수업"만 늘어선다. 일과 담당은 무슨 수업 이야기인지 알 수 없다.
+   */
+  it('다시 불러온 뒤에도 사건 화면이 그 수업을 알아본다', () => {
+    const after = reloadNextWeek(afterApproval());
+    const html = renderToStaticMarkup(createElement(CaseDetail, {
+      state: after, caseId: 'case-1', today: '2026-08-24',
+      onChange: () => ({ ok: true as const }),
+    }));
+    expect(html).toContain('2교시 과목2');
+    expect(html).not.toContain('확인할 수업');
   });
 });
