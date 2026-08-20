@@ -123,11 +123,25 @@ function expandedAtomicLessonIds(state: WorkspaceState, lessonIds: readonly stri
   return [...expanded].sort();
 }
 
-function hardInvalid(state: WorkspaceState, absenceCase: AbsenceCase, item: ResolutionItem): boolean {
+/**
+ * 이 안 하나만 보고 막을지 정하지 않는다. **이미 고른 다른 결강의 안과 함께** 본다.
+ *
+ * 따로 보면 두 결강이 같은 자리를 노리는 안이 둘 다 통과하고, 일과 담당이 둘 다 고른
+ * 뒤에야 승인이 막힌다. 그때는 무엇을 무르고 다시 골라야 하는지 화면이 말해 주지 않는다.
+ */
+function hardInvalid(
+  state: WorkspaceState,
+  absenceCase: AbsenceCase,
+  item: ResolutionItem,
+  chosen: readonly ResolutionItem[] = [],
+): boolean {
   const candidateCase: AbsenceCase = {
     ...absenceCase,
-    lessonIds: candidateLessonIds(state, item),
-    resolutionItems: [item],
+    lessonIds: [...new Set([
+      ...candidateLessonIds(state, item),
+      ...chosen.flatMap((other) => candidateLessonIds(state, other)),
+    ])],
+    resolutionItems: [...chosen, item],
   };
   const candidateState: WorkspaceState = {
     ...state,
@@ -332,7 +346,21 @@ function recentBurdenOf(state: WorkspaceState, monday: string): Record<string, n
 }
 
 /** Builds the active calendar week without turning unknown teacher rows into free class time. */
-export function targetWeekInput(state: WorkspaceState, targetDate: string): TargetWeekInput {
+export function targetWeekInput(
+  state: WorkspaceState,
+  targetDate: string,
+  /**
+   * 이 사건에서 **이미 고른** 안. 격자에 함께 얹는다.
+   *
+   * 하루를 비우면 결강이 대여섯 개고, 일과 담당은 하나씩 고른다. 그런데 각 결강의
+   * 후보를 서로 모르는 채로 만들고 있었다. 그래서 두 결강이 같은 자리를 노리는 안이
+   * 나란히 추천되고, 둘 다 고르면 승인이 막혔다. 실제 학교 12곳으로 돌려 보니
+   * 사건 95건 가운데 48건이 승인 관문에서 막혔다. 교사 중복 111, 학급 중복 104건이다.
+   *
+   * 앞에서 고른 것을 얹어야 다음 후보가 남은 자리에서 나온다.
+   */
+  chosen: readonly ResolutionItem[] = [],
+): TargetWeekInput {
   const monday = mondayOf(targetDate);
   /*
    * 이미 게시된 변경을 격자에 얹는다.
@@ -348,8 +376,21 @@ export function targetWeekInput(state: WorkspaceState, targetDate: string): Targ
    * 자신의 변경까지 얹으면 두 번 적용된다. 그쪽은 충돌 검사가 맡는다.
    */
   const published = publishedChanges(state);
+  const picked = new Map<string, ResolutionChange>();
+  for (const item of chosen) {
+    for (const change of item.changes) picked.set(change.lessonId, change);
+  }
   const lessons = activeLessons(state)
     .map((lesson) => {
+      const chosenChange = picked.get(lesson.id);
+      if (chosenChange) {
+        return {
+          ...lesson,
+          date: chosenChange.toDate,
+          period: chosenChange.toPeriod,
+          teacher: chosenChange.teacher,
+        };
+      }
       const moved = published.get(lesson.id);
       if (!moved) return lesson;
       return {
@@ -537,9 +578,13 @@ function redactedTrace(state: WorkspaceState, trace: readonly TraceEntry[]): Tra
   }));
 }
 
-function engineExchangeCandidates(state: WorkspaceState, lesson: Lesson): EngineCandidateFacts[] {
+function engineExchangeCandidates(
+  state: WorkspaceState,
+  lesson: Lesson,
+  chosen: readonly ResolutionItem[],
+): EngineCandidateFacts[] {
   if (lesson.teacher.state !== 'assigned') return [];
-  const week = targetWeekInput(state, lesson.date);
+  const week = targetWeekInput(state, lesson.date, chosen);
   const target = week.assignmentByLessonId.get(lesson.id);
   if (!target) return [];
   try {
@@ -604,8 +649,9 @@ function engineCoverCandidates(
   state: WorkspaceState,
   absenceCase: AbsenceCase,
   lesson: Lesson,
+  chosen: readonly ResolutionItem[],
 ): EngineCandidateFacts[] {
-  const week = targetWeekInput(state, lesson.date);
+  const week = targetWeekInput(state, lesson.date, chosen);
   const group = coverGroup(state, lesson);
   const candidateLists = group.lessons.map((grouped) => {
     const assignment = week.assignmentByLessonId.get(grouped.id);
@@ -735,7 +781,16 @@ export function resolutionRowsForLesson(
   const lesson = activeLessons(state).find((item) => item.id === lessonId);
   if (!absenceCase || !lesson) return [];
 
-  const generatedExchange = engineExchangeCandidates(state, lesson);
+  /*
+   * 이 사건에서 **다른 결강에** 이미 고른 안. 후보를 만들 때도, 막을지 볼 때도 함께 쓴다.
+   * 이것을 안 보면 두 결강이 같은 자리를 노리는 안이 나란히 추천되고, 둘 다 고른 뒤에야
+   * 승인이 막힌다.
+   */
+  const chosen = absenceCase.resolutionItems.filter((item) =>
+    item.lessonId !== lessonId
+    && (item.kind === 'move' || item.kind === 'swap2' || item.kind === 'cycle3' || item.kind === 'cover'));
+
+  const generatedExchange = engineExchangeCandidates(state, lesson, chosen);
   const existingExchange = absenceCase.resolutionItems
     .filter((item) => item.lessonId === lessonId
       && (item.kind === 'move' || item.kind === 'swap2' || item.kind === 'cycle3'))
@@ -744,9 +799,9 @@ export function resolutionRowsForLesson(
     .filter((item) => item.lessonId === lessonId && item.kind === 'cover')
     .map((item) => ({ item }));
   const validExchanges = [...existingExchange, ...generatedExchange]
-    .filter((candidate) => !hardInvalid(state, absenceCase, candidate.item));
+    .filter((candidate) => !hardInvalid(state, absenceCase, candidate.item, chosen));
   const generatedCover = validExchanges.length < 3
-    ? engineCoverCandidates(state, absenceCase, lesson)
+    ? engineCoverCandidates(state, absenceCase, lesson, chosen)
     : [];
   const retainedExistingCover = validExchanges.length < 3 ? existingCover : [];
   const candidates: ResolutionCandidate[] = [
@@ -760,7 +815,7 @@ export function resolutionRowsForLesson(
     if (!unique.has(key)) unique.set(key, candidate);
   }
   const rows = [...unique.values()]
-    .filter((candidate) => !hardInvalid(state, absenceCase, candidate.item))
+    .filter((candidate) => !hardInvalid(state, absenceCase, candidate.item, chosen))
     .map((candidate) => toRow(state, lesson, candidate))
     .slice(0, 5);
   if (rows[0] && rows[0].state === 'valid') rows[0] = { ...rows[0], state: 'recommended' };
