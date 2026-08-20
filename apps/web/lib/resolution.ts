@@ -428,6 +428,45 @@ export function targetWeekInput(state: WorkspaceState, targetDate: string): Targ
   if (lastOfDay.some((last) => last < periods)) input.config.periodsPerDay = lastOfDay;
 
   /*
+   * 그날 중간에 비는 교시. 마지막 교시만 막아서는 부족하다.
+   *
+   * `periodsPerDay` 는 그날 몇 교시까지인지만 말한다. 그런데 앞쪽이나 중간이 통째로
+   * 비는 학교가 있다. 소가야중학교는 월요일이 2교시부터 시작해 1교시가 아예 없다.
+   * 다른 요일은 다 1교시가 있어서 위쪽 제한만으로는 안 걸리고, 도구가 월요일 1교시로
+   * 수업을 옮기라고 했다. 그런 교시는 그날 없는 시간이다.
+   *
+   * 학교 전체로 아무 학급도 안 쓴 교시만 막는다. 한 학급만 비어 있는 것은 그냥
+   * 공강이라 옮겨도 되는 자리다. 같은 근거 기준을 `periodsPerDay` 와 함께 쓴다.
+   *
+   * 담당을 모르는 자리와 같은 뜻이라 `klassBusy` 로 넘긴다. 그 자리로는 안 옮기고,
+   * 우리가 옮길 수업으로도 삼지 않는다.
+   */
+  const usedOnDay = new Map<number, Set<number>>();
+  for (const lesson of lessons) {
+    const day = dayIndex(lesson.date, monday);
+    const period = Number(lesson.period);
+    if (day < 0 || day >= 5 || !Number.isInteger(period) || period < 1 || period > periods) continue;
+    (usedOnDay.get(day) ?? usedOnDay.set(day, new Set()).get(day)!).add(period);
+  }
+  const gapSlots: number[] = [];
+  for (let day = 0; day < 5; day += 1) {
+    const used = usedOnDay.get(day);
+    if (!used || used.size === 0) continue;
+    for (let period = 1; period < lastOfDay[day]!; period += 1) {
+      if (!used.has(period)) gapSlots.push(day * periods + (period - 1));
+    }
+  }
+  if (gapSlots.length > 0) {
+    const allKlasses = new Set(input.assignments.map((assignment) => assignment.klass));
+    for (const klass of [...busy.keys()]) allKlasses.add(klass);
+    const merged: Record<string, number[]> = { ...(input.klassBusy ?? {}) };
+    for (const klass of allKlasses) {
+      merged[klass] = [...new Set([...(merged[klass] ?? []), ...gapSlots])].sort((a, b) => a - b);
+    }
+    input.klassBusy = merged;
+  }
+
+  /*
    * 학년으로 재고 학급에 붙인다. 엔진이 나이스 자료에 쓰는 것과 같은 규칙이다.
    * 학급 하나만 보면 그저 비어 있는 칸과 그 학년에 없는 교시를 가릴 수 없다.
    * 그래서 학급이 하나뿐인 학년에는 안 붙인다.
