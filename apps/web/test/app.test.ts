@@ -186,6 +186,23 @@ describe('저장 형식', () => {
     expect(gradeShapes(back.input).map((x) => x.grade)).toEqual([3]);
   });
 
+  it('교시 수 표도 함께 살아남는다', () => {
+    // 이것이 빠지면 저장했다 여는 것만으로 그 학년에 없는 교시가 빈 시간으로 되살아난다.
+    // 실측에서 초등학교 57곳 가운데 53곳이 그 교시로 옮기라는 안을 내고 있었다.
+    const withPeriods = {
+      ...loaded,
+      input: { ...loaded.input, klassPeriodsPerDay: { '1-1': [4, 4, 4, 4, 4] } },
+    };
+    const back = fromFile(toFile(withPeriods));
+    expect(back.input.klassPeriodsPerDay).toEqual({ '1-1': [4, 4, 4, 4, 4] });
+  });
+
+  it('요일 수와 안 맞는 교시 수 표는 버린다', () => {
+    const doc = JSON.parse(toFile(loaded)) as Record<string, unknown>;
+    doc.periods = { '1-1': [4, 4], '1-2': [4, 4, 4, 4, 4], '1-3': [4, 4, 4, 4, 99] };
+    expect(fromFile(JSON.stringify(doc)).input.klassPeriodsPerDay).toEqual({ '1-2': [4, 4, 4, 4, 4] });
+  });
+
   it('학년 표가 없는 옛 파일은 학급 이름으로 되돌아간다', () => {
     const doc = JSON.parse(toFile(loaded)) as Record<string, unknown>;
     delete doc.grades;

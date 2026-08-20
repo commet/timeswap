@@ -21,6 +21,8 @@ export interface Indexes {
   closedAll: Map<number, string>;
   /** `${klass}|${day}` 로 그 학급만 쉬는 경우와 그 이유 */
   closedKlass: Map<string, string>;
+  /** 학급별, 요일별로 그 요일에 있는 교시 수. 없으면 학교 전체 값을 쓴다. */
+  klassPeriods: Map<string, number[]>;
 }
 
 export const tsKey = (teacher: string, slot: number): string => `${teacher}|${slot}`;
@@ -48,6 +50,7 @@ export function buildIndexes(input: TimetableInput): Indexes {
     klassSubjectDay: new Map(),
     closedAll: new Map(),
     closedKlass: new Map(),
+    klassPeriods: new Map(Object.entries(input.klassPeriodsPerDay ?? {})),
   };
   for (const c of input.closures ?? []) {
     if (c.klasses === undefined || c.klasses.length === 0) idx.closedAll.set(c.day, c.reason);

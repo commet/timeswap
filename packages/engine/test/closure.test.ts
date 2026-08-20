@@ -136,3 +136,62 @@ describe('요일마다 교시 수가 다른 학교', () => {
     expect(checkMoves(idx, cfg, [{ unit: unit!, toSlot: 8 }]).ok).toBe(true);
   });
 });
+
+/**
+ * 학년마다 하루 교시 수가 다르다.
+ *
+ * 초등학교 1학년은 4교시에 끝나고 6학년은 6교시까지 한다. 학교 전체로 6교시라고
+ * 두면 1학년의 5, 6교시가 빈 시간으로 보이고 거기로 옮기라는 안이 나온다.
+ * 그 교시는 그 학년에 없는 시간이다.
+ *
+ * 실측에서 같은 요일에 학년 간 교시 수가 2교시 이상 벌어지는 학교가 초등학교 57곳
+ * 가운데 54곳, 특수학교 32곳 가운데 25곳이었다. 막기 전에는 초등학교 53곳에서
+ * 그런 안이 나왔고 추천안의 6.7%였다. 막은 뒤 3.1%로 내려갔고, 남은 것은 전부
+ * 학급이 하나뿐인 학년이다. 그 경우는 없는 교시와 빈 칸을 가릴 수 없어 안 막는다.
+ */
+describe('학급마다 다른 교시 수', () => {
+  // 위의 school 을 그대로 쓴다. 슬롯: 월1=0 월2=1 월3=2 화1=3 화2=4 화3=5 수1=6 수2=7 수3=8
+  // 두 학급이 실제로 쓰는 것은 월 3교시, 화 2교시, 수 2교시다. 그대로 제한을 준다.
+  const limited: TimetableInput = {
+    ...school,
+    klassPeriodsPerDay: { '2-1': [3, 2, 2], '2-2': [3, 2, 2] },
+  };
+  const unitAt = (t: TimetableInput, slot: number) =>
+    [...buildUnits(t).values()].find((u) => u.slot === slot && u.klasses.includes('2-1'));
+
+  it('그 학급에 없는 교시로 옮기는 것을 막는다', () => {
+    const idx = buildIndexes(limited);
+    const unit = unitAt(limited, 0);
+    expect(unit).toBeDefined();
+    // 화3교시(슬롯 5)는 비어 있지만 이 학급에 없는 시간이다
+    const v = checkMoves(idx, cfg, [{ unit: unit!, toSlot: 5 }]);
+    expect(v.ok).toBe(false);
+    expect(v.reason).toContain('화요일에 2교시까지입니다');
+  });
+
+  it('제한이 없으면 이 규칙으로는 막지 않는다', () => {
+    // 안 막으면 이 시험이 헛돈 것이다. 막는 까닭이 이 규칙임을 확인한다.
+    const idx = buildIndexes(school);
+    const unit = unitAt(school, 0);
+    const v = checkMoves(idx, cfg, [{ unit: unit!, toSlot: 5 }]);
+    expect(v.reason ?? '').not.toContain('교시까지입니다');
+  });
+
+  it('제한 안쪽 교시는 이 규칙으로 막지 않는다', () => {
+    // 화요일을 3교시까지로 두면 같은 자리가 열린다
+    const wider: TimetableInput = {
+      ...school,
+      klassPeriodsPerDay: { '2-1': [3, 3, 2], '2-2': [3, 3, 2] },
+    };
+    const idx = buildIndexes(wider);
+    const unit = unitAt(wider, 0);
+    const v = checkMoves(idx, cfg, [{ unit: unit!, toSlot: 5 }]);
+    expect(v.reason ?? '').not.toContain('교시까지입니다');
+  });
+
+  it('제한을 안 준 학급은 그대로 둔다', () => {
+    const idx = buildIndexes(limited);
+    expect(idx.klassPeriods.get('2-1')).toEqual([3, 2, 2]);
+    expect(idx.klassPeriods.get('3-1')).toBeUndefined();
+  });
+});

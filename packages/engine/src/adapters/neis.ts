@@ -491,11 +491,41 @@ export function neisToTimetable(
     if (Number.isFinite(g) && g >= 1 && g <= 12) klassGrade[c.klass] = g;
   }
 
+  /*
+   * 학년마다 하루 교시 수가 다르다. 그 학년 학급들이 그 요일에 실제로 쓴 마지막
+   * 교시를 잡아 학급마다 붙인다. 학교 전체 값 하나로는 초등학교 1학년의 5, 6교시가
+   * 빈 시간으로 보인다.
+   *
+   * 학년으로 재고 학급에 붙이는 이유가 있다. 학급 하나만 보면 그저 비어 있는 칸과
+   * 그 학년에 없는 교시를 가릴 수 없다. 같은 학년 학급 여럿이 몇 주에 걸쳐 한 번도
+   * 안 쓴 교시라야 없는 교시로 볼 만하다. 그래서 학급이 하나뿐인 학년에는 안 붙인다.
+   */
+  const gradeLast = new Map<string, number[]>();
+  const gradeKlasses = new Map<string, Set<string>>();
+  for (const c of report.cells) {
+    if (c.kind !== '수업') continue;
+    if (c.day < 0 || c.day >= report.config.days) continue;
+    const arr =
+      gradeLast.get(c.grade) ??
+      gradeLast.set(c.grade, new Array<number>(report.config.days).fill(0)).get(c.grade)!;
+    if (c.period + 1 > arr[c.day]!) arr[c.day] = c.period + 1;
+    (gradeKlasses.get(c.grade) ?? gradeKlasses.set(c.grade, new Set()).get(c.grade)!).add(c.klass);
+  }
+  const klassPeriodsPerDay: Record<string, number[]> = {};
+  for (const [grade, arr] of gradeLast) {
+    const klasses = gradeKlasses.get(grade);
+    if (!klasses || klasses.size < 2) continue;
+    // 학교 전체 값과 같으면 굳이 들고 다니지 않는다
+    if (arr.every((v, d) => v === (report.config.periodsPerDay?.[d] ?? report.config.periods))) continue;
+    for (const k of klasses) klassPeriodsPerDay[k] = arr;
+  }
+
   return {
     config: report.config,
     assignments,
     conflicts,
     ...(Object.keys(klassGrade).length > 0 ? { klassGrade } : {}),
+    ...(Object.keys(klassPeriodsPerDay).length > 0 ? { klassPeriodsPerDay } : {}),
     ...(Object.keys(klassBusy).length > 0 ? { klassBusy } : {}),
   };
 }
