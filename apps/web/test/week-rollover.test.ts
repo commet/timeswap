@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { ClassIdentity } from '@timeswap/engine';
-import { createAbsenceCase, transitionCase } from '../lib/case-service';
+import {
+  PROTOTYPE_REQUIRED_ADMIN_TASKS,
+  completeAdminTask,
+  createAbsenceCase,
+  createCorrectionCase,
+  createPrototypeAdminTasks,
+  transitionCase,
+} from '../lib/case-service';
+import { publishCase } from '../lib/publication';
 import { validateCasePlan } from '../lib/projections';
 import { resolutionRowsForLesson } from '../lib/resolution';
 import type { Lesson, WorkspaceState } from '../lib/domain';
@@ -127,9 +135,50 @@ describe('주가 넘어가도 진행 중인 사건이 살아 있다', () => {
     expect(validation.valid).toBe(true);
   });
 
-  it('다시 불러와도 그 사건의 후보를 다시 셀 수 있다', () => {
+  it('다시 불러와도 그 사건의 후보를 새로 셀 수 있다', () => {
     const after = reloadNextWeek(afterApproval());
     const lessonId = after.cases[0]!.lessonIds[0]!;
-    expect(resolutionRowsForLesson(after, 'case-1', lessonId).length).toBeGreaterThan(0);
+    const rows = resolutionRowsForLesson(after, 'case-1', lessonId);
+    // 이미 고른 안 하나는 개수만 채운다. 엔진이 새로 낸 안이 있어야 다시 고를 수 있다.
+    expect(rows.filter((row) => row.id.startsWith('candidate:engine')).length).toBeGreaterThan(0);
+  });
+
+  /*
+   * 지난주 게시분을 이번 주에 정정한다.
+   *
+   * 수업을 지난주 것까지 남겨 두는 이유가 바로 이것이다. 게시한 변경을 그 주 안에
+   * 정정하는 일이 흔한데, 정정을 여는 시점은 이미 다음 주일 수 있다. 남겨 두기만
+   * 하고 아무도 안 보면 남겨 둔 뜻이 없다.
+   */
+  it('지난주에 게시한 사건을 이번 주에 정정할 수 있다', () => {
+    let state = afterApproval();
+    state = createPrototypeAdminTasks(state, {
+      caseId: 'case-1', actorId: 'ops', at: '2026-08-21T10:00:00.000Z',
+      auditEventId: 'case-1:admin', taskAuditEventId: 'case-1:tasks',
+      taskIds: {
+        neis: 't1', teacher_notice: 't2', class_publication: 't3', internal_document: 't4',
+      },
+    });
+    let seq = 0;
+    for (const kind of PROTOTYPE_REQUIRED_ADMIN_TASKS) {
+      const taskId = { neis: 't1', teacher_notice: 't2', class_publication: 't3' }[kind];
+      seq += 1;
+      state = completeAdminTask(state, {
+        taskId, actorId: 'ops',
+        at: `2026-08-21T1${seq}:00:00.000Z`, auditEventId: `case-1:done:${seq}`,
+      });
+    }
+    state = publishCase(state, 'case-1', 'ops', '2026-08-21T15:00:00.000Z');
+    expect(state.cases[0]!.status).toBe('published');
+
+    const after = reloadNextWeek(state);
+    const corrected = createCorrectionCase(after, {
+      id: 'case-1-fix', sourceCaseId: 'case-1', actorId: 'ops',
+      at: '2026-08-24T08:00:00.000Z', auditEventId: 'case-1-fix:create',
+    });
+    const lessonId = corrected.cases.find((item) => item.id === 'case-1-fix')!.lessonIds[0]!;
+    // 정정도 후보부터 다시 고른다. 후보가 0개면 정정할 길이 없다.
+    // 막힌 안은 목록에 아예 안 들어온다. 하나라도 있으면 고를 수 있다는 뜻이다.
+    expect(resolutionRowsForLesson(corrected, 'case-1-fix', lessonId).length).toBeGreaterThan(0);
   });
 });

@@ -620,7 +620,9 @@ function engineExchangeCandidates(
           id: `candidate:engine:${lesson.id}:${candidate.type}:${fingerprint}`,
           lessonId: lesson.id,
           kind: candidate.type,
-          computedAgainstRevisionId: state.workspace.activeRevisionId,
+          // 지금 띄운 주가 아니라 이 수업이 온 주로 찍는다. 지난주 사건을 다시 풀 때
+          // 활성 개정판으로 찍으면 만들자마자 "다시 계산해야 함"이 되어 다 막힌다.
+          computedAgainstRevisionId: lesson.revisionId,
           changes,
         },
         engineScore: candidate.score,
@@ -694,7 +696,7 @@ function engineCoverCandidates(
         id: `candidate:engine-cover:${lesson.id}:${teacherId}`,
         lessonId: lesson.id,
         kind: 'cover' as const,
-        computedAgainstRevisionId: state.workspace.activeRevisionId,
+        computedAgainstRevisionId: lesson.revisionId,
         changes: group.lessons.map((grouped) => ({
           lessonId: grouped.id,
           toDate: grouped.date,

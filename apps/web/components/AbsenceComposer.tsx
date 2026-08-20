@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  CASE_STATUS_LABEL,
   findDuplicateAbsenceCase,
   lessonsAffectedByAbsence,
 } from '../lib/case-service';
@@ -234,7 +235,7 @@ export function AbsenceComposer({
       requesterTeacherId: teacherId, fromDate, toDate, lessonIds: selected.map((lesson) => lesson.id),
     });
     if (duplicate) {
-      setMessage(`같은 기간과 수업으로 ${duplicate.status} 상태의 요청이 이미 있습니다. 기존 요청을 확인하거나 날짜 또는 수업 선택을 바꾸십시오.`);
+      setMessage(`같은 기간과 수업으로 ${CASE_STATUS_LABEL[duplicate.status]} 상태의 요청이 이미 있습니다. 기존 요청을 확인하거나 날짜 또는 수업 선택을 바꾸십시오.`);
       return;
     }
     const result = onSubmit({

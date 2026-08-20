@@ -97,12 +97,40 @@ export function lessonsAffectedByAbsence(
       || left.id.localeCompare(right.id));
 }
 
+/** 화면에 보이는 사건 상태 이름. */
+export const CASE_STATUS_LABEL: Record<CaseStatus, string> = {
+  draft: '작성 중',
+  submitted: '제출됨',
+  in_review: '검토 중',
+  resolution_approved: '승인됨',
+  admin_in_progress: '행정 마감 중',
+  ready_to_publish: '게시 대기',
+  published: '게시됨',
+  rejected: '반려됨',
+  cancelled: '취소됨',
+  superseded: '정정으로 대체됨',
+};
+
+/**
+ * 없던 일이 된 요청. 자리도 안 잡고 중복도 안 막는다.
+ */
+const VOID_STATUSES = new Set<CaseStatus>(['rejected', 'cancelled', 'superseded']);
+
+/**
+ * 같은 부재가 이미 올라와 있는지.
+ *
+ * 살아 있는 요청만 본다. 반려나 취소된 요청까지 세면 반려된 교사가 같은 부재를 다시
+ * 낼 수 없다. 반려 사유가 "다시 조정해야 하는 이유"인데 다시 낼 길이 막히면 반려가
+ * 곧 끝이 된다. 화면은 날짜나 수업 선택을 바꾸라고 안내하지만 그것은 바꿀 수 있는
+ * 사실이 아니다. 출장 날짜는 이미 정해져 있다.
+ */
 export function findDuplicateAbsenceCase(
   state: WorkspaceState,
   input: Pick<CreateAbsenceCaseInput, 'requesterTeacherId' | 'fromDate' | 'toDate' | 'lessonIds'>,
 ): AbsenceCase | undefined {
   const selected = [...input.lessonIds].sort();
-  return state.cases.find((item) => item.requesterTeacherId === input.requesterTeacherId
+  return state.cases.find((item) => !VOID_STATUSES.has(item.status)
+    && item.requesterTeacherId === input.requesterTeacherId
     && item.fromDate === input.fromDate
     && item.toDate === input.toDate
     && item.lessonIds.length === selected.length

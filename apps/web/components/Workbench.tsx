@@ -35,7 +35,7 @@ import {
 import { RequestStatusList } from './RequestStatusList';
 import { BRAND } from '../lib/brand';
 import type { WorkspaceState } from '../lib/domain';
-import { findDuplicateAbsenceCase, persistSubmittedAbsenceCase } from '../lib/case-service';
+import { CASE_STATUS_LABEL, findDuplicateAbsenceCase, persistSubmittedAbsenceCase } from '../lib/case-service';
 import {
   resolutionPreviewForHandoff,
   resolutionProgressForCase,
@@ -1429,7 +1429,7 @@ function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleVi
       lessonIds: input.lessonIds,
     });
     if (duplicate) {
-      return { error: `같은 기간과 수업으로 ${duplicate.status} 상태의 요청이 이미 있습니다. 기존 요청을 확인하거나 날짜 또는 수업 선택을 바꾸십시오.` };
+      return { error: `같은 기간과 수업으로 ${CASE_STATUS_LABEL[duplicate.status]} 상태의 요청이 이미 있습니다. 기존 요청을 확인하거나 날짜 또는 수업 선택을 바꾸십시오.` };
     }
     const part = caseIdPart();
     const at = new Date().toISOString();
