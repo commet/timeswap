@@ -96,6 +96,7 @@ import {
   type Loaded,
   type ThemeMode,
 } from '../lib/app';
+import { localDate } from '../lib/today';
 import { createNeisSession } from '../lib/neis-session';
 import { loadDemoScenario, type DemoScenarioId } from '../lib/demo';
 
@@ -1522,11 +1523,17 @@ function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleVi
 }
 
 /** The demo corpus is fixed in time so its screens stay reproducible. */
-function todayOf(state: WorkspaceState): string {
+/**
+ * 일과 담당 화면과 학급 공개 화면이 오늘로 삼는 날.
+ *
+ * `toISOString()` 을 쓰고 있었다. 그것은 UTC 날짜라 한국에서는 자정부터 아침 9시까지
+ * 어제가 나온다. 그 시간에 열면 관제판의 오늘 건수가 어제 것이 되고, 학급 공개
+ * 시간표도 어제 것이 떴다. 교사 화면은 지역 날짜를 쓰고 있어서 두 화면이 아침마다
+ * 서로 다른 날을 오늘이라고 불렀다.
+ */
+export function todayOf(state: WorkspaceState, now = new Date()): string {
   const activeRevision = state.revisions.find((item) => item.id === state.workspace.activeRevisionId);
-  return activeRevision?.source === 'demo'
-    ? '2026-08-18'
-    : new Date().toISOString().slice(0, 10);
+  return activeRevision?.source === 'demo' ? '2026-08-18' : localDate(now);
 }
 
 function CanonicalOpsWorkbench({ state, location, saveState, navigate }: OpsRoleViewAdapterProps) {

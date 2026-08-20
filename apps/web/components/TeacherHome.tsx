@@ -9,6 +9,7 @@ import {
 } from './AbsenceComposer';
 import { TeacherScheduleGrid, type TimetableResolutionPreview } from './Grid';
 import type { WorkspaceState } from '../lib/domain';
+import { localDate } from '../lib/today';
 import { projectTeacherSchedule, type TeacherScheduleLessonView } from '../lib/projections';
 
 export type ScheduleFocus = 'today' | 'week';
@@ -17,11 +18,8 @@ function scheduleValue(lesson: TeacherScheduleLessonView) {
   return lesson.pending ?? lesson.published ?? lesson.base;
 }
 
-function currentDate(): string {
-  const now = new Date();
-  return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')]
-    .join('-');
-}
+// 오늘을 정하는 곳은 lib/today.ts 하나다. 화면마다 따로 구하면 서로 다른 날이 된다.
+const currentDate = (): string => localDate();
 
 export function selectTeacherToday(
   dates: readonly string[],
