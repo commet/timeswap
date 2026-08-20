@@ -35,7 +35,12 @@ import {
 import { RequestStatusList } from './RequestStatusList';
 import { BRAND } from '../lib/brand';
 import type { WorkspaceState } from '../lib/domain';
-import { CASE_STATUS_LABEL, findDuplicateAbsenceCase, persistSubmittedAbsenceCase } from '../lib/case-service';
+import {
+  CASE_STATUS_LABEL,
+  findDuplicateAbsenceCase,
+  persistSubmittedAbsenceCase,
+  transitionCase,
+} from '../lib/case-service';
 import {
   resolutionPreviewForHandoff,
   resolutionProgressForCase,
@@ -1449,6 +1454,26 @@ function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleVi
     }
   }
 
+  /** 낸 사람이 자기 요청을 거둔다. 승인 전까지만 열려 있다. */
+  function withdraw(caseId: string): { error?: string } {
+    const part = caseIdPart();
+    try {
+      const next = transitionCase(state, {
+        caseId, to: 'cancelled', actorId: teacherId,
+        at: new Date().toISOString(), auditEventId: `audit:${part}:cancelled`,
+      });
+      const result = saveState(next);
+      if (result.ok) return {};
+      return {
+        error: result.reason === 'quota'
+          ? '저장 공간이 부족해 취소하지 않았습니다. 공간을 확보한 뒤 다시 시도하십시오.'
+          : '이 브라우저에 저장할 수 없어 취소하지 않았습니다. 저장 설정을 확인한 뒤 다시 시도하십시오.',
+      };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : '요청을 취소하지 못했습니다.' };
+    }
+  }
+
   function confirmResolution() {
     if (!handoff || !preview || !selectedRow || !selectedPreview) return;
     const selectedCase = selectedPreview.state.cases.find((item) => item.id === preview.caseId);
@@ -1504,6 +1529,7 @@ function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleVi
         onSubmit={submit}
         onExportDiagnostic={() => downloadDiagnostic(state)}
         onCandidateHandoff={setHandoff}
+        onWithdraw={withdraw}
         resolutionPreview={timetablePreview}
       />
       {handoff && preview && (

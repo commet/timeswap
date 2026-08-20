@@ -7,6 +7,7 @@ import type {
   ResolutionItem,
   WorkspaceState,
 } from './domain';
+import { CASE_STATUS_LABEL, canWithdrawCase } from './domain';
 import type { SaveResult } from './repository';
 import { validateCasePlan } from './projections';
 
@@ -97,20 +98,6 @@ export function lessonsAffectedByAbsence(
       || left.id.localeCompare(right.id));
 }
 
-/** 화면에 보이는 사건 상태 이름. */
-export const CASE_STATUS_LABEL: Record<CaseStatus, string> = {
-  draft: '작성 중',
-  submitted: '제출됨',
-  in_review: '검토 중',
-  resolution_approved: '승인됨',
-  admin_in_progress: '행정 마감 중',
-  ready_to_publish: '게시 대기',
-  published: '게시됨',
-  rejected: '반려됨',
-  cancelled: '취소됨',
-  superseded: '정정으로 대체됨',
-};
-
 /**
  * 없던 일이 된 요청. 자리도 안 잡고 중복도 안 막는다.
  */
@@ -124,6 +111,8 @@ const VOID_STATUSES = new Set<CaseStatus>(['rejected', 'cancelled', 'superseded'
  * 곧 끝이 된다. 화면은 날짜나 수업 선택을 바꾸라고 안내하지만 그것은 바꿀 수 있는
  * 사실이 아니다. 출장 날짜는 이미 정해져 있다.
  */
+export { CASE_STATUS_LABEL, canWithdrawCase };
+
 export function findDuplicateAbsenceCase(
   state: WorkspaceState,
   input: Pick<CreateAbsenceCaseInput, 'requesterTeacherId' | 'fromDate' | 'toDate' | 'lessonIds'>,
@@ -241,8 +230,8 @@ export function createAbsenceCase(
 
 const NEXT_STATUS: Partial<Record<CaseStatus, readonly CaseStatus[]>> = {
   draft: ['submitted'],
-  submitted: ['in_review'],
-  in_review: ['resolution_approved', 'rejected'],
+  submitted: ['in_review', 'cancelled'],
+  in_review: ['resolution_approved', 'rejected', 'cancelled'],
   resolution_approved: ['admin_in_progress'],
   admin_in_progress: ['ready_to_publish'],
   ready_to_publish: ['published'],

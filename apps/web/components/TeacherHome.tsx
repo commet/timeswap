@@ -10,7 +10,12 @@ import {
 import { TeacherScheduleGrid, type TimetableResolutionPreview } from './Grid';
 import type { WorkspaceState } from '../lib/domain';
 import { localDate } from '../lib/today';
-import { projectTeacherSchedule, type TeacherScheduleLessonView } from '../lib/projections';
+import {
+  projectTeacherCases,
+  projectTeacherSchedule,
+  type TeacherScheduleLessonView,
+} from '../lib/projections';
+import { TeacherRequestList } from './TeacherRequestList';
 
 export type ScheduleFocus = 'today' | 'week';
 
@@ -42,6 +47,7 @@ export function TeacherHome({
   onSubmit,
   onExportDiagnostic,
   onCandidateHandoff,
+  onWithdraw,
   resolutionPreview,
 }: {
   state: WorkspaceState;
@@ -49,12 +55,20 @@ export function TeacherHome({
   onSubmit(input: AbsenceComposerSubmission): { caseId?: string; error?: string };
   onExportDiagnostic(): void;
   onCandidateHandoff?(handoff: CandidateHandoff): void;
+  /** 낸 사람이 요청을 스스로 거둘 때. 안 넘기면 취소 단추가 안 뜬다. */
+  onWithdraw?(caseId: string): { error?: string };
   resolutionPreview?: TimetableResolutionPreview;
 }) {
   const [focus, setFocus] = useState<ScheduleFocus>('today');
   const [composerOpen, setComposerOpen] = useState(false);
   const [initialLessonId, setInitialLessonId] = useState<string | undefined>();
+  const [requestMessage, setRequestMessage] = useState('');
   const schedule = useMemo(() => projectTeacherSchedule(state, teacherId), [state, teacherId]);
+  const myCases = useMemo(
+    () => projectTeacherCases(state, teacherId)
+      .map((item) => onWithdraw ? item : { ...item, withdrawable: false }),
+    [state, teacherId, onWithdraw],
+  );
   const dates = useMemo(() => [...new Set(schedule.lessons.map((lesson) => scheduleValue(lesson).date))]
     .sort(), [schedule.lessons]);
   const browserToday = currentDate();
@@ -148,6 +162,15 @@ export function TeacherHome({
         <TeacherScheduleGrid lessons={schedule.lessons} onSelectLesson={openComposer}
           resolutionPreview={resolutionPreview} />
       )}
+
+      <TeacherRequestList
+        cases={myCases}
+        message={requestMessage}
+        onWithdraw={(caseId) => {
+          const result = onWithdraw?.(caseId);
+          setRequestMessage(result?.error ?? '요청을 취소했습니다.');
+        }}
+      />
     </main>
   );
 }

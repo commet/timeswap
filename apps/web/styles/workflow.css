@@ -231,7 +231,10 @@
 .status-pill.pending { background: var(--accent-soft); color: var(--accent); }
 .status-pill.approved { background: var(--success-soft); color: var(--success); }
 .status-pill.published { background: var(--ink); color: var(--surface); }
-.status-pill.rejected, .status-pill.cancelled { background: var(--warn-soft); color: var(--warn); }
+.status-pill.rejected, .status-pill.cancelled, .status-pill.superseded { background: var(--warn-soft); color: var(--warn); }
+.status-pill.submitted, .status-pill.in_review, .status-pill.draft { background: var(--accent-soft); color: var(--accent); }
+.status-pill.resolution_approved, .status-pill.admin_in_progress, .status-pill.ready_to_publish { background: var(--success-soft); color: var(--success); }
+.request-reject-note { color: var(--warn); }
 .ops-detail { border: 1px solid var(--line); border-radius: 16px; background: var(--surface); overflow: hidden; }
 .ops-detail { position: sticky; top: 88px; min-height: 420px; }
 .ops-detail > header { display: flex; justify-content: space-between; gap: 16px; align-items: start; padding: 22px; border-bottom: 1px solid var(--line); }

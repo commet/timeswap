@@ -1,7 +1,12 @@
 import { classIdentityKey } from '@timeswap/engine';
 
+import {
+  CASE_STATUS_LABEL,
+  canWithdrawCase,
+} from './domain';
 import type {
   AbsenceCase,
+  CaseStatus,
   ClassIdentity,
   Lesson,
   Publication,
@@ -10,6 +15,27 @@ import type {
   WorkspaceState,
 } from './domain';
 import { BURDEN_WEEKS, dateAtUtcOffset, mondayOf } from './week';
+
+/**
+ * 교사가 자기 요청을 보는 줄.
+ *
+ * 낸 사람 것만 뽑는다. 다른 사람 사건의 내부 값은 한 자도 안 들어간다.
+ */
+export interface TeacherCaseView {
+  caseId: string;
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  status: CaseStatus;
+  statusLabel: string;
+  /** 낸 사람이 스스로 적은 전달 사항. */
+  note?: string;
+  /** 반려 사유. 일과 담당이 적고 낸 사람이 읽는다. */
+  rejectionNote?: string;
+  lessonCount: number;
+  withdrawable: boolean;
+  updatedAt: string;
+}
 
 export interface TeacherLessonValue {
   date: string;
@@ -210,6 +236,38 @@ function comparePeriod(left: string, right: string): number {
   const rightPeriod = Number(right);
   if (Number.isFinite(leftPeriod) && Number.isFinite(rightPeriod)) return leftPeriod - rightPeriod;
   return left.localeCompare(right);
+}
+
+/**
+ * 그 교사가 낸 요청 목록.
+ *
+ * 교사 화면에 자기 요청이 하나도 안 보이고 있었다. 제출하면 "요청을 제출했습니다"가
+ * 한 번 뜨고 끝이다. 승인됐는지 반려됐는지 알 길이 없고, 반려 사유는 일과 담당이
+ * 반드시 적어야 하는 값인데 읽는 화면이 없었다. 적으라고 해 놓고 아무도 안 읽었다.
+ *
+ * 최근 것이 위로 온다. 끝난 요청도 남긴다. 반려 사유를 나중에 읽으러 오는 자리다.
+ */
+export function projectTeacherCases(
+  state: WorkspaceState,
+  teacherId: string,
+): TeacherCaseView[] {
+  return state.cases
+    .filter((item) => item.requesterTeacherId === teacherId)
+    .map((item) => ({
+      caseId: item.id,
+      fromDate: item.fromDate,
+      toDate: item.toDate,
+      reason: item.reason,
+      status: item.status,
+      statusLabel: CASE_STATUS_LABEL[item.status],
+      ...(item.note ? { note: item.note } : {}),
+      ...(item.rejectionNote ? { rejectionNote: item.rejectionNote } : {}),
+      lessonCount: item.lessonIds.length,
+      withdrawable: canWithdrawCase(item.status),
+      updatedAt: item.updatedAt,
+    }))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)
+      || right.fromDate.localeCompare(left.fromDate));
 }
 
 export function projectTeacherSchedule(
