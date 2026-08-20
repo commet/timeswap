@@ -48,22 +48,36 @@ export function OpsCommandCenter({
   step,
 }: OpsCommandCenterProps) {
   const mobileStep = step ?? 'list';
+  /** 일과 담당의 손이 필요한 건수. 승인, 나이스 입력, 게시 셋을 합친다. */
+  const waiting = dashboard.pendingCases + dashboard.neisTasks + dashboard.publicationTasks;
   return (
     <main id="main-content" tabIndex={-1} className="ops-command-center" data-ops-command-center data-ops-step={mobileStep}>
       <header className="ops-command-heading">
         <div>
-          <span className="eyebrow">일과 담당 · 변경 관제판</span>
-          <h2>지금 결정해야 할 변경</h2>
-          <p>우선순위, 전체 충돌, 행정 마감 상태를 한 사건 기준으로 확인합니다.</p>
+          <span className="eyebrow">일과 담당</span>
+          {/*
+            * 제목이 물음에 답한다. 앞서는 "지금 결정해야 할 변경"이라는 표어였고 그 아래
+            * 화면을 설명하는 부제목이 있었다. 일과 담당이 이 화면을 여는 이유는 하나다.
+            * 내 손이 필요한 것이 몇 건인가.
+            */}
+          <h2>{waiting > 0 ? <>처리할 일 <span className="num">{waiting}</span>건</> : '처리할 일 없음'}</h2>
         </div>
         <DemoScenarioPicker state={scenarioState} onOpenScenario={onOpenScenario} />
       </header>
 
-      {/* 지표는 어느 한 구역의 성질이 아니라 판 전체의 상태다. 카드 안에 넣으면
-          그 카드의 부속으로 읽힌다. 머리말 바로 아래 한 줄로 세운다. */}
+      {/*
+        * 값이 0인 지표는 조용히 둔다.
+        *
+        * 앞서는 여섯을 똑같은 크기로 세웠고 대개 다섯이 0이었다. 0을 큰 숫자로 여섯 번
+        * 보여 주면 1인 하나가 묻힌다. 셀 것이 있는 것을 앞에 두고, 0은 뒤에서 흐리게 둔다.
+        */}
       <dl className="ops-metrics" aria-label="변경 관제 지표">
-        {metrics.map(({ key, label }) => (
-          <div key={key} data-ops-metric={key}><dt>{label}</dt><dd>{dashboard[key]}</dd></div>
+        {[...metrics].sort((left, right) =>
+          (dashboard[right.key] > 0 ? 1 : 0) - (dashboard[left.key] > 0 ? 1 : 0),
+        ).map(({ key, label }) => (
+          <div key={key} data-ops-metric={key} className={dashboard[key] > 0 ? 'on' : ''}>
+            <dt>{label}</dt><dd className="num">{dashboard[key]}</dd>
+          </div>
         ))}
       </dl>
 

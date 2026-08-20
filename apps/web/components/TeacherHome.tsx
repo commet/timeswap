@@ -37,6 +37,14 @@ export function selectTeacherToday(
     : { date: browserDate, label: '불러온 수업일 없음' };
 }
 
+/** "8월 18일 화요일". 화면 제목이 날짜인 이유는 교사가 묻는 것이 "오늘"이기 때문이다. */
+const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
+function dayTitle(date: string): string {
+  const value = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(value.valueOf())) return date;
+  return `${value.getMonth() + 1}월 ${value.getDate()}일 ${DAY_NAMES[value.getDay()]}요일`;
+}
+
 function teacherLabel(state: WorkspaceState, teacherId: string): string {
   return state.teacherLabels?.[teacherId]?.trim() || '담당 교사';
 }
@@ -77,9 +85,25 @@ export function TeacherHome({
   const todayLessons = useMemo(() => schedule.lessons.filter((lesson) =>
     scheduleValue(lesson).date === todayDate), [schedule.lessons, todayDate]);
   const todayChanges = todayLessons.filter((lesson) => lesson.status !== 'base').length;
-  const nowLesson = todayLessons[0];
-  const nextLesson = todayLessons[1];
   const label = teacherLabel(state, teacherId);
+  /*
+   * 하루를 교시 순서로 세운다. 수업이 없는 교시도 줄에 남긴다.
+   *
+   * 앞서는 수업이 있는 칸만 카드로 흩어 놓았다. 그러면 "3교시가 비었다"는 사실이 화면에서
+   * 사라진다. 결강을 대신 맡을 자리를 찾는 사람에게는 빈 교시가 가장 중요한 정보다.
+   */
+  const rail = useMemo(() => {
+    const byPeriod = new Map<number, TeacherScheduleLessonView[]>();
+    for (const lesson of todayLessons) {
+      const period = Number(scheduleValue(lesson).period) || 0;
+      byPeriod.set(period, [...(byPeriod.get(period) ?? []), lesson]);
+    }
+    const last = Math.max(0, ...byPeriod.keys());
+    return Array.from({ length: last }, (_, index) => ({
+      period: index + 1,
+      lessons: byPeriod.get(index + 1) ?? [],
+    }));
+  }, [todayLessons]);
 
   function openComposer(lessonId?: string) {
     setInitialLessonId(lessonId);
@@ -90,51 +114,61 @@ export function TeacherHome({
     <main id="main-content" tabIndex={-1} className="teacher-command" data-teacher-home aria-labelledby="teacher-home-title">
       <section className="teacher-command-intro">
         <div>
-          <span className="eyebrow">{state.workspace.name}</span>
-          <h1 id="teacher-home-title">{label} 선생님의 시간표</h1>
-          <p>수업을 먼저 확인하고, 필요한 경우 영향 수업을 골라 하나의 변경 사건으로 요청합니다.</p>
+          <span className="eyebrow">{state.workspace.name} · {label} 선생님</span>
+          <h1 id="teacher-home-title">{dayTitle(todayDate)}</h1>
+          {/* 표를 보여 주기 전에 물음에 먼저 답한다. 오늘 내 수업이 바뀌었는가. */}
+          <p className="teacher-verdict" data-now-next data-today-change-count>
+            {todayChanges > 0
+              ? <><b className="mark">오늘 바뀐 수업 {todayChanges}개</b> 아래 주홍 표시를 확인하십시오.</>
+              : <>오늘 바뀐 수업은 없습니다.</>}
+          </p>
         </div>
         <button className="btn primary teacher-request-button" onClick={() => openComposer()}>변경 요청</button>
       </section>
 
       <section className="teacher-today" aria-labelledby="teacher-today-title">
         <div className="teacher-today-head">
-          <div>
-            <span className="eyebrow">{today.label} · {todayDate}</span>
-            <h2 id="teacher-today-title">수업 흐름</h2>
+          <h2 id="teacher-today-title">{today.label === '오늘' ? '오늘 수업' : '불러온 수업일'}</h2>
+          <div className="teacher-focus-tabs" role="tablist" aria-label="시간표 범위">
+            <button role="tab" aria-selected={focus === 'today'} className={focus === 'today' ? 'on' : ''}
+              onClick={() => setFocus('today')}>하루</button>
+            <button role="tab" aria-selected={focus === 'week'} className={focus === 'week' ? 'on' : ''}
+              onClick={() => setFocus('week')}>주간</button>
           </div>
-          <p data-today-change-count><b>{todayChanges}</b>건 변경</p>
-        </div>
-        <div className="teacher-focus-tabs" role="tablist" aria-label="시간표 범위">
-          <button role="tab" aria-selected={focus === 'today'} className={focus === 'today' ? 'on' : ''}
-            onClick={() => setFocus('today')}>오늘</button>
-          <button role="tab" aria-selected={focus === 'week'} className={focus === 'week' ? 'on' : ''}
-            onClick={() => setFocus('week')}>주간</button>
         </div>
         {focus === 'today' && (
-          <div className="period-rail" aria-label={`${todayDate} 수업`}>
-            <article className="now-next" data-now-next>
-              <span>오늘 첫 수업</span>
-              {nowLesson ? <b>{scheduleValue(nowLesson).period}교시 · {scheduleValue(nowLesson).subject}</b> : <b>표시할 수업이 없습니다</b>}
-            </article>
-            <article className="now-next">
-              <span>그다음 수업</span>
-              {nextLesson ? <b>{scheduleValue(nextLesson).period}교시 · {scheduleValue(nextLesson).subject}</b> : <b>다음 수업은 없습니다</b>}
-            </article>
-            {todayLessons.map((lesson) => {
-              const value = scheduleValue(lesson);
-              return (
-                <button key={lesson.lessonId} className={`period-rail-lesson ${lesson.status === '변경 예정' ? 'planned' : lesson.status}`}
-                  onClick={() => openComposer(lesson.lessonId)}>
-                  <span>{value.period}교시</span>
-                  <b>{value.subject}</b>
-                  {lesson.status === '변경 예정' && <em>변경 예정</em>}
-                  {lesson.status !== 'base' && <small>원래 {lesson.base.subject} · {lesson.base.classIdentity.grade}-{lesson.base.classIdentity.className} · {lesson.base.period}교시 · {lesson.base.room}</small>}
-                  <small>{value.classIdentity.grade}-{value.classIdentity.className} · {value.room}</small>
-                </button>
-              );
-            })}
-          </div>
+          <ol className="period-rail" aria-label={`${todayDate} 수업`}>
+            {rail.map((slot) => (
+              <li key={slot.period} className="rail-row">
+                <span className="rail-period num" aria-hidden>{slot.period}</span>
+                {slot.lessons.length === 0 ? (
+                  <span className="rail-free">{slot.period}교시 비어 있음</span>
+                ) : slot.lessons.map((lesson) => {
+                  const value = scheduleValue(lesson);
+                  const changed = lesson.status !== 'base';
+                  return (
+                    <button
+                      key={lesson.lessonId}
+                      className={`period-rail-lesson ${changed ? 'changed' : ''}`}
+                      onClick={() => openComposer(lesson.lessonId)}
+                    >
+                      <b>{value.subject}</b>
+                      <span className="rail-where">
+                        {value.classIdentity.grade}-{value.classIdentity.className}
+                        <i>{value.room}</i>
+                      </span>
+                      {changed && (
+                        <span className="rail-from">
+                          원래 {lesson.base.period}교시 {lesson.base.subject}
+                          {lesson.status === '변경 예정' ? ' · 결재 중' : ''}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </li>
+            ))}
+          </ol>
         )}
       </section>
 

@@ -51,10 +51,16 @@ describe('teacher schedule view helpers', () => {
       onExportDiagnostic: () => undefined,
     }));
 
-    expect(html).toContain('오늘 첫 수업');
-    expect(html).toContain('그다음 수업');
+    /*
+     * 벽시계를 모르는 화면이다. "지금"이나 "다음"이라고 부르면 근거 없는 말이 된다.
+     * 교시 번호는 자료가 확실히 아는 것이라 그것으로 세운다. 레일이 교시를 차례로
+     * 세우므로 순서가 화면에 그대로 있다.
+     */
+    expect(html).toContain('rail-period');
+    expect(html).toContain('교시 비어 있음');
     expect(html).not.toContain('>지금<');
     expect(html).not.toContain('>다음<');
+    expect(html).not.toContain('오늘 첫 수업');
   });
 
   it('keeps every lesson that shares one date and period and renders changed original/new details', () => {

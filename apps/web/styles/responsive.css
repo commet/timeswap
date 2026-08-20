@@ -41,7 +41,7 @@
   .seg button  { padding: 9px 13px; font-size: 13px; min-height: 40px; }
   .select { max-width: 132px; min-height: 40px; }
   .select.combo { min-width: 0; max-width: 128px; }
-  .theme-btn { padding: 9px 11px; font-size: 12.5px; min-height: 40px; }
+  .theme-btn { padding: 9px 11px; font-size: 13px; min-height: 40px; }
   .offday { min-height: 40px; min-width: 40px; }
   .wordmark { min-height: 40px; }
   /* 요일 머리글은 누르면 그날 전체가 선택된다. 격자 안이라도 누르는 곳이다 */
@@ -63,7 +63,7 @@
    */
   .tt-grid  { min-width: 0; --col-min: 0; }
   .cell { min-height: 46px; padding: 5px 7px; }
-  .cell .k, .cell .s { font-size: 11px; }
+  .cell .k, .cell .s { font-size: 13px; }
   /* 교사 화면: 학급만 남긴다. 글씨를 키워 가운데 놓는다 */
   .tt-grid.by-teacher .cell.lesson .s  { display: none; }
   .tt-grid.by-teacher .cell.lesson .k { font-size: 13px; font-weight: 800; }
@@ -75,7 +75,7 @@
    * 실제 자료의 최대는 14자라 그런 과목은 세 줄이 되지만, 잘리는 것보다 낫다.
    */
   .tt-grid.by-klass .cell.lesson .k  {
-    white-space: normal; word-break: keep-all; line-height: 1.2; font-size: 10px;
+    white-space: normal; word-break: keep-all; line-height: 1.2; font-size: 13px;
   }
   .tt-grid.by-klass .cell { min-height: 54px; }
   .card-head { padding: 12px 14px 0; flex-wrap: wrap; }
@@ -91,7 +91,7 @@
   .hero { gap: 0; }
   /* 머리글이 더 이상 화면에 붙어 있지 않으므로 가릴 것을 감안하지 않는다 */
   .side  { scroll-margin-top: 8px; }
-  .foot { font-size: 11.5px; gap: 8px; }
+  .foot { font-size: 13px; gap: 8px; }
 }
 @media print {
   .topbar, .work, .landing, .foot, .toast, .warn-bar { display: none !important; }
@@ -141,7 +141,7 @@
   .panel-titlebar { padding: 17px 16px 14px; }
   .cand.compare-row { grid-template-columns: minmax(0, 1fr) auto; gap: 7px; padding: 12px 10px; }
   .cand.compare-row > span:nth-child(2), .cand.compare-row > span:nth-child(4) { display: none; }
-  .toast { width: max-content; max-width: calc(100vw - 24px); white-space: nowrap; padding: 8px 13px; font-size: 12px; }
+  .toast { width: max-content; max-width: calc(100vw - 24px); white-space: nowrap; padding: 8px 13px; font-size: 13px; }
   .cover-row .btn { min-height: 42px; }
   .request-status-list { width: calc(100% - 20px); margin-top: 10px; padding: 16px 12px; }
   .status-rows article { grid-template-columns: 1fr auto; gap: 8px; }
@@ -201,9 +201,10 @@
   .teacher-today-head h2 { font-size: 20px; }
   .teacher-focus-tabs { padding: 0 15px; }
   .teacher-focus-tabs button { flex: 1; min-height: var(--tap); }
-  .period-rail { padding: 12px 15px 16px; grid-template-columns: 1fr 1fr; }
-  .now-next, .period-rail-lesson { min-height: 78px; padding: 10px; }
-  .period-rail-lesson { grid-column: span 1; }
+  .rail-row { grid-template-columns: 46px 1fr; }
+  .rail-period { font-size: 23px; }
+  .period-rail-lesson { padding: 13px 15px; }
+  .rail-free { padding: 14px 15px; }
   .absence-composer { padding: 18px 15px; }
   .absence-composer > header { flex-direction: column; }
   .absence-composer > header .btn { width: 100%; }
@@ -225,8 +226,8 @@
   .resolution-table tbody { border-top: 1px solid var(--line); }
   .resolution-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; padding: 7px 0; border-bottom: 1px solid var(--line); }
   .resolution-table tbody tr:last-child { border-bottom: 0; }
-  .resolution-table td { min-height: var(--tap); padding: 7px 12px; display: grid; grid-template-columns: 63px minmax(0, 1fr); align-items: center; gap: 7px; border: 0; font-size: 12px; }
-  .resolution-table td::before { content: attr(data-label); color: var(--muted); font-size: 10px; font-weight: 850; }
+  .resolution-table td { min-height: var(--tap); padding: 7px 12px; display: grid; grid-template-columns: 63px minmax(0, 1fr); align-items: center; gap: 7px; border: 0; font-size: 13px; }
+  .resolution-table td::before { content: attr(data-label); color: var(--muted); font-size: 13px; font-weight: 850; }
   .resolution-table td:first-child { grid-column: 1 / -1; }
   .resolution-choice { min-height: var(--tap); }
   .resolution-detail { padding: 18px 15px 82px; }
@@ -238,9 +239,7 @@
   .resolution-action .btn { width: 100%; min-height: 48px; }
 }
 @media (max-width: 759px) {
-  .ops-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; }
-  .ops-metrics dt { font-size: 10px; white-space: normal; }
-  .ops-metrics dd { font-size: 22px; }
+  .ops-metrics { gap: 6px 16px; }
 
   .ops-command-center { width: calc(100% - 20px); margin: 12px auto 34px; }
   .ops-command-heading { align-items: stretch; flex-direction: column; gap: 9px; }

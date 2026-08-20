@@ -1,71 +1,95 @@
-/* 디자인 토큰. 밝음과 어둠의 값만 둔다. 여기서 정한 이름 밖의 색을 쓰지 않는다. */
-
-/* 조율 디자인 토큰. 학교 행정 화면의 선명함과 개인 시간표의 편안함을 함께 잡는다. */
+/*
+ * 디자인 토큰.
+ *
+ * 색은 둘이다. 먹과 주홍.
+ *
+ * 앞서는 인디고, 초록, 주황, 회색 넷이었다. 넷을 쓰면 어느 것도 눈에 안 띈다. 이 도구가
+ * 하는 일은 하나다. 바뀐 자리를 알려 주는 것. 그래서 색 하나를 그 일에만 준다. 주홍은
+ * 종이 시간표를 손으로 고칠 때 쓰는 빨간 펜의 색이다.
+ *
+ * 상태(승인, 반려, 게시)는 색으로 안 가른다. 글자와 자리로 가른다. 색약인 분에게도 낫고,
+ * "바뀐 것"이 색을 독점한다.
+ *
+ * 글자 크기는 여섯 단계뿐이다. 앞서는 9px 부터 28px 까지 열여덟 가지가 섞여 있었고 그중
+ * 12px 이하가 114 자리였다. 교사가 1교시 전 복도에서 폰으로 보는 화면이다.
+ */
 :root {
-  --bg: #f4f6fa;
+  /* 종이와 잉크 */
+  --bg: #fbfbfa;
   --surface: #ffffff;
-  --surface-2: #edf0f6;
-  --ink: #172033;
-  --muted: #626b7d;
-  --line: #dfe3ec;
-  --accent: #4456c7;
-  --accent-strong: #3444ad;
-  --accent-soft: #e9ebfb;
+  --surface-2: #f3f3f1;
+  --ink: #17171a;
+  --muted: #5f6067;
+  --line: #e3e3e0;
+
+  /* 바뀐 것. 이 색은 여기에만 쓴다. */
+  --mark: #c0341c;
+  --mark-soft: #fbece8;
+
+  /* 아래 이름들은 예전 규칙이 아직 부르고 있다. 값만 새 팔레트로 맞춰 둔다. */
+  --accent: var(--ink);
+  --accent-strong: #000000;
+  --accent-soft: var(--surface-2);
   --on-accent: #ffffff;
-  --warn: #b83e36;
-  --warn-soft: #fae9e7;
-  --success: #0e6f60;
-  --success-soft: #e1f3ef;
-  --cell-sat: 30%;
-  --cell-lit: 93%;
-  --cell-line-lit: 84%;
-  --shadow: 0 1px 2px rgb(23 32 51 / 0.05), 0 12px 32px rgb(23 32 51 / 0.08);
-  --radius: 14px;
-  /* 초점 테두리와 최소 조작 크기는 화면마다 정하지 않는다. 여기 한 곳에서 정한다. */
-  --focus: #1746c6;
+  --warn: var(--mark);
+  --warn-soft: var(--mark-soft);
+  --success: var(--ink);
+  --success-soft: var(--surface-2);
+
+  --cell-sat: 8%;
+  --cell-lit: 96%;
+  --cell-line-lit: 88%;
+  --shadow: 0 1px 2px rgb(23 23 26 / 0.04), 0 8px 24px rgb(23 23 26 / 0.06);
+  --radius: 10px;
+  --focus: #17171a;
   --tap: 44px;
+
+  /* 글자 계단. 13px 아래는 없다. */
+  --t-rail: 27px;
+  --t-title: 26px;
+  --t-section: 19px;
+  --t-body: 16px;
+  --t-aux: 14px;
+  --t-label: 13px;
+
+  --sans: 'IBM Plex Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
 }
-/* 어둠 토큰. 수동 선택(data-theme)이 있으면 그 값이 이기고, 없으면 OS 설정을 따른다. */
-:root[data-theme='dark']  {
-  --bg: #111522;
-  --surface: #181e2d;
-  --surface-2: #202738;
-  --ink: #edf0f7;
-  --muted: #a3adbf;
-  --line: #30394c;
-  --accent: #91a0ff;
-  --accent-strong: #aab4ff;
-  --accent-soft: #272e52;
-  --on-accent: #11162d;
-  --warn: #ff998f;
-  --warn-soft: #3b2429;
-  --success: #63cdbb;
-  --success-soft: #193b39;
-  --cell-sat: 24%;
-  --cell-lit: 23%;
-  --cell-line-lit: 32%;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.35);
-  --focus: #aab4ff;
+
+/* 어둠. 수동 선택이 있으면 그 값이 이기고, 없으면 기기 설정을 따른다. */
+:root[data-theme='dark'] {
+  --bg: #121213;
+  --surface: #1a1a1c;
+  --surface-2: #232326;
+  --ink: #ececea;
+  --muted: #9b9b99;
+  --line: #2e2e31;
+  --mark: #ff8163;
+  --mark-soft: #3a211b;
+  --accent-strong: #ffffff;
+  --on-accent: #17171a;
+  --cell-sat: 8%;
+  --cell-lit: 22%;
+  --cell-line-lit: 30%;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.4);
+  --focus: #ececea;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #111522;
-    --surface: #181e2d;
-    --surface-2: #202738;
-    --ink: #edf0f7;
-    --muted: #a3adbf;
-    --line: #30394c;
-    --accent: #91a0ff;
-    --accent-strong: #aab4ff;
-    --accent-soft: #272e52;
-    --on-accent: #11162d;
-    --warn: #ff998f;
-    --warn-soft: #3b2429;
-    --success: #63cdbb;
-    --success-soft: #193b39;
-    --cell-sat: 24%;
-    --cell-lit: 23%;
-    --cell-line-lit: 32%;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.35);
+    --bg: #121213;
+    --surface: #1a1a1c;
+    --surface-2: #232326;
+    --ink: #ececea;
+    --muted: #9b9b99;
+    --line: #2e2e31;
+    --mark: #ff8163;
+    --mark-soft: #3a211b;
+    --accent-strong: #ffffff;
+    --on-accent: #17171a;
+    --cell-sat: 8%;
+    --cell-lit: 22%;
+    --cell-line-lit: 30%;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.4);
+    --focus: #ececea;
   }
 }
