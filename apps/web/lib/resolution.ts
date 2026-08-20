@@ -239,6 +239,58 @@ function engineGroupIds(state: WorkspaceState, lessons: readonly Lesson[]): Map<
   return new Map([...grouped].map((lessonId) => [lessonId, `canonical:${rootOf(lessonId)}`]));
 }
 
+/** 부담을 세는 기간. 이 주와 앞의 세 주다. */
+const BURDEN_WEEKS = 4;
+
+/**
+ * 최근에 누가 얼마나 자리를 내어 주었는지.
+ *
+ * 엔진은 이 값으로 교체 점수와 보강 순위를 깎는다. 세 번 연달아 부탁받은 분이
+ * 한 번도 안 받은 분과 같은 자리에 오르면 도구를 오래 쓸 수 없다. 그런데 화면에서
+ * 쓰는 길은 이 값을 한 번도 넘기지 않아, 부담 균형이 늘 0으로 계산되고 있었다.
+ * "최근에 이미 맡으셨습니다" 경고도 그래서 한 번도 뜨지 않았다.
+ *
+ * 무게는 옛 화면이 쓰던 것을 그대로 옮겼다. 보강은 한 시간을 그냥 더 맡는 일이라
+ * 교체보다 무거운 부탁이므로 두 번으로 센다. 결강 당사자는 세지 않는다. 자기
+ * 수업을 옮긴 것이지 남을 도운 것이 아니다.
+ *
+ * 승인 전 사건은 세지 않는다. 반려되거나 취소될 수 있고, 아직 아무도 실제로
+ * 자리를 내어 주지 않았다.
+ */
+function recentBurdenOf(state: WorkspaceState, monday: string): Record<string, number> {
+  const counted = new Set<AbsenceCase['status']>([
+    'resolution_approved',
+    'admin_in_progress',
+    'ready_to_publish',
+    'published',
+  ]);
+  const from = dateAtUtcOffset(monday, -7 * (BURDEN_WEEKS - 1));
+  const to = dateAtUtcOffset(monday, 6);
+  const burden: Record<string, number> = {};
+  const add = (teacherId: string, weight: number): void => {
+    burden[teacherId] = (burden[teacherId] ?? 0) + weight;
+  };
+  for (const absenceCase of state.cases) {
+    if (!counted.has(absenceCase.status)) continue;
+    if (absenceCase.toDate < from || absenceCase.fromDate > to) continue;
+    for (const item of absenceCase.resolutionItems) {
+      if (item.kind === 'cover') {
+        for (const teacherId of new Set(item.changes.filter(isAssigned)
+          .map((change) => change.teacher.teacherId))) {
+          if (teacherId !== absenceCase.requesterTeacherId) add(teacherId, 2);
+        }
+        continue;
+      }
+      if (item.kind !== 'move' && item.kind !== 'swap2' && item.kind !== 'cycle3') continue;
+      for (const teacherId of new Set(item.changes.filter(isAssigned)
+        .map((change) => change.teacher.teacherId))) {
+        if (teacherId !== absenceCase.requesterTeacherId) add(teacherId, 1);
+      }
+    }
+  }
+  return burden;
+}
+
 /** Builds the active calendar week without turning unknown teacher rows into free class time. */
 export function targetWeekInput(state: WorkspaceState, targetDate: string): TargetWeekInput {
   const monday = mondayOf(targetDate);
@@ -329,6 +381,9 @@ export function targetWeekInput(state: WorkspaceState, targetDate: string): Targ
     return [{ day, reason: closure.reason, ...(klasses?.length ? { klasses } : {}) }];
   });
   if (closures.length) input.closures = closures;
+  const recentBurden = recentBurdenOf(state, monday);
+  if (Object.keys(recentBurden).length > 0) input.recentBurden = recentBurden;
+
   return { input, lessonByAssignment, assignmentByLessonId, monday };
 }
 

@@ -189,6 +189,21 @@ function defaultTeacher(input: TimetableInput): string | null {
   return best;
 }
 
+/**
+ * 지금은 화면에 뜨지 않는다.
+ *
+ * `RoleWorkbench` 는 teacher, ops, class 세 갈래를 모두 제 컴포넌트로 보내고,
+ * `AppShell` 은 landing 과 setup 을 제가 직접 처리해 `RoleView` 를 아예 부르지 않는다.
+ * `RoleViewAdapterProps['location']` 이 그 둘을 빼 놓은 타입이라, 세 갈래를 처리한
+ * 다음 자리에서 타입이 never 로 좁혀진다. 아래 마지막 return 은 그래서 못 닿는다.
+ *
+ * 그런데 이 안에는 화면에서 쓰는 길에 아직 없는 것이 들어 있다. 근무 불가 지정,
+ * 수업 없는 요일 지정, 자료가 빠진 요일 경고가 그것이다. 지워 버리면 그 참고가
+ * 사라지므로 남겨 둔다.
+ *
+ * 고칠 것이 생기면 여기 말고 `lib/resolution.ts` 와 canonical 컴포넌트를 고쳐야 한다.
+ * 여기를 고치면 화면은 그대로다. 실제로 한 번 그렇게 헛고쳤다.
+ */
 function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleViewAdapterProps) {
   const seed = useMemo(() => workspaceToLoaded(workspaceState), [workspaceState]);
   const workspaceKey = workspaceState.workspace.id;
@@ -1614,6 +1629,13 @@ function RoleWorkbench(props: RoleViewAdapterProps) {
       today={todayOf(props.state)}
     />
   );
+  /*
+   * 못 닿는다는 것을 타입으로 잠근다. 위 세 갈래가 location 을 다 써 버려 여기서는
+   * never 다. 갈래를 하나라도 빼거나 AppLocation 에 새 역할을 더하면서 여기를 안
+   * 고치면 이 줄이 타입 검사에서 깨진다. 주석만 두면 조용히 거짓말이 된다.
+   */
+  const noRoleLeft: never = props.location;
+  void noRoleLeft;
   return <LegacyWorkbench {...props} />;
 }
 
