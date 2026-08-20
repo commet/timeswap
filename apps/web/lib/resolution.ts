@@ -544,6 +544,9 @@ function engineCoverCandidates(
       grouped.subject,
       Math.max(8, week.input.assignments.length),
       absenceCase.requesterTeacherId,
+      // 그 학급만 쉬는 날인지 보는 데 쓴다. 안 넘기면 학교 전체 휴업일만 보고,
+      // 1학년이 수학여행으로 빠진 날에도 1학년 보강 후보가 나온다.
+      classKey(grouped),
     );
   });
   if (!candidateLists.length || candidateLists.some((candidates) => !candidates.length)) return [];
