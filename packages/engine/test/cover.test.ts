@@ -144,3 +144,29 @@ describe('전문교과 실습의 보강 후보', () => {
     for (const c of normal) expect(c.notes.join(' ')).not.toContain('전문교과 실습이라');
   });
 });
+
+/**
+ * 학급 단위로 쉬는 날.
+ *
+ * `coverCandidates` 는 학교 전체 휴업일만 보고 있었다. 1학년이 수학여행으로 빠진
+ * 목요일에도 1학년 보강 후보를 낸다. 그날 그 학급에는 수업이 없으니 세울 보강도 없다.
+ * 교체 쪽은 `closedKlass` 를 이미 보고 있어서 두 경로가 서로 다른 말을 하고 있었다.
+ */
+describe('학급만 쉬는 날의 보강', () => {
+  const closed: TimetableInput = {
+    ...school,
+    closures: [{ day: 0, reason: '수학여행', klasses: ['3-1'] }],
+  };
+
+  it('그 학급이 쉬는 날이면 보강 후보를 내지 않는다', () => {
+    expect(coverCandidates(closed, 3, '과학', 8, '결강', '3-1')).toEqual([]);
+  });
+
+  it('다른 학급은 그대로 후보를 낸다', () => {
+    expect(coverCandidates(closed, 3, '과학', 8, '결강', '3-2').length).toBeGreaterThan(0);
+  });
+
+  it('학급을 안 알려 주면 예전처럼 학교 휴업일만 본다', () => {
+    expect(coverCandidates(closed, 3, '과학', 8, '결강').length).toBeGreaterThan(0);
+  });
+});

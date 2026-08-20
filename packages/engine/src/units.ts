@@ -195,6 +195,25 @@ export function checkMoves(
     }
   }
 
+  // 학년마다 하루 교시 수가 다른 학교가 많다. 초등학교 1학년은 4교시에 끝나고
+  // 6학년은 6교시까지 한다. 학교 전체로 하나만 두면 1학년의 5, 6교시가 빈 시간으로
+  // 보여 거기로 옮기라는 안이 나온다. 그 교시는 그 학년에 없는 시간이다.
+  //
+  // 막기 전에 실측하니 초등학교 57곳 가운데 53곳에서 그런 안이 나왔고
+  // 추천안의 6.7%였다. 중학교는 0.3%, 특수학교는 0.7%다.
+  if (idx.klassPeriods.size > 0) {
+    for (const m of moves) {
+      const d = dayOf(m.toSlot, cfg);
+      const p = m.toSlot - d * cfg.periods;
+      for (const k of m.unit.klasses) {
+        const limit = idx.klassPeriods.get(k)?.[d];
+        if (limit !== undefined && p >= limit) {
+          return { ok: false, reason: `${k} 학급은 ${cfg.dayNames[d]}요일에 ${limit}교시까지입니다` };
+        }
+      }
+    }
+  }
+
   // 학사일정에 쉬는 날로 잡힌 요일에는 수업을 넣지 않는다.
   // 휴업일 목요일로 옮기라는 추천이 한 번 나오면 나머지 추천까지 못 믿게 된다.
   for (const m of moves) {

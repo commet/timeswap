@@ -436,6 +436,13 @@ export interface PumasiFile {
    * 옛 파일에는 없다. 없으면 학급 이름 앞머리 숫자로 되돌아간다.
    */
   grades?: Record<string, number>;
+  /**
+   * 학급별로 그 요일에 있는 교시 수.
+   *
+   * grades 와 같은 종류다. 이것을 안 담으면 저장했다 열 때 그 학년에 없는 교시가
+   * 다시 빈 시간으로 보이고 거기로 옮기라는 안이 되살아난다.
+   */
+  periods?: Record<string, number[]>;
 }
 
 export function toFile(loaded: Loaded): string {
@@ -455,6 +462,7 @@ export function toFile(loaded: Loaded): string {
     ...(loaded.calendar ? { calendar: loaded.calendar } : {}),
     ...(loaded.input.klassBusy ? { busy: loaded.input.klassBusy } : {}),
     ...(loaded.input.klassGrade ? { grades: loaded.input.klassGrade } : {}),
+    ...(loaded.input.klassPeriodsPerDay ? { periods: loaded.input.klassPeriodsPerDay } : {}),
   };
   return JSON.stringify(doc, null, 1);
 }
@@ -517,6 +525,19 @@ export function fromFile(raw: string): Loaded {
                   ),
                 ])
                 .filter(([, v]) => (v as number[]).length > 0),
+            ) as Record<string, number[]>,
+          }
+        : {}),
+      // 교시 수 표. 요일 수와 길이가 맞고 값이 칸 안에 드는 것만 남긴다.
+      ...(doc.periods && typeof doc.periods === 'object'
+        ? {
+            klassPeriodsPerDay: Object.fromEntries(
+              Object.entries(doc.periods).filter(
+                ([, v]) =>
+                  Array.isArray(v) &&
+                  v.length === cfg.days &&
+                  v.every((n) => Number.isInteger(n) && n >= 0 && n <= cfg.periods),
+              ),
             ) as Record<string, number[]>,
           }
         : {}),

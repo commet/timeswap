@@ -8,6 +8,7 @@ import {
   neisToTimetable,
   type NeisRow,
 } from '../src/adapters/neis';
+import { HOMEROOM_SHARE, noSwapReason } from '../src/search';
 import type { TimetableInput } from '../src/types';
 
 const cfg = { days: 1, periods: 6, dayNames: ['월'] };
@@ -289,5 +290,65 @@ describe('나이스 행에서 온 학급 키', () => {
     const input: TimetableInput = { config: cfg, assignments: commonGrade(2, 5, 6) };
     expect(input.klassGrade).toBeUndefined();
     expect(gradeShapes(input).map((s) => s.grade)).toEqual([2]);
+  });
+});
+
+/**
+ * 교체안이 하나도 없을 때 그 까닭을 가른다.
+ *
+ * 전국 초등학교 57곳을 담임 모형으로 재니 담임 결강의 62%에서 교체 후보가 0건이었다.
+ * 중학교와 특수학교는 0%다. 구조가 그런 것이지 조건이 까다로워서가 아닌데
+ * 화면은 "근무 불가 시간과 묶음 수업을 확인해 주세요"라고 안내하고 있었다.
+ */
+describe('교체안이 없는 까닭', () => {
+  it('그 학급 수업을 거의 다 맡고 있으면 담임형으로 본다', () => {
+    // 초등 담임처럼 한 학급의 모든 교시를 한 사람이 맡는다
+    const assignments: Assignments = [];
+    for (let p = 0; p < 6; p++) {
+      assignments.push({ teacher: '김담임', klass: '3-1', subject: `과목${p}`, slot: p });
+    }
+    const input: TimetableInput = { config: cfg, assignments };
+    expect(noSwapReason(input, { teacher: '김담임', slot: 0 })).toBe('homeroom');
+  });
+
+  it('전담 과목 몇 개가 섞여도 담임형으로 본다', () => {
+    // 실측에서 빈 결과일 때 담당 몫 중앙값이 1.00, 답이 있을 때가 0.50 이었다
+    const assignments: Assignments = [
+      { teacher: '김담임', klass: '3-1', subject: '국어', slot: 0 },
+      { teacher: '김담임', klass: '3-1', subject: '수학', slot: 1 },
+      { teacher: '김담임', klass: '3-1', subject: '사회', slot: 2 },
+      { teacher: '박영어', klass: '3-1', subject: '영어', slot: 3 },
+    ];
+    expect(noSwapReason({ config: cfg, assignments }, { teacher: '김담임', slot: 0 })).toBe('homeroom');
+  });
+
+  it('교과 담당이 여럿이면 담임형이 아니다', () => {
+    // 중학교와 고등학교의 모양이다. 실측에서 담당 몫 중앙값이 0.09 였다
+    const assignments: Assignments = [
+      { teacher: '김국어', klass: '3-1', subject: '국어', slot: 0 },
+      { teacher: '이수학', klass: '3-1', subject: '수학', slot: 1 },
+      { teacher: '박영어', klass: '3-1', subject: '영어', slot: 2 },
+      { teacher: '최과학', klass: '3-1', subject: '과학', slot: 3 },
+    ];
+    expect(noSwapReason({ config: cfg, assignments }, { teacher: '김국어', slot: 0 })).toBe('unknown');
+  });
+
+  it('묶음 수업이면 묶음을 먼저 말한다', () => {
+    const assignments: Assignments = [
+      { teacher: '김담임', klass: '3-1', subject: '국어', slot: 0, group: 'g1' },
+      { teacher: '김담임', klass: '3-1', subject: '수학', slot: 1 },
+      { teacher: '김담임', klass: '3-1', subject: '사회', slot: 2 },
+    ];
+    expect(noSwapReason({ config: cfg, assignments }, { teacher: '김담임', slot: 0 })).toBe('group');
+  });
+
+  it('찾을 수 없는 수업은 단정하지 않는다', () => {
+    expect(noSwapReason({ config: cfg, assignments: [] }, { teacher: '없음', slot: 0 })).toBe('unknown');
+  });
+
+  it('기준이 실측한 두 무리 사이에 있다', () => {
+    // 빈 결과일 때 중앙 1.00, 답이 있을 때 중앙 0.50 이었다
+    expect(HOMEROOM_SHARE).toBeGreaterThan(0.5);
+    expect(HOMEROOM_SHARE).toBeLessThanOrEqual(1);
   });
 });

@@ -72,14 +72,26 @@ export function coverCandidates(
   max = 8,
   /** 결강 당사자. 자기 자신은 후보에서 뺀다 */
   absent?: string,
+  /**
+   * 그 수업을 듣는 학급. 그 학급만 쉬는 날인지 보는 데 쓴다.
+   *
+   * 안 넣으면 학교 전체 휴업일만 본다. 그래서 1학년이 수학여행으로 빠진 날에도
+   * 1학년 보강 후보가 나왔다. 교체 쪽은 이미 학급 단위 휴업을 보고 있었는데
+   * 보강 쪽만 안 보고 있어서 두 경로가 서로 다른 말을 했다.
+   */
+  klass?: string,
 ): CoverCandidate[] {
   const cfg = input.config;
   const idx = buildIndexes(input);
   const day = dayOf(slot, cfg);
   const period = slot - day * cfg.periods;
 
-  // 학교 전체가 쉬는 날이면 보강을 세울 자리가 아니다.
-  if (idx.closedAll.has(day)) return [];
+  // 쉬는 날이면 보강을 세울 자리가 아니다. 학교 전체든 그 학급만이든 같다.
+  if (klass !== undefined) {
+    if (closedReason(idx, klass, day) !== undefined) return [];
+  } else if (idx.closedAll.has(day)) {
+    return [];
+  }
 
   const subjectsOf = new Map<string, Set<string>>();
   const countOf = new Map<string, number>();

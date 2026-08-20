@@ -6,6 +6,7 @@ import {
   dayOf,
   recommend,
   gradeShapes,
+  noSwapReason,
   groupCandidate,
   slotName,
   validate,
@@ -367,6 +368,8 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
       result.target.subject,
       8,
       currentTeacher ?? undefined,
+      // 그 학급만 쉬는 날이면 보강도 세울 자리가 아니다
+      result.target.klass,
     );
   }, [input, result, currentTeacher]);
 
@@ -404,18 +407,34 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
   );
 
   /**
-   * 과목이 유난히 많아 교체 상대를 찾기 어려운 학년인지. 실제 학교 24곳을 재어 만든 기준이다.
-   * 공통과목만 도는 1학년은 학급 수 대비 과목 종수의 중앙값이 1.5, 3학년은 2.7이다.
+   * 교체 상대를 찾기 어려운 학년인지. 전국 217곳을 재어 만든 기준이다.
+   * 과목마다 그 과목을 듣는 학급이 학년의 몇 할인지 평균한 값(공통도)으로 가른다.
    *
-   * 까닭까지 함께 받는다. 같은 비율이라도 일반고에서는 선택과목이고
+   * 까닭까지 함께 받는다. 같은 값이라도 일반고에서는 선택과목이고
    * 특성화고에서는 학과별 전공 편성이다. 문장이 갈려야 맞는 말이 된다.
+   *
+   * 학년은 input.klassGrade 에서 읽는다. 학급 키에서 숫자를 캐면 안 된다.
+   * 나이스 학급 키는 `["7010084","2026",...]` 처럼 학교 코드로 시작해서 첫 숫자가
+   * 학년이 아니다. 여기가 그렇게 되어 있어서 엔진을 고친 뒤에도 화면에는
+   * 이 안내가 뜨지 않았다.
    */
   const electiveGrade = useMemo(() => {
     if (!input || !result) return null;
-    const m = /\d+/.exec(result.target.klass);
-    if (!m) return null;
-    const g = Number(m[0]);
+    const g = input.klassGrade?.[result.target.klass] ?? Number(/^\d+/.exec(result.target.klass)?.[0]);
+    if (!Number.isFinite(g)) return null;
     return gradeShapes(input).find((x) => x.grade === g && x.elective) ?? null;
+  }, [input, result]);
+
+  /**
+   * 교체안이 하나도 없을 때 그 까닭.
+   *
+   * 초등학교 담임 선생님은 결강의 62%에서 교체 후보가 없다. 그 학급 수업을 거의 다
+   * 맡고 계셔서 바꿔 줄 상대가 자기 자신이다. 그런데 화면은 근무 불가 시간과 묶음
+   * 수업을 확인하라고 안내하고 있었다. 그 둘은 원인이 아니다.
+   */
+  const noSwap = useMemo(() => {
+    if (!input || !result || result.candidates.length > 0) return null;
+    return noSwapReason(input, { teacher: result.target.teacher, slot: result.target.slot });
   }, [input, result]);
 
   const peers = useMemo(() => {
@@ -1205,6 +1224,7 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
                   hovered={hovered}
                   peers={peers}
                   electiveGrade={electiveGrade}
+                  noSwap={noSwap}
                   grouped={grouped}
                   defaultDate={requestDate}
                   owner={currentTeacher ?? ''}

@@ -6,6 +6,19 @@ export interface NeisRow {
   AY?: string;
   SEM?: string;
   DGHT_CRSE_SC_NM?: string;
+  /**
+   * 학교 과정. 특수학교 시간표에만 오고 초등학교, 중학교, 고등학교 가운데 하나다.
+   *
+   * 특수학교 한 곳이 초등부와 중학부, 고등부를 함께 운영한다. 학년은 과정마다 1부터
+   * 다시 센다. 이 값을 학급 열쇠에 안 넣으면 초등부 1학년 1반과 중학부 1학년 1반,
+   * 고등부 1학년 1반이 한 학급으로 합쳐진다.
+   *
+   * 실제 특수학교 32곳을 재어 보니 31곳에서 (학년, 반)이 여러 과정에 걸쳤고,
+   * 한 칸에 서로 다른 과목이 겹치는 자리가 6,028곳이었다. 합쳐진 학급은 학급 13개에
+   * 배정 626개가 되는데, 한 주가 5일 곱하기 7교시로 35칸이라 있을 수 없는 시간표다.
+   * 그런데도 엔진은 그 겹침을 분반으로 읽어 유효하다고 통과시켰다.
+   */
+  SCHUL_CRSE_SC_NM?: string;
   ORD_SC_NM?: string;
   DDDEP_NM?: string;
   /** 수업 일자. 예: "20260622" */
@@ -23,6 +36,13 @@ export interface NeisRow {
 export interface ClassIdentity {
   schoolCode: string;
   academicYear: string;
+  /**
+   * 학교 과정. 특수학교의 초등부, 중학부, 고등부를 가른다. 다른 학교급에서는 빈 값이다.
+   *
+   * 선택 항목으로 둔다. 이 값이 생기기 전에 저장한 자료에는 없는데, 없는 것과 빈 값이
+   * 같은 학급 열쇠를 내야 예전에 저장한 시간표가 그대로 열린다.
+   */
+  schoolCourse?: string;
   dayCourse: string;
   affiliation: string;
   major: string;
@@ -54,6 +74,31 @@ export interface ParallelLessonGroup {
 export interface NeisNormalizationReport {
   accepted: NormalizedNeisRow[];
   quarantined: Array<{ row: NeisRow; missing: string[] }>;
+  /**
+   * 학급에 매이지 않는 강좌. 고교학점제 선택과목이다.
+   *
+   * 반 번호(`CLASS_NM`)만 비어 있고 날짜와 학년, 교시, 과목은 다 있다. 수강생이 여러
+   * 학급에서 모이는 강좌라 반 번호를 붙일 자리가 없어서다. 강의실 이름이 `3탐구`,
+   * `2기초` 같은 교과교실로 온다.
+   *
+   * 자료가 깨진 것이 아니다. 그런데 결손으로 보고 격리하고 있었고, 완전성 관문이
+   * 격리 0을 요구해서 **그런 학교는 설정을 끝낼 수 없었다.**
+   *
+   * | 학교급 | 그런 학교 | 전체 행 가운데 | 한 학교 최대 |
+   * |---|---|---|---|
+   * | 초등학교 | 0 / 57 | 0.0% | 0% |
+   * | 중학교 | 0 / 65 | 0.0% | 0% |
+   * | 고등학교 | **127 / 217** | 9.4% | **77%** |
+   * | 특수학교 | 6 / 32 | 0.5% | 3% |
+   *
+   * 3학년 8,576행, 2학년 5,648행으로 고교학점제 학년에 몰려 있고 과목도
+   * 확률과 통계, 화법과 작문, 미적분처럼 전형적인 선택과목이다.
+   *
+   * 지금은 여기 담아 두고 세어서 알리기만 한다. 시간표에 넣지는 않는다.
+   * 어느 학급 학생이 듣는지 모르는 채로 넣으면 그 학생들의 다른 수업과 겹치는지
+   * 확인할 수 없기 때문이다. 모르는 것을 아는 척하지 않는다.
+   */
+  courseOnly: NeisRow[];
   duplicateCount: number;
   parallelGroups: ParallelLessonGroup[];
 }
@@ -75,6 +120,7 @@ export function classIdentityKey(identity: ClassIdentity): string {
   return JSON.stringify([
     identity.schoolCode,
     identity.academicYear,
+    identity.schoolCourse ?? '',
     identity.dayCourse,
     identity.affiliation,
     identity.major,
@@ -88,6 +134,7 @@ const factKey = (row: NormalizedNeisRow): string =>
     row.classIdentity.schoolCode,
     row.classIdentity.academicYear,
     row.date,
+    row.classIdentity.schoolCourse ?? '',
     row.classIdentity.dayCourse,
     row.classIdentity.affiliation,
     row.classIdentity.major,
@@ -101,6 +148,7 @@ const factKey = (row: NormalizedNeisRow): string =>
 export function normalizeNeisRows(rows: NeisRow[]): NeisNormalizationReport {
   const accepted: NormalizedNeisRow[] = [];
   const quarantined: Array<{ row: NeisRow; missing: string[] }> = [];
+  const courseOnly: NeisRow[] = [];
   const seenFacts = new Set<string>();
   let duplicateCount = 0;
 
@@ -118,13 +166,16 @@ export function normalizeNeisRows(rows: NeisRow[]): NeisNormalizationReport {
       ['ITRT_CNTNT', rawSubject],
     ].filter(([, value]) => !value).map(([field]) => field!);
     if (missing.length > 0) {
-      quarantined.push({ row, missing });
+      // 반 번호만 없고 나머지가 다 있으면 학급에 매이지 않는 강좌다. 결손이 아니다.
+      if (missing.length === 1 && missing[0] === 'CLASS_NM') courseOnly.push(row);
+      else quarantined.push({ row, missing });
       return;
     }
 
     const classIdentity: ClassIdentity = {
       schoolCode: normalize(row.SD_SCHUL_CODE),
       academicYear: normalize(row.AY),
+      schoolCourse: normalize(row.SCHUL_CRSE_SC_NM),
       dayCourse: normalize(row.DGHT_CRSE_SC_NM),
       affiliation: normalize(row.ORD_SC_NM),
       major: normalize(row.DDDEP_NM),
@@ -166,5 +217,5 @@ export function normalizeNeisRows(rows: NeisRow[]): NeisNormalizationReport {
       rowIds: group.map((acceptedRow) => acceptedRow.id),
     }));
 
-  return { accepted, quarantined, duplicateCount, parallelGroups };
+  return { accepted, quarantined, courseOnly, duplicateCount, parallelGroups };
 }
