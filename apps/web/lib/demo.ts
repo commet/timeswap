@@ -113,7 +113,7 @@ export const DEMO_SCENARIOS = [
   },
 ] as const satisfies readonly DemoScenarioDefinition[];
 
-export const DEMO_PROVENANCE_LABEL = '공개 시간표 관측 구조 기반 · 일정·교사·사건은 예시';
+export const DEMO_PROVENANCE_LABEL = '공개 시간표 관측 구조 기반 | 일정과 교사, 사건은 예시';
 
 const DEMO_TEACHER_LABELS: Readonly<Record<string, string>> = {
   'teacher:seo-jun': '김서준',

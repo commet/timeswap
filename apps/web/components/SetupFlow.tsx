@@ -586,7 +586,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate, existi
               <div>
                 <span className="eyebrow">학교 소유 자료</span>
                 <h2 id="teacher-map-title">교사와 수업 연결</h2>
-                <p>{pairs.length}개 학급·과목 묶음 중 {pairs.length - unresolved.length}개를 연결했습니다.</p>
+                <p>{pairs.length}개 학급과 과목 묶음 중 {pairs.length - unresolved.length}개를 연결했습니다.</p>
               </div>
               <button className="btn ghost" onClick={() => fileRef.current?.click()}>교사 연결 JSON 가져오기</button>
               <input ref={fileRef} hidden type="file" accept="application/json,.json"
@@ -623,7 +623,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate, existi
                         ...current,
                         ...Object.fromEntries(spread.map((candidate) => [mapKey(candidate.classKey, candidate.subject), value])),
                       }))}>
-                      같은 학년·과목 {spread.length}곳에도
+                      같은 학년의 같은 과목 {spread.length}곳에도
                     </button>
                   </div>
                 );
@@ -640,7 +640,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate, existi
             <div className="review-counts">
               <div><b>{unresolved.length}</b><span>담당 교사 미연결</span></div>
               <div><b>{duplicateNames.length}</b><span>동명이인 의심</span></div>
-              <div><b>{bundle.report.normalization.parallelGroups.length}</b><span>분반·묶음 의심</span></div>
+              <div><b>{bundle.report.normalization.parallelGroups.length}</b><span>분반 묶음 의심</span></div>
             </div>
             {unresolved.length > 0 && <p className="setup-alert" role="alert">
               {unresolved.slice(0, 4).map((item) => `${item.classLabel} ${item.subject}`).join(', ')}
@@ -648,7 +648,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate, existi
             </p>}
             {duplicateNames.length > 0 && <ul className="review-list">{duplicateNames.map((item) => <li key={item}>{item}</li>)}</ul>}
             {bundle.report.normalization.parallelGroups.length > 0 && <p className="setup-note">
-              같은 학급·교시에 과목이 둘 이상인 {bundle.report.normalization.parallelGroups.length}개 묶음은 분반으로 보존됩니다.
+              같은 학급의 같은 교시에 과목이 둘 이상인 {bundle.report.normalization.parallelGroups.length}개 묶음은 분반으로 보존됩니다.
             </p>}
             <div className="setup-actions">
               <button className="btn ghost" onClick={() => setStage('교사 연결')}>교사 연결 수정</button>
@@ -660,7 +660,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate, existi
           <section className="invitation-panel" aria-labelledby="invitation-title">
             <span className="eyebrow">민감 정보 제외 완료</span>
             <h2 id="invitation-title">초대 링크</h2>
-            <p>링크에는 학교와 합성 교사 ID 또는 학년·반만 들어갑니다. 인증키와 내부 메모는 포함하지 않습니다.</p>
+            <p>링크에는 학교와 합성 교사 ID 또는 학년과 반만 들어갑니다. 인증키와 내부 메모는 포함하지 않습니다.</p>
             <div className="invitation-columns">
               <div><h3>교사 링크</h3>{invitationLinks.teachers.map((link) => <a key={link.id} href={link.href}>{link.label}</a>)}</div>
               <div><h3>학급 공개 링크</h3>{invitationLinks.classes.map((link) => <a key={link.id} href={link.href}>{link.label}</a>)}</div>

@@ -267,8 +267,8 @@ export function AbsenceComposer({
       <header>
         <div>
           <span className="eyebrow">변경 요청</span>
-          <h2 id="absence-composer-title">부재와 영향 수업을 알려주세요</h2>
-          <p>필요한 운영 정보만 요청합니다. 진단·병력·전화번호 등 민감한 개인정보는 적지 마십시오.</p>
+          <h2 id="absence-composer-title">부재와 영향 수업</h2>
+          <p>필요한 운영 정보만 요청합니다. 진단, 병력, 전화번호 등 민감한 개인정보는 적지 마십시오.</p>
         </div>
         <button className="btn ghost" onClick={onDismiss}>닫기</button>
       </header>
@@ -312,7 +312,7 @@ export function AbsenceComposer({
         ))}
         <label className="coordination-note">협조 메모 (선택)<textarea className="input" maxLength={240}
           value={note} onChange={(event) => setNote(event.target.value)}
-          placeholder="수업 운영에 필요한 짧은 전달 사항만 적어주세요." /></label>
+          placeholder="수업 운영에 필요한 짧은 전달 사항만 적으십시오." /></label>
       </fieldset>
 
       {!readiness.readyForCandidates && (

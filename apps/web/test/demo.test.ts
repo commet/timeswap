@@ -123,7 +123,7 @@ describe('demo source boundary', () => {
   });
 
   it('uses the visible structure-derived provenance wording', () => {
-    expect(DEMO_PROVENANCE_LABEL).toBe('공개 시간표 관측 구조 기반 · 일정·교사·사건은 예시');
+    expect(DEMO_PROVENANCE_LABEL).toBe('공개 시간표 관측 구조 기반 | 일정과 교사, 사건은 예시');
   });
 });
 

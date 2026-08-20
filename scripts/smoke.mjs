@@ -191,7 +191,7 @@ for (const role of ['교사', '일과 담당', '학급 공개']) {
 if (!(await page.locator('.role-navigation').innerText()).includes('로그인이나 권한 인증이 아닙니다')) {
   failures.push('체험 역할을 인증으로 오해하지 않게 하는 설명이 없음');
 }
-const provenance = '공개 시간표 관측 구조 기반 · 일정·교사·사건은 예시';
+const provenance = '공개 시간표 관측 구조 기반 | 일정과 교사, 사건은 예시';
 if (!(await page.locator('body').innerText()).includes(provenance)) failures.push('예시 자료 출처 문구가 정확하지 않음');
 if ((await activeText(page)).id !== 'role-page-title') failures.push('역할 화면 진입 뒤 학교 제목으로 초점이 이동하지 않음');
 const stored = await page.evaluate(() => [...Array(localStorage.length)].map((_, index) => localStorage.key(index))

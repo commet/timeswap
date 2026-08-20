@@ -810,11 +810,11 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
       const picked = new Date(date + 'T12:00:00');
       const expectedDay = dayOf(result.target.slot, input.config) + 1;
       if (Number.isNaN(picked.getTime()) || picked.getDay() !== expectedDay) {
-        show((input.config.dayNames[expectedDay - 1] ?? '해당') + '요일 날짜를 골라 주세요');
+        show((input.config.dayNames[expectedDay - 1] ?? '해당') + '요일 날짜를 고르십시오');
         return;
       }
       if (localYmd(picked) < localYmd(new Date())) {
-        show('오늘 이후 날짜를 골라 주세요');
+        show('오늘 이후 날짜를 고르십시오');
         return;
       }
       const duplicate = requests.some(
@@ -857,11 +857,11 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
       const picked = new Date(date + 'T12:00:00');
       const expectedDay = dayOf(result.target.slot, input.config) + 1;
       if (Number.isNaN(picked.getTime()) || picked.getDay() !== expectedDay) {
-        show((input.config.dayNames[expectedDay - 1] ?? '해당') + '요일 날짜를 골라 주세요');
+        show((input.config.dayNames[expectedDay - 1] ?? '해당') + '요일 날짜를 고르십시오');
         return;
       }
       if (localYmd(picked) < localYmd(new Date())) {
-        show('오늘 이후 날짜를 골라 주세요');
+        show('오늘 이후 날짜를 고르십시오');
         return;
       }
       const duplicate = requests.some(
@@ -943,7 +943,7 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
         );
         setEntries(nextEntries);
         setRequests(nextRequests);
-        show('승인했습니다. 이제 행정 마무리 세 단계를 확인해 주세요');
+        show('승인했습니다. 행정 마무리 세 단계를 확인하십시오');
         window.setTimeout(() => document.getElementById('admin-checklist-title')?.focus(), 80);
       } catch (error) {
         show(error instanceof Error ? error.message : '승인하지 못했습니다');
