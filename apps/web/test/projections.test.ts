@@ -431,4 +431,62 @@ describe('projectOpsDashboard', () => {
       burden: [{ teacherId: '이수학', acceptedChanges: 3 }],
     });
   });
+
+  /*
+   * 협조 건수는 주가 넘어가도 이어진다.
+   *
+   * 앞서는 활성 개정판으로 걸렀다. 개정판이 한 주씩 오므로 그것은 "이번 주만"과
+   * 같은 말이었고, 월요일 아침에 새 주를 불러오면 모두의 건수가 0으로 돌아갔다.
+   * 문턱이 3건이라 한 주 안에 세 번 도운 사람만 잡혔다.
+   */
+  it('세 주에 걸쳐 세 번 도운 것도 부담 경고에 잡힌다', () => {
+    const state = stateAt('resolution_approved');
+    const helped = (id: string, revisionId: string, date: string) => ({
+      ...state.cases[0]!,
+      id,
+      fromDate: date,
+      toDate: date,
+      resolutionItems: [{
+        ...state.cases[0]!.resolutionItems[0]!,
+        id: `${id}:resolution`,
+        computedAgainstRevisionId: revisionId,
+        changes: [{
+          lessonId: 'lesson-1', toDate: date, toPeriod: '4',
+          teacher: { state: 'assigned' as const, teacherId: '이수학' },
+        }],
+      }],
+    });
+    state.revisions.push(
+      { ...state.revisions[0]!, id: 'revision-0' },
+      { ...state.revisions[0]!, id: 'revision-2' },
+    );
+    state.cases = [
+      helped('case-w0', 'revision-0', '2026-08-10'),
+      helped('case-w1', 'revision-2', '2026-08-17'),
+      helped('case-w2', 'revision-1', '2026-08-24'),
+    ];
+
+    expect(projectOpsDashboard(state, '2026-08-24')).toMatchObject({
+      burdenAlerts: 1,
+      burden: [{ teacherId: '이수학', acceptedChanges: 3 }],
+    });
+  });
+
+  it('네 주보다 오래된 협조는 안 센다', () => {
+    const state = stateAt('resolution_approved');
+    const old = { ...state.cases[0]!, id: 'case-old', fromDate: '2026-07-06', toDate: '2026-07-06' };
+    old.resolutionItems = [{
+      ...state.cases[0]!.resolutionItems[0]!,
+      changes: [{
+        lessonId: 'lesson-1', toDate: '2026-07-06', toPeriod: '4',
+        teacher: { state: 'assigned' as const, teacherId: '이수학' },
+      }],
+    }];
+    state.cases = [old, { ...old, id: 'case-old-2' }, { ...old, id: 'case-old-3' }];
+
+    expect(projectOpsDashboard(state, '2026-08-24')).toMatchObject({
+      burdenAlerts: 0,
+      burden: [],
+    });
+  });
 });

@@ -9,6 +9,7 @@ import type {
   TeacherAssignment,
   WorkspaceState,
 } from './domain';
+import { BURDEN_WEEKS, dateAtUtcOffset, mondayOf } from './week';
 
 export interface TeacherLessonValue {
   date: string;
@@ -297,13 +298,19 @@ function unresolvedLessonCount(state: WorkspaceState): number {
  *
  * 한 해결안에서 같은 분의 수업이 둘 움직이면 둘로 센다. 이 값의 이름이 "협조 건수"
  * 이고 화면도 건수로 읽는다. 수업 셋을 옮기는 것은 하나를 옮기는 것보다 무겁다.
+ *
+ * 세는 기간은 이 주와 앞의 세 주다. 앞서는 기간 대신 활성 개정판으로 걸렀는데,
+ * 개정판이 한 주씩 오므로 그것은 "이번 주만"과 같은 말이었다. 월요일 아침에 새 주를
+ * 불러오면 모두의 협조 건수가 0으로 돌아갔다. 경고 문턱이 3건이라 한 주 안에 세 번
+ * 도운 사람만 잡혔고, 세 주에 걸쳐 다섯 번 도운 사람은 한 번도 안 잡혔다.
  */
-function deriveBurden(state: WorkspaceState): TeacherBurdenView[] {
+function deriveBurden(state: WorkspaceState, today: string): TeacherBurdenView[] {
+  const from = dateAtUtcOffset(mondayOf(today), -7 * (BURDEN_WEEKS - 1));
   const counts = new Map<string, number>();
   for (const absenceCase of state.cases) {
     if (!RESERVING_STATUSES.has(absenceCase.status)) continue;
+    if (absenceCase.toDate < from) continue;
     for (const resolution of absenceCase.resolutionItems) {
-      if (resolution.computedAgainstRevisionId !== state.workspace.activeRevisionId) continue;
       for (const change of resolution.changes) {
         if (change.teacher.state !== 'assigned') continue;
         if (change.teacher.teacherId === absenceCase.requesterTeacherId) continue;
@@ -326,7 +333,7 @@ export function projectOpsDashboard(state: WorkspaceState, today: string): OpsDa
     revision.id === state.workspace.activeRevisionId);
   const activeLessons = state.lessons.filter((lesson) =>
     lesson.revisionId === state.workspace.activeRevisionId);
-  const burden = deriveBurden(state);
+  const burden = deriveBurden(state, today);
 
   return {
     today,
@@ -353,17 +360,47 @@ export function projectOpsDashboard(state: WorkspaceState, today: string): OpsDa
   };
 }
 
+/**
+ * 사건이 딛고 선 개정판.
+ *
+ * 개정판은 한 주씩 온다. 사건은 그 주의 수업을 가리키므로, 사건을 재는 기준은 지금
+ * 화면에 띄운 주가 아니라 그 사건의 수업이 온 주다.
+ *
+ * 기준을 활성 개정판으로 두면 이렇게 된다. 금요일 오후에 부재가 올라와 승인까지 났고
+ * 행정 마감이 남아 주말을 넘긴다. 월요일 아침에 이번 주 시간표를 불러오면 활성
+ * 개정판이 바뀐다. 그 순간 지난 금요일 사건은 옛 개정판을 가리키는 것이 되어
+ * `staleRevision` 이 서고, 게시가 막힌다. 다시 계산하면 되는가 하면 그것도 안 된다.
+ * 후보를 만들 때 보는 수업이 이번 주 것뿐이라 그 사건의 결강 수업이 아예 안 보이고,
+ * 후보가 0개로 나온다. 승인까지 갔던 사건을 되살릴 길이 없어진다.
+ *
+ * 수업은 지난주 것까지 남겨 두고 있다. 남아 있는데 아무도 안 보는 것이 문제였다.
+ */
+export function caseRevisionId(state: WorkspaceState, absenceCase: AbsenceCase): string {
+  const revisionByLesson = new Map(state.lessons.map((lesson) => [lesson.id, lesson.revisionId]));
+  for (const lessonId of absenceCase.lessonIds) {
+    const revisionId = revisionByLesson.get(lessonId);
+    if (revisionId) return revisionId;
+  }
+  // 수업이 이미 지워졌으면 해결안이 계산된 개정판을 쓴다. 그것도 없으면 활성판이다.
+  return absenceCase.resolutionItems.find((item) => item.computedAgainstRevisionId)
+    ?.computedAgainstRevisionId
+    ?? state.workspace.activeRevisionId;
+}
+
 export function validateCasePlan(state: WorkspaceState, caseId: string): PlanValidation {
   const absenceCase = state.cases.find((item) => item.id === caseId);
   if (!absenceCase) throw new Error(`Case does not exist: ${caseId}`);
-  const activeRevision = state.revisions.find((revision) =>
-    revision.id === state.workspace.activeRevisionId);
-  const activeLessons = state.lessons.filter((lesson) =>
-    lesson.revisionId === state.workspace.activeRevisionId);
-  const lessonsById = new Map(activeLessons.map((lesson) => [lesson.id, lesson]));
+  const revisionId = caseRevisionId(state, absenceCase);
+  const activeRevision = state.revisions.find((revision) => revision.id === revisionId);
+  const activeLessons = state.lessons.filter((lesson) => lesson.revisionId === revisionId);
+  /*
+   * 수업 찾기는 개정판을 안 가린다. 수업 번호에 개정판이 들어 있어 겹치지 않고,
+   * 다른 주 사건이 잡아 둔 자리도 그 학급과 병렬 묶음까지 읽어야 제대로 판정한다.
+   */
+  const lessonsById = new Map(state.lessons.map((lesson) => [lesson.id, lesson]));
   const staleRevision = absenceCase.resolutionItems.some((item) =>
     !item.computedAgainstRevisionId
-    || item.computedAgainstRevisionId !== state.workspace.activeRevisionId);
+    || item.computedAgainstRevisionId !== revisionId);
   const conflicts: PlanValidation['conflicts'] = [];
   const conflictKeys = new Set<string>();
 
@@ -443,7 +480,7 @@ export function validateCasePlan(state: WorkspaceState, caseId: string): PlanVal
   };
   const activeAtomicGroups = (state.atomicLessonGroups ?? []).filter((group) =>
     group.workspaceId === state.workspace.id
-    && group.revisionId === state.workspace.activeRevisionId);
+    && group.revisionId === revisionId);
   const atomicViolations = (itemCase: AbsenceCase): Array<{
     lessonId: string;
     message: string;
@@ -510,14 +547,18 @@ export function validateCasePlan(state: WorkspaceState, caseId: string): PlanVal
   for (const violation of atomicViolations(absenceCase)) {
     addConflict(violation.lessonId, 'atomic-group', violation.message);
   }
-  const planIsProven = (itemCase: AbsenceCase): boolean =>
-    Boolean(activeRevision?.complete)
-    && itemCase.resolutionItems.every((item) =>
-      item.computedAgainstRevisionId === state.workspace.activeRevisionId)
-    && itemCase.lessonIds.every((lessonId) => resolutionCoversLesson(itemCase, lessonId))
-    && atomicViolations(itemCase).length === 0
-    && caseMovements(itemCase).every((movement) =>
-      movement.lesson && movement.change.teacher.state === 'assigned');
+  // 다른 사건은 그 사건의 개정판으로 잰다. 지난주 사건이 이번 주를 불러왔다는
+  // 이유만으로 "점유 상태 미확정"이 되면, 그 사건이 잡은 자리가 빈 자리로 보인다.
+  const planIsProven = (itemCase: AbsenceCase): boolean => {
+    const itemRevisionId = caseRevisionId(state, itemCase);
+    return Boolean(state.revisions.find((revision) => revision.id === itemRevisionId)?.complete)
+      && itemCase.resolutionItems.every((item) =>
+        item.computedAgainstRevisionId === itemRevisionId)
+      && itemCase.lessonIds.every((lessonId) => resolutionCoversLesson(itemCase, lessonId))
+      && atomicViolations(itemCase).length === 0
+      && caseMovements(itemCase).every((movement) =>
+        movement.lesson && movement.change.teacher.state === 'assigned');
+  };
 
   const candidateMovements = caseMovements(absenceCase);
   const changedLessonDestinations = new Map<string, string>();

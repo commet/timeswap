@@ -14,6 +14,7 @@ import {
   type TraceEntry,
 } from '@timeswap/engine';
 import { publishedChanges, validateCasePlan } from './projections';
+import { BURDEN_WEEKS, dateAtUtcOffset, dayIndex, mondayOf } from './week';
 
 export interface ResolutionRow {
   id: string;
@@ -90,8 +91,37 @@ const METHOD: Record<Exclude<ResolutionItem['kind'], 'unresolved' | 'manual'>, R
   cover: '보강',
 };
 
-function activeLessons(state: WorkspaceState): Lesson[] {
-  return state.lessons.filter((lesson) => lesson.revisionId === state.workspace.activeRevisionId);
+/**
+ * 그 개정판의 수업. 기본은 지금 화면에 띄운 주다.
+ *
+ * 한 주가 한 개정판이다. 사건을 풀 때는 활성 개정판이 아니라 **그 사건의 주**를
+ * 넘겨야 한다. 이유는 `projections.ts` 의 `caseRevisionId` 옆에 적었다.
+ */
+function activeLessons(
+  state: WorkspaceState,
+  revisionId: string = state.workspace.activeRevisionId,
+): Lesson[] {
+  return state.lessons.filter((lesson) => lesson.revisionId === revisionId);
+}
+
+/** 수업을 번호로 찾을 때는 개정판을 안 가린다. 번호에 개정판이 들어 있어 겹치지 않는다. */
+function anyLessonById(state: WorkspaceState): Map<string, Lesson> {
+  return new Map(state.lessons.map((lesson) => [lesson.id, lesson]));
+}
+
+/**
+ * 그 주의 수업이 들어 있는 개정판.
+ *
+ * 주를 받아 개정판을 되찾는다. 지난주 사건을 지난주 격자 위에서 풀기 위한 것이다.
+ * 그 주 수업이 하나도 없으면 활성 개정판으로 둔다.
+ */
+function revisionForDate(state: WorkspaceState, date: string): string {
+  const monday = mondayOf(date);
+  const saturday = dateAtUtcOffset(monday, 5);
+  for (const lesson of state.lessons) {
+    if (lesson.date >= monday && lesson.date < saturday) return lesson.revisionId;
+  }
+  return state.workspace.activeRevisionId;
 }
 
 function teacherLabel(state: WorkspaceState, teacherId: string): string {
@@ -159,11 +189,11 @@ function coverGroup(
   state: WorkspaceState,
   lesson: Lesson,
 ): CoverGroup {
-  const lessons = activeLessons(state);
+  const lessons = activeLessons(state, lesson.revisionId);
   const lessonById = new Map(lessons.map((current) => [current.id, current]));
   const atomicGroup = (state.atomicLessonGroups ?? []).find((group) =>
     group.workspaceId === state.workspace.id
-    && group.revisionId === state.workspace.activeRevisionId
+    && group.revisionId === lesson.revisionId
     && group.lessonIds.includes(lesson.id));
   const groupedLessons = atomicGroup
     ? atomicGroup.lessonIds.flatMap((lessonId) => lessonById.get(lessonId) ?? [])
@@ -192,22 +222,6 @@ interface TargetWeekInput {
   lessonByAssignment: Map<Assignment, Lesson>;
   assignmentByLessonId: Map<string, Assignment>;
   monday: string;
-}
-
-function dateAtUtcOffset(date: string, offset: number): string {
-  const value = new Date(`${date}T00:00:00.000Z`);
-  value.setUTCDate(value.getUTCDate() + offset);
-  return value.toISOString().slice(0, 10);
-}
-
-function mondayOf(date: string): string {
-  const value = new Date(`${date}T00:00:00.000Z`);
-  const day = value.getUTCDay();
-  return dateAtUtcOffset(date, day === 0 ? -6 : 1 - day);
-}
-
-function dayIndex(date: string, monday: string): number {
-  return Math.round((Date.parse(`${date}T00:00:00.000Z`) - Date.parse(`${monday}T00:00:00.000Z`)) / 86_400_000);
 }
 
 function classKey(lesson: Pick<Lesson, 'classIdentity'>): string {
@@ -272,7 +286,7 @@ function unavailableOf(
   periods: number,
 ): Record<string, number[]> {
   const ignored = new Set<AbsenceCase['status']>(['rejected', 'cancelled', 'superseded']);
-  const lessonById = new Map(activeLessons(state).map((lesson) => [lesson.id, lesson]));
+  const lessonById = anyLessonById(state);
   const slots = new Map<string, Set<number>>();
   for (const absenceCase of state.cases) {
     if (ignored.has(absenceCase.status)) continue;
@@ -292,9 +306,6 @@ function unavailableOf(
     [...slots].map(([teacherId, own]) => [teacherId, [...own].sort((left, right) => left - right)]),
   );
 }
-
-/** 부담을 세는 기간. 이 주와 앞의 세 주다. */
-const BURDEN_WEEKS = 4;
 
 /**
  * 최근에 누가 얼마나 자리를 내어 주었는지.
@@ -362,6 +373,7 @@ export function targetWeekInput(
   chosen: readonly ResolutionItem[] = [],
 ): TargetWeekInput {
   const monday = mondayOf(targetDate);
+  const revisionId = revisionForDate(state, targetDate);
   /*
    * 이미 게시된 변경을 격자에 얹는다.
    *
@@ -380,7 +392,7 @@ export function targetWeekInput(
   for (const item of chosen) {
     for (const change of item.changes) picked.set(change.lessonId, change);
   }
-  const lessons = activeLessons(state)
+  const lessons = activeLessons(state, revisionId)
     .map((lesson) => {
       const chosenChange = picked.get(lesson.id);
       if (chosenChange) {
@@ -414,7 +426,7 @@ export function targetWeekInput(
    *
    * 어떤 교시가 있는 날인가는 학교 편성의 성질이고, 우리가 낸 변경으로 달라지지 않는다.
    */
-  const structure = activeLessons(state).filter((lesson) => {
+  const structure = activeLessons(state, revisionId).filter((lesson) => {
     const day = dayIndex(lesson.date, monday);
     return day >= 0 && day < 5;
   });
@@ -569,7 +581,7 @@ export function targetWeekInput(
 }
 
 function redactedTrace(state: WorkspaceState, trace: readonly TraceEntry[]): TraceEntry[] {
-  const teachers = [...new Set(activeLessons(state).flatMap((lesson) =>
+  const teachers = [...new Set(state.lessons.flatMap((lesson) =>
     lesson.teacher.state === 'assigned' ? [lesson.teacher.teacherId] : []))]
     .sort((left, right) => right.length - left.length);
   return trace.map((entry) => ({
@@ -705,7 +717,7 @@ function warningReasons(state: WorkspaceState, lesson: Lesson, item: ResolutionI
   if (item.kind === 'cover') {
     const teacherId = item.changes.find(isAssigned)?.teacher.teacherId;
     const dayLessons = teacherId
-      ? activeLessons(state).filter((current) => current.date === lesson.date
+      ? activeLessons(state, lesson.revisionId).filter((current) => current.date === lesson.date
         && current.teacher.state === 'assigned'
         && current.teacher.teacherId === teacherId).length
       : 0;
@@ -729,7 +741,8 @@ function burden(state: WorkspaceState, lesson: Lesson, item: ResolutionItem): st
   const collaborator = item.changes.filter(isAssigned)
     .find((change) => change.teacher.teacherId !== ownerId);
   if (!collaborator) return '추가 부담이 적습니다';
-  const dayLessons = activeLessons(state).filter((current) => current.date === lesson.date
+  const dayLessons = activeLessons(state, lesson.revisionId)
+    .filter((current) => current.date === lesson.date
     && current.teacher.state === 'assigned'
     && current.teacher.teacherId === collaborator.teacher.teacherId).length;
   return `당일 수업 ${dayLessons}시간`;
@@ -778,7 +791,7 @@ export function resolutionRowsForLesson(
   lessonId: string,
 ): ResolutionRow[] {
   const absenceCase = state.cases.find((item) => item.id === caseId);
-  const lesson = activeLessons(state).find((item) => item.id === lessonId);
+  const lesson = anyLessonById(state).get(lessonId);
   if (!absenceCase || !lesson) return [];
 
   /*
@@ -828,10 +841,11 @@ export function resolutionConstraintForLesson(
   lessonId: string,
   rows: readonly ResolutionRow[],
 ): string | undefined {
-  const lesson = activeLessons(state).find((item) => item.id === lessonId);
+  const lesson = anyLessonById(state).get(lessonId);
   if (!lesson || rows.some((row) => row.method !== '보강')) return undefined;
   if (lesson.parallelGroupId) {
-    const count = activeLessons(state).filter((item) => item.parallelGroupId === lesson.parallelGroupId).length;
+    const count = activeLessons(state, lesson.revisionId)
+      .filter((item) => item.parallelGroupId === lesson.parallelGroupId).length;
     return `선택과목 묶음 ${count}개 수업은 함께 운영해야 합니다. 부분 교환 대신 묶음 전체 보강안을 확인하십시오.`;
   }
   const atomic = (state.atomicLessonGroups ?? []).find((group) => group.lessonIds.includes(lessonId));
@@ -841,7 +855,7 @@ export function resolutionConstraintForLesson(
 
 /** Returns the selected timetable diff from canonical lessons, never display text. */
 export function resolutionDetailForRow(state: WorkspaceState, row: ResolutionRow): ResolutionDetail {
-  const lessonsById = new Map(activeLessons(state).map((lesson) => [lesson.id, lesson]));
+  const lessonsById = anyLessonById(state);
   return {
     groupedUnitCount: row.resolution.changes.length,
     collaborators: row.collaborators,
@@ -935,7 +949,7 @@ export function resolutionPreviewForHandoff(
 export function resolutionProgressForCase(state: WorkspaceState, caseId: string): ResolutionProgress[] {
   const absenceCase = state.cases.find((item) => item.id === caseId);
   if (!absenceCase) return [];
-  const lessonsById = new Map(activeLessons(state).map((lesson) => [lesson.id, lesson]));
+  const lessonsById = anyLessonById(state);
   const validation = validateCasePlan(state, caseId);
   return absenceCase.lessonIds.map((lessonId) => {
     const lesson = lessonsById.get(lessonId);
