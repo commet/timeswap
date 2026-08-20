@@ -35,6 +35,7 @@ import {
 import { RequestStatusList } from './RequestStatusList';
 import { BRAND } from '../lib/brand';
 import type { WorkspaceState } from '../lib/domain';
+import { effectiveLessons } from '../lib/projections';
 import {
   CASE_STATUS_LABEL,
   findDuplicateAbsenceCase,
@@ -1442,7 +1443,7 @@ function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleVi
     });
     if (overlapping.length > 0) {
       const dates = [...new Set(overlapping.flatMap((item) => item.lessonIds)
-        .map((lessonId) => state.lessons.find((lesson) => lesson.id === lessonId)?.date)
+        .map((lessonId) => effectiveLessons(state).find((lesson) => lesson.id === lessonId)?.date)
         .filter((date): date is string => Boolean(date)))].sort();
       return {
         error: `${dates.join(', ')} 수업은 이미 낸 요청에 들어 있습니다. 그 요청을 취소하거나 겹치지 않는 날짜를 고르십시오.`,
