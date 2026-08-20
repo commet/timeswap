@@ -34,6 +34,14 @@ export interface NeisCell {
   klass: string;
   /** Human-readable grade/class label for presentation. */
   classLabel: string;
+  /**
+   * 학년. 나이스가 준 값을 그대로 들고 간다.
+   *
+   * 표시 이름에서 캐내면 안 된다. 특수학교 표시 이름은 `초1-1` 처럼 과정 글자가 앞에
+   * 붙어서 앞머리를 숫자로 읽으면 NaN 이 된다. 실제로 그렇게 만들었다가 특수학교
+   * 32곳 전부에서 학년 판정이 다시 죽었다.
+   */
+  grade: string;
   /** 보강과 전문교과 표기를 떼어 낸 실제 과목명 */
   subject: string;
   kind: NeisKind;
@@ -113,6 +121,23 @@ export function stripMarks(raw: string): { subject: string; cover: boolean; pro:
   return { subject: t, cover, pro };
 }
 
+/**
+ * 화면에 보이는 학급 이름.
+ *
+ * 특수학교는 초등부와 중학부, 고등부를 함께 운영하고 학년이 과정마다 1부터 다시 센다.
+ * 과정을 빼면 세 학급이 모두 `1-1` 로 보여 어느 학급인지 가릴 수 없다.
+ * 그래서 특수학교에서만 앞에 한 글자를 붙인다. `초1-1`, `중1-1`, `고1-1` 이 된다.
+ */
+export function classLabelOf(identity: {
+  schoolCourse?: string;
+  grade: string;
+  className: string;
+}): string {
+  const course = identity.schoolCourse?.trim() ?? '';
+  const mark = course.startsWith('초등') ? '초' : course.startsWith('중학') ? '중' : course.startsWith('고등') ? '고' : '';
+  return `${mark}${identity.grade}-${identity.className}`;
+}
+
 export const baseKey = (klass: string, day: number, period: number): string =>
   `${klass}|${day}|${period}`;
 
@@ -136,7 +161,7 @@ export function fromNeis(rows: NeisRow[]): NeisReport {
       day: dayOfYmd(row.date),
       period: Number(row.period) - 1,
       klass: row.classKey,
-      classLabel: `${row.classIdentity.grade}-${row.classIdentity.className}`,
+      classLabel: classLabelOf(row.classIdentity),
       grade: row.classIdentity.grade,
       raw: row.rawSubject,
     }));
@@ -205,6 +230,7 @@ export function fromNeis(rows: NeisRow[]): NeisReport {
       period: p.period,
       klass: p.klass,
       classLabel: p.classLabel,
+      grade: p.grade,
       subject,
       kind: isHoliday ? '휴업' : cover ? '보강' : '수업',
       pro,
@@ -455,12 +481,13 @@ export function neisToTimetable(
     });
   }
 
-  // 학년은 학급 표시(`2-7`)에서 읽어 명시로 넘긴다.
-  // 학급 키는 학교 코드로 시작하는 구조화된 값이라 거기서 캐내면 학교 코드를 학년으로 읽는다.
+  // 학년은 나이스가 준 값을 그대로 넘긴다.
+  // 학급 키는 학교 코드로 시작하는 구조화된 값이라 거기서 캐내면 학교 코드를 학년으로 읽고,
+  // 표시 이름은 특수학교에서 `초1-1` 처럼 과정 글자가 앞에 붙어 역시 숫자로 안 읽힌다.
   const klassGrade: Record<string, number> = {};
   for (const c of report.cells) {
     if (klassGrade[c.klass] !== undefined) continue;
-    const g = Number(c.classLabel.split('-')[0]);
+    const g = Number(c.grade);
     if (Number.isFinite(g) && g >= 1 && g <= 12) klassGrade[c.klass] = g;
   }
 

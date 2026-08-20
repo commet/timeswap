@@ -17,6 +17,7 @@ export function Panel({
   cover,
   peers,
   electiveGrade,
+  noSwap,
   grouped,
   defaultDate,
   owner,
@@ -43,6 +44,8 @@ export function Panel({
     sharedRate: number;
     kind: '보통' | '선택과목' | '전공실습';
   } | null;
+  /** 교체안이 없을 때 그 까닭. 없으면 후보가 있다는 뜻이다. */
+  noSwap: 'homeroom' | 'group' | 'unknown' | null;
   grouped: boolean;
   defaultDate: string;
   owner: string;
@@ -120,7 +123,16 @@ export function Panel({
       )}
 
       {result && !hasChange && !hasCover && (
-        <div className="panel-empty"><b>지금 조건에서는 가능한 변경이 없습니다</b><span>근무 불가 시간과 묶음 수업을 확인해 주세요.</span></div>
+        <div className="panel-empty">
+          <b>교체할 수 있는 상대가 없습니다</b>
+          <span>
+            {noSwap === 'homeroom'
+              ? '이 학급 수업을 대부분 직접 맡고 계셔서 서로 바꿀 상대가 없습니다. 보강으로 진행하십시오.'
+              : noSwap === 'group'
+                ? '함께 움직이는 묶음 수업이라 한 시간만 떼어 옮길 수 없습니다. 묶음 전체 보강안을 확인하십시오.'
+                : '근무 불가 시간과 묶음 수업을 확인해 주십시오.'}
+          </span>
+        </div>
       )}
     </aside>
   );

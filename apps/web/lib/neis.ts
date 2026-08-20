@@ -122,22 +122,60 @@ export async function searchSchools(name: string, key?: string, fetch?: typeof g
   return result.rows.map((r) => ({ office: r.ATPT_OFCDC_SC_CODE, officeName: r.ATPT_OFCDC_SC_NM, code: r.SD_SCHUL_CODE, name: r.SCHUL_NM, kind: r.SCHUL_KND_SC_NM, preview: !result.complete }));
 }
 
-export function timetableEndpointOf(kind: string): Extract<NeisEndpoint, `${string}Timetable`> {
-  if (kind.startsWith('초등')) return 'elsTimetable';
-  if (kind.startsWith('중학')) return 'misTimetable';
-  if (kind.startsWith('특수')) return 'spsTimetable';
-  return 'hisTimetable';
+type TimetableEndpoint = Extract<NeisEndpoint, `${string}Timetable`>;
+
+/**
+ * 학교 종류에 맞는 시간표 엔드포인트. 첫 번째가 가장 그럴듯한 것이고 나머지는 대비책이다.
+ *
+ * 나이스에는 학교 종류가 23가지 있다. 전국 12,584곳 가운데 초등학교와 중학교,
+ * 고등학교가 12,075곳(96%)이고 나머지가 509곳이다. 그 나머지를 하나씩 적어 넣는 대신
+ * 순서를 주고 차례로 불러 본다. 종류가 늘어도 코드를 안 고쳐도 된다.
+ *
+ * 이름만 보고 하나만 고르면 틀린다. 실제로 불러 보고 확인한 것이다.
+ *
+ * | 학교 종류 | 자료를 주는 곳 | 이름만 보면 |
+ * |---|---|---|
+ * | 각종학교(중) 38곳 | misTimetable | his 로 감 |
+ * | 방송통신중학교 24곳 | misTimetable | his 로 감 |
+ * | 평생학교(중) 19곳 | misTimetable | his 로 감 |
+ * | 각종학교(초) 8곳 | elsTimetable | his 로 감 |
+ * | 평생학교(초) 5곳 | elsTimetable | his 로 감 |
+ *
+ * 이대로 두면 94곳의 선생님이 시간표가 있는데도 "없습니다"를 본다.
+ * 각종학교(중) 가운데는 실제로 초등 자료를 주는 곳도 있어서, 이름으로 하나를 고르는
+ * 방식 자체가 맞지 않는다.
+ */
+export function timetableEndpointsOf(kind: string): TimetableEndpoint[] {
+  const all: TimetableEndpoint[] = ['hisTimetable', 'misTimetable', 'elsTimetable', 'spsTimetable'];
+  const first: TimetableEndpoint = kind.includes('특수')
+    ? 'spsTimetable'
+    : kind.includes('초')
+      ? 'elsTimetable'
+      : kind.includes('중')
+        ? 'misTimetable'
+        : 'hisTimetable';
+  return [first, ...all.filter((e) => e !== first)];
+}
+
+/** 가장 그럴듯한 엔드포인트 하나. 순서가 필요한 곳에서는 timetableEndpointsOf 를 쓴다. */
+export function timetableEndpointOf(kind: string): TimetableEndpoint {
+  return timetableEndpointsOf(kind)[0]!;
 }
 
 export interface TimetableQuery { school: NeisSchool; from: string; to: string; key?: string; grade?: string; fetch?: typeof globalThis.fetch; now?: () => Date; }
 const GAP_START = '20230801';
 const GAP_END = '20250228';
 
-function timetableRequest(q: TimetableQuery, from = q.from, to = q.to): NeisRequest {
+function timetableRequest(
+  q: TimetableQuery,
+  from = q.from,
+  to = q.to,
+  endpoint = timetableEndpointOf(q.school.kind),
+): NeisRequest {
   if (from <= GAP_END && to >= GAP_START) throw new NeisFailure('HISTORICAL_GAP', '2023년 8월부터 2024학년도까지의 시간표는 일반 API로 이용할 수 없습니다. 수업이 없는 주로 해석하지 마십시오.');
   const params: Record<string, string> = { ATPT_OFCDC_SC_CODE: q.school.office, SD_SCHUL_CODE: q.school.code, TI_FROM_YMD: from, TI_TO_YMD: to };
   if (q.grade) params.GRADE = q.grade;
-  return { endpoint: timetableEndpointOf(q.school.kind), params, key: q.key, fetch: q.fetch, now: q.now };
+  return { endpoint, params, key: q.key, fetch: q.fetch, now: q.now };
 }
 
 export async function loadTimetable(q: TimetableQuery): Promise<CompleteNeisResult<NeisRow>> {
@@ -155,6 +193,27 @@ export async function findRecentTeachingWeek(query: TimetableQuery): Promise<Tea
     const monday = new Date(current); monday.setDate(monday.getDate() - weeksBack * 7);
     const friday = new Date(monday); friday.setDate(friday.getDate() + 4);
     const result = await fetchAllNeisRows<NeisRow>(timetableRequest(query, ymd(monday), ymd(friday)));
+    if (!result.complete || result.rows.length > 0) {
+      return { ...result, range: { from: ymd(monday), to: ymd(friday) } };
+    }
+  }
+
+  /*
+   * 첫 엔드포인트로 다섯 주가 모두 비었다. 여기서 포기하면 학교 종류를 잘못 읽은
+   * 경우와 정말 시간표가 없는 경우를 가르지 못한다. 그래서 남은 엔드포인트를 한 번씩
+   * 더 불러 본다. 가장 최근 주만 본다. 이 학교급이 맞는지 가리는 것이 목적이라
+   * 한 주면 충분하고, 다섯 주를 다 돌면 호출이 스무 번으로 늘어난다.
+   *
+   * 초중고는 첫 엔드포인트에서 끝나므로 이 자리에 오지 않는다. 전국 12,584곳 가운데
+   * 12,075곳(96%)이 그렇다. 나머지 종류에서만 값을 더 낸다.
+   */
+  const monday = new Date(current);
+  const friday = new Date(monday); friday.setDate(friday.getDate() + 4);
+  const [, ...rest] = timetableEndpointsOf(query.school.kind);
+  for (const endpoint of rest) {
+    const result = await fetchAllNeisRows<NeisRow>(
+      timetableRequest(query, ymd(monday), ymd(friday), endpoint),
+    );
     if (!result.complete || result.rows.length > 0) {
       return { ...result, range: { from: ymd(monday), to: ymd(friday) } };
     }

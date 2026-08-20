@@ -3,6 +3,8 @@ import {
   fetchAllNeisRows,
   findRecentTeachingWeek,
   loadTimetable,
+  timetableEndpointOf,
+  timetableEndpointsOf,
   type NeisRequest,
   type NeisSchool,
 } from '../lib/neis';
@@ -147,5 +149,79 @@ describe('timetable safety', () => {
     await expect(
       loadTimetable({ school, from: '20260817', to: '20260821', key: 'in-memory-key', fetch: vi.fn().mockRejectedValue(new TypeError('offline')) }),
     ).rejects.toMatchObject({ code: 'NETWORK' });
+  });
+});
+
+/**
+ * 학교 종류가 스물세 가지인데 이름만 보고 엔드포인트를 하나 고르면 틀린다.
+ * 실제로 불러 확인하니 각종학교(중) 38곳, 방송통신중학교 24곳, 평생학교(중) 19곳,
+ * 각종학교(초) 8곳, 평생학교(초) 5곳이 이름과 다른 곳에서 자료를 준다.
+ * 그대로 두면 94곳의 선생님이 시간표가 있는데도 "없습니다"를 본다.
+ */
+describe('학교 종류와 시간표 엔드포인트', () => {
+  it('초중고 특수는 첫 번째가 바로 맞는다', () => {
+    expect(timetableEndpointOf('초등학교')).toBe('elsTimetable');
+    expect(timetableEndpointOf('중학교')).toBe('misTimetable');
+    expect(timetableEndpointOf('고등학교')).toBe('hisTimetable');
+    expect(timetableEndpointOf('특수학교')).toBe('spsTimetable');
+  });
+
+  it('이름에 초나 중이 들어간 다른 종류도 알맞은 곳을 먼저 본다', () => {
+    expect(timetableEndpointOf('각종학교(중)')).toBe('misTimetable');
+    expect(timetableEndpointOf('방송통신중학교')).toBe('misTimetable');
+    expect(timetableEndpointOf('평생학교(중)-2년6학기')).toBe('misTimetable');
+    expect(timetableEndpointOf('각종학교(초)')).toBe('elsTimetable');
+    expect(timetableEndpointOf('평생학교(초)-3년6학기')).toBe('elsTimetable');
+    expect(timetableEndpointOf('각종학교(고)')).toBe('hisTimetable');
+    expect(timetableEndpointOf('방송통신고등학교')).toBe('hisTimetable');
+  });
+
+  it('모르는 종류도 네 곳을 모두 후보로 든다', () => {
+    expect(timetableEndpointsOf('공동실습소')).toHaveLength(4);
+    expect(timetableEndpointsOf('없는학교종류')[0]).toBe('hisTimetable');
+    expect(new Set(timetableEndpointsOf('초등학교')).size).toBe(4);
+  });
+
+  it('첫 엔드포인트로 다섯 주가 비면 남은 곳을 한 번씩 더 본다', async () => {
+    // 각종학교(중)처럼 이름과 자료가 어긋난 학교다. mis 에 자료가 있다.
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation((url) => {
+      const has = String(url).includes('misTimetable');
+      return Promise.resolve(
+        response(has ? 'misTimetable' : 'hisTimetable', has ? 1 : 0, has ? [{ ALL_TI_YMD: '20260817' }] : []),
+      );
+    });
+    const result = await findRecentTeachingWeek({
+      school: { ...school, kind: '각종학교(중)' },
+      from: '20260817',
+      to: '20260821',
+      key: 'in-memory-key',
+      fetch,
+      now: () => new Date('2026-08-18T12:00:00.000Z'),
+    });
+    expect(result.rows).toHaveLength(1);
+    // 다섯 주를 mis 로 다시 도는 것이 아니라 가장 최근 주만 본다
+    expect(fetch.mock.calls.filter((c) => String(c[0]).includes('misTimetable'))).toHaveLength(1);
+  });
+
+  it('초중고는 대비책 호출을 하지 않는다', async () => {
+    // 96%가 여기 해당한다. 값을 더 내면 안 된다.
+    // 실제 나이스는 어느 엔드포인트를 불러도 그 이름으로 답한다. 목도 그렇게 둔다.
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation((url) => {
+      const ep = /hub\/(\w+)\?/.exec(String(url))?.[1] ?? 'hisTimetable';
+      return Promise.resolve(response(ep, 0, []));
+    });
+    await expect(
+      findRecentTeachingWeek({
+        school,
+        from: '20260817',
+        to: '20260821',
+        key: 'in-memory-key',
+        fetch,
+        now: () => new Date('2026-08-18T12:00:00.000Z'),
+      }),
+    ).rejects.toThrow(/최근 5주/);
+    // 다섯 주 곱하기 his 하나, 그다음 대비책 셋
+    expect(fetch.mock.calls.filter((c) => String(c[0]).includes('hisTimetable'))).toHaveLength(5);
+    expect(fetch.mock.calls).toHaveLength(8);
   });
 });

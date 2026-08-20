@@ -42,6 +42,7 @@ describe('NEIS normalization', () => {
       classIdentityKey({
         schoolCode: '7010536',
         academicYear: '2026',
+        schoolCourse: '',
         dayCourse: '주간',
         affiliation: '공업계',
         major: '기계과',
@@ -52,6 +53,7 @@ describe('NEIS normalization', () => {
       classIdentityKey({
         schoolCode: '7010536',
         academicYear: '2026',
+        schoolCourse: '',
         dayCourse: '주간',
         affiliation: '공업계',
         major: '건축과',
@@ -133,5 +135,32 @@ describe('NEIS normalization', () => {
     expect(report.duplicateCount).toBe(1);
     expect(report.parallelGroups).toHaveLength(1);
     expect(new Set(report.accepted.slice(0, 2).map((item) => item.classKey)).size).toBe(2);
+  });
+});
+
+/**
+ * 특수학교는 초등부와 중학부, 고등부를 한 학교에서 운영하고 학년이 과정마다 1부터
+ * 다시 센다. 과정을 학급 열쇠에 안 넣으면 세 학급이 하나로 합쳐진다.
+ *
+ * 실제 특수학교 32곳 가운데 31곳에서 (학년, 반)이 여러 과정에 걸쳤고, 한 칸에 서로
+ * 다른 과목이 겹치는 자리가 6,028곳이었다. 합쳐지면 학급 13개에 배정 626개가 되는데
+ * 한 주가 5일 곱하기 7교시로 35칸이라 있을 수 없는 시간표다. 그런데도 엔진은 그
+ * 겹침을 분반으로 읽어 유효하다고 통과시켰다. 오류가 아니라 조용히 틀린 시간표였다.
+ */
+describe('특수학교의 학교 과정', () => {
+  it('과정이 다르면 같은 학년 같은 반이라도 다른 학급이다', () => {
+    const report = normalizeNeisRows([
+      row({ SCHUL_CRSE_SC_NM: '초등학교', GRADE: '1', CLASS_NM: '1', ITRT_CNTNT: '국어' }),
+      row({ SCHUL_CRSE_SC_NM: '중학교', GRADE: '1', CLASS_NM: '1', ITRT_CNTNT: '수학' }),
+      row({ SCHUL_CRSE_SC_NM: '고등학교', GRADE: '1', CLASS_NM: '1', ITRT_CNTNT: '영어' }),
+    ]);
+    expect(new Set(report.accepted.map((item) => item.classKey)).size).toBe(3);
+    // 셋이 같은 칸을 나눠 쓰는 분반으로 읽히면 안 된다
+    expect(report.parallelGroups).toEqual([]);
+  });
+
+  it('과정이 없는 학교급에서는 값이 달라지지 않는다', () => {
+    const withoutCourse = normalizeNeisRows([row({ GRADE: '1', CLASS_NM: '1' })]);
+    expect(withoutCourse.accepted[0]?.classIdentity.schoolCourse).toBe('');
   });
 });
