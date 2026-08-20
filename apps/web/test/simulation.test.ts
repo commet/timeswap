@@ -11,7 +11,7 @@ import {
 } from '../lib/case-service';
 import { publishCase } from '../lib/publication';
 import { createCorrectionCase } from '../lib/case-service';
-import { projectPublicClassSchedule, validateCasePlan } from '../lib/projections';
+import { effectiveLessons, projectPublicClassSchedule, validateCasePlan } from '../lib/projections';
 import { createWorkspaceRepository, WORKSPACE_KEY_PREFIX } from '../lib/repository';
 import { mapKey } from '../lib/app';
 import type { Lesson, WorkspaceState } from '../lib/domain';
@@ -182,8 +182,14 @@ interface Round { teacherId: string; date: string; lessons: Lesson[] }
 /** 아직 부재를 낸 적 없는 교사 가운데 그날 수업이 둘 이상인 사람. */
 function nextRound(state: WorkspaceState, used: Set<string>): Round | null {
   const groups = new Map<string, Round>();
-  for (const lesson of state.lessons) {
-    if (lesson.revisionId !== state.workspace.activeRevisionId) continue;
+  /*
+   * 화면과 같은 표를 본다. 게시된 변경을 얹은 것이다.
+   *
+   * 앞서는 원래 표를 봤다. 그래서 이미 남에게 넘어간 수업을 원래 담당의 것으로 골랐고,
+   * 날짜가 바뀐 수업을 옛 날짜로 골랐다. 화면이 고르는 방식과 다르면 시뮬레이션이
+   * 실제로 일어나지 않는 상황을 재게 된다.
+   */
+  for (const lesson of effectiveLessons(state)) {
     if (lesson.teacher.state !== 'assigned') continue;
     if (used.has(lesson.teacher.teacherId)) continue;
     const key = JSON.stringify([lesson.teacher.teacherId, lesson.date]);

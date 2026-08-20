@@ -203,6 +203,38 @@ export function publishedChanges(state: WorkspaceState): Map<string, PublishedCh
   return byLesson;
 }
 
+/**
+ * 게시된 변경을 얹은 수업.
+ *
+ * 부재로 영향받는 수업을 고를 때 이것을 봐야 한다. 학교가 준 원래 표만 보면 두 가지가
+ * 어긋난다.
+ *
+ * 보강을 맡은 사람이 그날 결강을 내면 그 보강 수업이 목록에 안 뜬다. 원래 표에서는
+ * 그 수업의 담당이 여전히 남이기 때문이다. 아무도 다시 안 맡고, 그날 그 학급에 들어갈
+ * 사람이 없어진다. 게시까지 끝난 뒤라 아무도 눈치채지 못한다.
+ *
+ * 반대로 이미 남에게 넘어간 수업이 원래 담당의 목록에 그대로 뜬다. 이미 해결된 수업을
+ * 한 번 더 푸는 일이 된다.
+ */
+export function effectiveLessons(
+  state: WorkspaceState,
+  revisionId: string = state.workspace.activeRevisionId,
+): Lesson[] {
+  const published = publishedChanges(state);
+  return state.lessons
+    .filter((lesson) => lesson.revisionId === revisionId)
+    .map((lesson) => {
+      const moved = published.get(lesson.id);
+      if (!moved) return lesson;
+      return {
+        ...lesson,
+        date: moved.change.toDate,
+        period: moved.change.toPeriod,
+        teacher: moved.change.teacher,
+      };
+    });
+}
+
 function pendingChanges(state: WorkspaceState): Map<string, PendingChange> {
   const byLesson = new Map<string, PendingChange>();
   const cases = [...state.cases]
@@ -655,9 +687,26 @@ export function validateCasePlan(state: WorkspaceState, caseId: string): PlanVal
     item.id !== absenceCase.id
     && item.id !== absenceCase.supersedesCaseId
     && RESERVING_STATUSES.has(item.status));
+  /*
+   * 이 사건이 손대는 수업.
+   *
+   * 게시된 사건이 이미 옮겨 놓은 수업을 이 사건이 다시 옮긴다면, 그 수업의 자리는
+   * 이 사건이 새로 정한다. 게시는 **이미 일어난 일**이지 앞으로 잡아 둔 자리가 아니다.
+   *
+   * 그러지 않으면 한 번 게시된 수업은 그 주 내내 못 움직인다. 월요일에 낸 변경이
+   * 게시된 뒤 수요일에 다른 사람이 결강을 내면서 그 수업을 또 옮겨야 하는 일이
+   * 흔한데, "다른 사건의 승인된 해결안에 이미 포함되었습니다"로 막혔다. 보강을 맡은
+   * 사람이 그날 결강을 내는 경우도 여기로 온다.
+   *
+   * 승인만 나고 아직 게시 전인 사건은 그대로 막는다. 그쪽은 아직 안 일어난 계획이라
+   * 두 계획이 한 수업을 두고 다투는 것이 맞다.
+   */
+  const candidateLessonIds = new Set(candidateMovements.map((movement) =>
+    movement.change.lessonId));
   const acceptedPlans = acceptedCases.map((itemCase) => ({
     itemCase,
-    movements: caseMovements(itemCase),
+    movements: caseMovements(itemCase).filter((movement) =>
+      !(itemCase.status === 'published' && candidateLessonIds.has(movement.change.lessonId))),
     proven: planIsProven(itemCase),
   }));
   for (const movement of candidateMovements) {

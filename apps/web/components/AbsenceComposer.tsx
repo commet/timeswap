@@ -9,6 +9,7 @@ import {
   lessonsAffectedByAbsence,
 } from '../lib/case-service';
 import type { AbsenceCase, Lesson, WorkspaceState } from '../lib/domain';
+import { effectiveLessons } from '../lib/projections';
 
 export interface ComposerReadiness {
   readyForCandidates: boolean;
@@ -43,9 +44,11 @@ export interface TeacherDiagnosticProjection {
   issues: string[];
 }
 
-function activeLessons(state: WorkspaceState): Lesson[] {
-  return state.lessons.filter((lesson) => lesson.revisionId === state.workspace.activeRevisionId);
-}
+/*
+ * 게시된 변경을 얹은 표를 쓴다. 이유는 `projections.ts` 의 `effectiveLessons` 옆에
+ * 적었다. 같은 셈을 여기에 또 적지 않는다.
+ */
+const activeLessons = effectiveLessons;
 
 function countFromQuery(query: Record<string, string> | undefined, key: string): number | null {
   const value = Number(query?.[key]);

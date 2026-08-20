@@ -9,7 +9,7 @@ import type {
 } from './domain';
 import { CASE_STATUS_LABEL, canWithdrawCase } from './domain';
 import type { SaveResult } from './repository';
-import { validateCasePlan } from './projections';
+import { effectiveLessons, validateCasePlan } from './projections';
 
 export interface CreateAbsenceCaseInput {
   id: string;
@@ -196,8 +196,14 @@ function validateCreation(state: WorkspaceState, input: CreateAbsenceCaseInput):
     throw new Error('Audit event id already exists.');
   }
 
+  /*
+   * 게시된 변경을 얹은 표로 본다. 보강을 맡은 사람이 그날 결강을 낼 때, 원래 표만
+   * 보면 그 수업의 담당이 여전히 남이라 "신청자가 담당이 아니다"로 막힌다.
+   */
+  const lessonsNow = new Map(effectiveLessons(state).map((lesson) => [lesson.id, lesson]));
   for (const lessonId of input.lessonIds) {
-    const lesson = state.lessons.find((item) => item.id === lessonId);
+    const lesson = lessonsNow.get(lessonId)
+      ?? state.lessons.find((item) => item.id === lessonId);
     if (!lesson) throw new Error(`Affected lesson does not exist: ${lessonId}`);
     if (lesson.workspaceId !== input.workspaceId) {
       throw new Error('All affected lessons must belong to one workspace.');
