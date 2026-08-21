@@ -166,7 +166,7 @@ export function messageForUnavailableSource(readiness: ComposerReadiness): strin
   }
   if (!readiness.mapping.complete) {
     const unassigned = readiness.mapping.unassignedLessons
-      ? ` · 담당 미확정 수업 ${readiness.mapping.unassignedLessons}건`
+      ? `, 담당 미확정 수업 ${readiness.mapping.unassignedLessons}건`
       : '';
     parts.push(`교사 연결 ${readiness.mapping.known}/${readiness.mapping.expected}명${unassigned}`);
   }
@@ -307,7 +307,7 @@ export function AbsenceComposer({
           <label key={lesson.id}>
             <input type="checkbox" checked={selectedLessonIds.includes(lesson.id)}
               onChange={() => toggleLesson(lesson.id)} />
-            <span>{lesson.date} {lesson.period}교시 · {lesson.classIdentity.grade}-{lesson.classIdentity.className} {lesson.subject}</span>
+            <span>{lesson.date} {lesson.period}교시 | {lesson.classIdentity.grade}-{lesson.classIdentity.className} {lesson.subject}</span>
           </label>
         )) : <p>선택한 기간에 담당 수업이 없습니다.</p>}
       </fieldset>

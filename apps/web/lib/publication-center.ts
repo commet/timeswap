@@ -81,8 +81,8 @@ const TASK_COPY: Record<AdminTaskKind, { label: string; instruction: string }> =
 
 const STAGE_LABEL: Record<PublicationStage, string> = {
   awaiting_approval: '승인 전',
-  administration: '승인 완료 · 행정 마감 진행 중',
-  ready: '행정 마감 완료 · 게시 대기',
+  administration: '승인 완료, 행정 마감 진행 중',
+  ready: '행정 마감 완료, 게시 대기',
   published: '게시 완료',
   closed: '종료된 사건',
 };

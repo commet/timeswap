@@ -133,8 +133,8 @@
   .theme-btn { margin-left: auto; }
   .landing { padding: 28px 14px; align-items: flex-start; }
   .hero { margin-bottom: 20px; }
-  .landing h1 { font-size: 32px; }
-  .landing .lede { font-size: 15px; }
+  .landing h1 { font-size: var(--t-title); }
+  .landing .lede { font-size: var(--t-body); }
   .teacher-work .work { padding: 12px 10px 18px; }
   .teacher-work.has-selection .grid-wrap { display: none; }
   .teacher-work.has-selection .work { padding-top: 10px; }
@@ -143,12 +143,12 @@
   .cand.compare-row > span:nth-child(2), .cand.compare-row > span:nth-child(4) { display: none; }
   .toast { width: max-content; max-width: calc(100vw - 24px); white-space: nowrap; padding: 8px 13px; font-size: 13px; }
   .cover-row .btn { min-height: 42px; }
-  .request-status-list { width: calc(100% - 20px); margin-top: 10px; padding: 16px 12px; }
+  .request-status-list { width: calc(100% - var(--gutter) * 2); margin-top: 10px; padding: 16px 12px; }
   .status-rows article { grid-template-columns: 1fr auto; gap: 8px; }
   .status-rows time { grid-column: 1 / -1; }
   .status-rows article > .btn { grid-column: 1 / -1; }
   .ops-detail > header { padding: 18px 16px; }
-  .ops-detail h2 { font-size: 18px; }
+  .ops-detail h2 { font-size: var(--t-section); }
   .ops-decision .btn, .ops-decision .input { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -162,10 +162,10 @@
   .schedule-window { display: none; }
   .entry-copy h1 { font-size: clamp(40px, 12vw, 60px); }
   .school-entry-panel { margin-top: 30px; }
-  .setup-page { width: calc(100% - 24px); margin-top: 18px; }
-  .setup-rail { display: flex; overflow-x: auto; }
-  .setup-rail button { flex: 0 0 116px; border-left: 1px solid var(--line); }
-  .setup-rail button:first-child { border-left: 0; }
+  .setup-page { width: calc(100% - var(--gutter) * 2); margin-top: 18px; }
+  /* 옆으로 미는 목록이다. 벽에 딱 붙은 첫 칸은 더 있는지 없는지를 안 알려 준다. */
+  .setup-rail { display: flex; gap: 6px; padding: 6px; overflow-x: auto; scroll-padding-left: 6px; }
+  .setup-rail button { flex: 0 0 116px; border: 1px solid var(--line); border-radius: 10px; }
   .shell-header { grid-template-columns: 1fr auto; gap: 7px; }
   .shell-school { text-align: right; }
   .role-navigation { grid-column: 1 / -1; }
@@ -173,13 +173,27 @@
   .role-navigation small { display: none; }
 }
 @media (max-width: 560px) {
-  .school-entry { padding: 24px 12px; }
+  .school-entry { padding: 24px var(--gutter); }
   .school-entry-row, .entry-actions, .health-grid, .invitation-columns { grid-template-columns: 1fr; }
   .school-entry-row .btn { width: 100%; min-width: 0; }
-  .entry-copy > p { font-size: 15px; }
+  .entry-copy > p { font-size: var(--t-body); }
   .setup-header { flex-direction: column; }
-  .setup-header .btn { align-self: stretch; }
-  .setup-body { padding: 20px 14px; }
+  /*
+   * 나가는 문은 나가는 문 크기로 둔다.
+   *
+   * 폰에서 화면 너비만큼 늘려 두었더니 "학교 검색"보다 먼저 눈에 들어왔다. 최초 설정을
+   * 여는 사람이 가장 하고 싶지 않은 일이 나가기다. 글자 크기 그대로, 왼쪽에 세운다.
+   */
+  .setup-header .btn { align-self: flex-start; padding-left: 0; padding-right: 0; }
+  /*
+   * 빈 카드를 세워 두지 않는다.
+   *
+   * min-height 420px 는 단계를 넘길 때 카드가 들썩이지 말라고 넣은 값이다. 넓은 화면에서는
+   * 그 값이 실제 내용보다 작아 안 보이는데, 폰에서는 입력 한 칸만 있는 1단계가 420px 를
+   * 채우느라 아래 150px 이 빈 채로 남았다. 844px 화면의 5분의 1이다. 좁은 화면에서는
+   * 내용만큼만 차지한다.
+   */
+  .setup-body { min-height: 0; padding: 20px var(--gutter); }
   .data-health header, .mapping-head { flex-direction: column; }
   .mapping-head .btn { width: 100%; }
   .mapping-row { grid-template-columns: 1fr; }
@@ -193,16 +207,13 @@
   .teacher-grid-lesson[data-resolution-from='true'], .teacher-grid-slot[data-resolution-to='true'], .teacher-grid-empty-cell[data-resolution-to='true'] { animation: none; }
 }
 @media (max-width: 620px) {
-  .teacher-command { width: calc(100% - 20px); margin: 12px auto 34px; gap: 10px; }
+  .teacher-command { width: calc(100% - var(--gutter) * 2); margin: 12px auto 34px; gap: 10px; }
   .teacher-command-intro { padding: 17px 15px; gap: 12px; flex-direction: column; }
-  .teacher-command h1 { font-size: 25px; }
   .teacher-request-button { position: sticky; bottom: 10px; z-index: 2; width: 100%; }
   .teacher-today-head { padding: 17px 15px 9px; }
-  .teacher-today-head h2 { font-size: 20px; }
   .teacher-focus-tabs { padding: 0 15px; }
   .teacher-focus-tabs button { flex: 1; min-height: var(--tap); }
   .rail-row { grid-template-columns: 46px 1fr; }
-  .rail-period { font-size: 23px; }
   .period-rail-lesson { padding: 13px 15px; }
   .rail-free { padding: 14px 15px; }
   .absence-composer { padding: 18px 15px; }
@@ -214,11 +225,11 @@
   .absence-composer > footer { flex-direction: column; }
   .absence-composer > footer .btn { width: 100%; }
   .teacher-projection-grid > header { padding: 18px 15px 12px; align-items: flex-start; flex-direction: column; }
-  .teacher-projection-grid h2 { font-size: 21px; }
+  .teacher-projection-grid h2 { font-size: var(--t-section); }
   .teacher-grid { min-width: 460px; }
-  .resolution-matrix { width: calc(100% - 20px); margin-bottom: 34px; overflow: visible; }
+  .resolution-matrix { width: calc(100% - var(--gutter) * 2); margin-bottom: 34px; overflow: visible; }
   .resolution-matrix-head { padding: 18px 15px 14px; align-items: flex-start; flex-direction: column; }
-  .resolution-matrix-head h2 { font-size: 21px; }
+  .resolution-matrix-head h2 { font-size: var(--t-section); }
   .resolution-matrix-head p { max-width: none; text-align: left; }
   .resolution-progress { grid-template-columns: 1fr; }
   .resolution-table, .resolution-table tbody, .resolution-table tr, .resolution-table td { display: block; width: 100%; }
@@ -241,9 +252,8 @@
 @media (max-width: 759px) {
   .ops-metrics { gap: 6px 16px; }
 
-  .ops-command-center { width: calc(100% - 20px); margin: 12px auto 34px; }
+  .ops-command-center { width: calc(100% - var(--gutter) * 2); margin: 12px auto 34px; }
   .ops-command-heading { align-items: stretch; flex-direction: column; gap: 9px; }
-  .ops-command-heading h2 { font-size: 25px; }
   .demo-scenario-picker { max-width: none; }
   .demo-scenario-picker > .btn { width: 100%; }
   .demo-scenario-options, .demo-reset-confirm { right: auto; left: 0; width: 100%; }
@@ -260,13 +270,13 @@
   .ops-command-center[data-ops-step='case'] .ops-command-heading, .ops-command-center[data-ops-step='case'] .ops-priority-region, .ops-command-center[data-ops-step='case'] .ops-timeline-region, .ops-command-center[data-ops-step='case'] .ops-administration-step { display: none; }
   .ops-command-center[data-ops-step='admin'] .ops-command-heading, .ops-command-center[data-ops-step='admin'] .ops-priority-region, .ops-command-center[data-ops-step='admin'] .ops-timeline-region, .ops-command-center[data-ops-step='admin'] .ops-case-panel { display: none; }
   .ops-command-center[data-ops-step='admin'] .ops-administration-step { display: block; border-radius: 15px; }
-  .ops-administration-step h3 { font-size: 22px; }
+  .ops-administration-step h3 { font-size: var(--t-section); }
   .ops-administration-step p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
 }
 @media (prefers-reduced-motion: reduce) { .change-pulse-rail > li { animation: none; } }
 @media (max-width: 759px) {
   .publication-center { padding: 17px 14px 28px; }
   .publication-task-actions .btn, .publication-links .btn { width: 100%; }
-  .public-class { width: calc(100% - 20px); margin: 14px auto 40px; }
+  .public-class { width: calc(100% - var(--gutter) * 2); margin: 14px auto 40px; }
   .public-class-lesson { padding: 12px 14px; }
 }

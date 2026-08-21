@@ -150,23 +150,26 @@ button.cell.empty:hover { border-color: var(--muted); }
 .period-rail { margin: 14px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
 .rail-row { display: grid; grid-template-columns: 56px 1fr; align-items: stretch; border-bottom: 1px solid var(--line); }
 .rail-period {
-  display: grid; place-items: center; font-size: var(--t-rail); font-weight: 400;
+  display: flex; align-items: baseline; justify-content: center; gap: 4px;
+  font-size: var(--t-rail); font-weight: 400;
   color: var(--line); border-right: 1px solid var(--line); user-select: none;
 }
+/* 옛 교시. 종이 시간표에서 고칠 때처럼 긋는다. */
+.rail-period s { color: var(--mark); font-size: var(--t-aux); text-decoration-thickness: 1px; }
 .rail-row:has(.period-rail-lesson) .rail-period { color: var(--muted); }
 .rail-row:has(.changed) .rail-period { color: var(--mark); font-weight: 600; }
 .rail-free { padding: 16px 20px; color: var(--muted); font-size: var(--t-aux); align-self: center; }
 .period-rail-lesson {
-  width: 100%; padding: 14px 20px; border: 0; border-left: 3px solid transparent;
+  width: 100%; padding: 14px 20px; border: 0;
   background: transparent; text-align: left; display: grid; gap: 2px;
 }
 .period-rail-lesson:hover { background: var(--surface-2); }
 .period-rail-lesson b { font-size: var(--t-body); font-weight: 600; }
 .rail-where { color: var(--muted); font-size: var(--t-aux); display: flex; gap: 10px; }
 .rail-where i { font-style: normal; }
-.period-rail-lesson.changed { border-left-color: var(--mark); }
+.period-rail-lesson.changed b { color: var(--mark); }
 .rail-from { color: var(--mark); font-size: var(--t-label); font-weight: 500; }
-.teacher-grid-lesson.planned { border-left: 3px solid var(--mark); }
+.teacher-grid-lesson.planned b { color: var(--mark); }
 .teacher-grid-lesson em { color: var(--mark); font-size: var(--t-label); font-style: normal; font-weight: 500; }
 .teacher-grid-lesson small { color: var(--muted); font-size: var(--t-label); }
 .teacher-verdict { margin: 10px 0 0; font-size: var(--t-body); color: var(--muted); }
@@ -201,12 +204,12 @@ button.cell.empty:hover { border-color: var(--muted); }
 /* 교사 화면과 같은 레일을 쓴다. 테두리만 이 화면 몫으로 더한다. */
 .public-class-lessons { border: 1px solid var(--line); border-top: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: clip; }
 .public-class-lessons > .rail-row:last-child { border-bottom: 0; }
-.public-class-lesson { padding: 13px 18px; border-left: 3px solid transparent; display: grid; gap: 2px; }
+.public-class-lesson { padding: 13px 18px; display: grid; gap: 2px; }
 .public-class-lesson > b { display: flex; align-items: center; gap: 8px; font-size: var(--t-body); font-weight: 600; }
 .public-class-badge {
   padding: 1px 7px; border: 1px solid var(--mark); border-radius: 999px;
   color: var(--mark); font-size: var(--t-label); font-weight: 500;
 }
-.public-class-lesson.changed { border-left-color: var(--mark); }
+.public-class-lesson.changed > b { color: var(--mark); }
 .rail-row:has(.public-class-lesson.changed) .rail-period { color: var(--mark); font-weight: 600; }
 .rail-row:has(.public-class-lesson) .rail-period { color: var(--muted); }

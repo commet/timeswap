@@ -1291,7 +1291,7 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
           cfg={input.config}
           entries={printRequest ? [requestEntry(printRequest, 1, input.config)] : entries}
           teacher={printRequest?.teacher ?? currentTeacher ?? ''}
-          reason={printRequest ? printRequest.reason + (printRequest.note ? ' · ' + printRequest.note : '') : reason}
+          reason={printRequest ? printRequest.reason + (printRequest.note ? ', ' + printRequest.note : '') : reason}
         />
       )}
 

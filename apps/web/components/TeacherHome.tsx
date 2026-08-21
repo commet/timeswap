@@ -119,7 +119,7 @@ export function TeacherHome({
     <main id="main-content" tabIndex={-1} className="teacher-command" data-teacher-home aria-labelledby="teacher-home-title">
       <section className="teacher-command-intro">
         <div>
-          <span className="eyebrow">{state.workspace.name} · {label} 선생님</span>
+          <span className="eyebrow">{state.workspace.name} {label} 선생님</span>
           <h1 id="teacher-home-title">{dayTitle(todayDate)}</h1>
           {/* 표를 보여 주기 전에 물음에 먼저 답한다. 오늘 내 수업이 바뀌었는가. */}
           <p className="teacher-verdict" data-now-next data-today-change-count>
@@ -144,9 +144,23 @@ export function TeacherHome({
         </div>
         {focus === 'today' && (
           <ol className="period-rail" aria-label={`${todayDate} 수업`}>
-            {rail.map((slot) => (
+            {rail.map((slot) => {
+              /*
+               * 자리가 바뀐 줄은 홈통에서 말한다.
+               *
+               * 앞서는 줄 왼쪽에 굵은 주홍 막대를 세웠다. 그것은 어느 화면에나 있는 표시라
+               * 이 물건의 것이 아니다. 종이 시간표를 고칠 때는 옛 교시를 긋고 새 교시를
+               * 옆에 적는다. 홈통이 이미 교시 자리이므로 거기서 그대로 한다.
+               */
+              const movedFrom = slot.lessons
+                .map((lesson) => lesson.status !== 'base' ? Number(lesson.base.period) || 0 : 0)
+                .find((period) => period > 0 && period !== slot.period);
+              return (
               <li key={slot.period} className="rail-row">
-                <span className="rail-period num" aria-hidden>{slot.period}</span>
+                <span className="rail-period num" aria-hidden>
+                  {movedFrom ? <s>{movedFrom}</s> : null}
+                  {slot.period}
+                </span>
                 {slot.lessons.length === 0 ? (
                   <span className="rail-free">수업 없음</span>
                 ) : slot.lessons.map((lesson) => {
@@ -166,14 +180,15 @@ export function TeacherHome({
                       {changed && (
                         <span className="rail-from">
                           원래 {lesson.base.period}교시 {lesson.base.subject}
-                          {lesson.status === '변경 예정' ? ' · 결재 중' : ''}
+                          {lesson.status === '변경 예정' ? ', 결재 중' : ''}
                         </span>
                       )}
                     </button>
                   );
                 })}
               </li>
-            ))}
+              );
+            })}
           </ol>
         )}
       </section>

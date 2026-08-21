@@ -108,7 +108,7 @@ export function AppShell({ state, location, saveState, navigate }: AppShellProps
         <RoleNavigation state={state} location={location} navigate={navigate} />
       </header>
       {state.revisions[0]?.source === 'demo' && (
-        <p className="demo-provenance">예시 운영 자료 · {DEMO_PROVENANCE_LABEL}</p>
+        <p className="demo-provenance">예시 운영 자료 | {DEMO_PROVENANCE_LABEL}</p>
       )}
       <RoleView state={state} location={location} saveState={saveState} navigate={navigate} />
     </div>

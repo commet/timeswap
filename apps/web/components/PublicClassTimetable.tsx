@@ -157,7 +157,7 @@ export function PublicClassTimetable({
                         {lesson.changed && (
                           <span className="rail-from">
                             원래 {lesson.originalPeriod}교시 {lesson.originalSubject}
-                            {lesson.publishedAt ? ` · ${publishedTimeLabel(lesson.publishedAt)} 게시` : ''}
+                            {lesson.publishedAt ? `, ${publishedTimeLabel(lesson.publishedAt)} 게시` : ''}
                           </span>
                         )}
                       </div>

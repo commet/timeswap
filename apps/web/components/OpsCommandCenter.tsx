@@ -62,7 +62,7 @@ export function OpsCommandCenter({
     <main id="main-content" tabIndex={-1} className="ops-command-center" data-ops-command-center data-ops-step={mobileStep}>
       <header className="ops-command-heading">
         <div>
-          <span className="eyebrow">일과 담당</span>
+          {/* 역할은 길잡이가 이미 말한다. 제목 위에 또 적지 않는다. */}
           {/*
             * 제목이 물음에 답한다. 앞서는 "지금 결정해야 할 변경"이라는 표어였고 그 아래
             * 화면을 설명하는 부제목이 있었다. 일과 담당이 이 화면을 여는 이유는 하나다.
@@ -90,6 +90,8 @@ export function OpsCommandCenter({
       </dl>
 
       <div className="ops-command-regions">
+        {/* 목록과 흐름은 둘 다 "밖에 무엇이 있는가"라 한 칸에 쌓는다. */}
+        <div className="ops-command-side">
         <section className="ops-priority-region" aria-labelledby="ops-priority-title">
           <header><span className="eyebrow">사건 목록</span><h3 id="ops-priority-title">우선순위</h3></header>
           <ol>
@@ -101,7 +103,7 @@ export function OpsCommandCenter({
                   onClick={() => onSelectCase(item.caseId)}
                 >
                   <span className={'ops-priority-dot ' + item.priority} aria-hidden="true" />
-                  <span><b>{item.requesterLabel}</b><small>{item.fromDate} · {item.affectedLessonCount}개 수업 / {item.solvedLessonCount}개 해결</small></span>
+                  <span><b>{item.requesterLabel}</b><small>{item.fromDate} | 수업 {item.affectedLessonCount}건 중 {item.solvedLessonCount}건 해결</small></span>
                   <em>{item.priorityReason}</em>
                 </button>
               </li>
@@ -136,13 +138,14 @@ export function OpsCommandCenter({
                 <span>{marker.period}교시</span>
                 <button onClick={() => onSelectCase(marker.caseId)}>
                   <b>{marker.stateLabel}</b>
-                  <small>{marker.affectedTeacherCount}명 교사 · {marker.affectedClassCount}개 학급</small>
+                  <small>교사 {marker.affectedTeacherCount}명, 학급 {marker.affectedClassCount}개</small>
                 </button>
               </li>
             ))}
             {timeline.length === 0 && <li className="ops-empty">오늘 표시할 변경 교시가 없습니다.</li>}
           </ol>
         </section>
+        </div>
 
         <aside className="ops-case-region" aria-label="선택 사건과 행정 마감">
           <div className="ops-case-panel">{detail}</div>

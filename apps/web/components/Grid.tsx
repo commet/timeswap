@@ -499,8 +499,8 @@ export function TeacherScheduleGrid({
                             {lesson.status === '변경 예정' && <em>변경 예정</em>}
                             {lesson.status === 'published' && <em>게시됨</em>}
                             <b>{value.subject}</b>
-                            {lesson.status !== 'base' && <small>원래 {lesson.base.subject} · {lesson.base.classIdentity.grade}-{lesson.base.classIdentity.className} · {lesson.base.period}교시 · {lesson.base.room}</small>}
-                            <span>{value.classIdentity.grade}-{value.classIdentity.className} · {value.period}교시 · {value.room}</span>
+                            {lesson.status !== 'base' && <small>원래 {lesson.base.subject} | {lesson.base.classIdentity.grade}-{lesson.base.classIdentity.className} | {lesson.base.period}교시 | {lesson.base.room}</small>}
+                            <span>{value.classIdentity.grade}-{value.classIdentity.className} | {value.period}교시 | {value.room}</span>
                           </button>
                         );
                       })}

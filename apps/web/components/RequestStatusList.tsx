@@ -29,7 +29,7 @@ export function RequestStatusList({
             <time>{request.date}</time>
             <div>
               <b>{request.target.klass} {request.target.subject}</b>
-              <span>{slotName(request.target.slot, cfg)} · {request.candidate.title}</span>
+              <span>{slotName(request.target.slot, cfg)} | {request.candidate.title}</span>
             </div>
             <strong className={'status-pill ' + request.status}>{requestStatusLabel(request.status)}</strong>
             {request.status === 'pending' && (

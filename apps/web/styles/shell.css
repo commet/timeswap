@@ -86,9 +86,18 @@
 .entry-path.primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .entry-path.primary:hover { background: var(--accent-strong); }
 .teacher-work { flex: 1; width: 100%; padding-bottom: 30px; }
+/* 제목은 마지막 줄에 한 낱말만 남는 모양이 안 나오게 나눈다. */
+h1, h2 { text-wrap: balance; }
+/*
+ * 제목 위의 한 줄.
+ *
+ * 자간을 벌리고 대문자로 만들고 굵게 세워 두었다. 그렇게 만든 라벨은 정보가 아니라
+ * 장식이다. 여기 오는 값은 대개 실제 정보(어느 학교, 누구의 화면)라 정보처럼 적는다.
+ * 장식이던 자리는 지웠다.
+ */
 .eyebrow {
-  display: block; margin: 0 0 4px; color: var(--accent); font-size: 13px;
-  font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase;
+  display: block; margin: 0 0 5px; color: var(--muted);
+  font-size: var(--t-label); font-weight: 400; letter-spacing: 0;
 }
 .teacher-welcome p:not(.eyebrow) { margin: 6px 0 0; color: var(--muted); }
 .selected .compare-method i { background: var(--accent); color: var(--on-accent); }
@@ -135,7 +144,7 @@
 .teacher-command  { width: min(1120px, calc(100% - 40px)); margin: 30px auto 56px; display: grid; gap: 16px; }
 .teacher-command-intro { padding: clamp(20px, 4vw, 34px); display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; }
 .teacher-command h1, .teacher-command h2 { margin: 0; letter-spacing: -.04em; }
-.teacher-command h1 { font-size: clamp(27px, 4vw, 43px); }
+.teacher-command h1 { font-size: clamp(var(--t-title), 4vw, 40px); }
 .teacher-request-button { flex: none; min-height: 50px; min-width: 116px; }
 .whole-day { min-height: var(--tap); flex-direction: row !important; align-items: center; white-space: nowrap; color: var(--ink) !important; }
 .affected-lessons > label { min-height: var(--tap); display: flex; align-items: center; gap: 9px; border-top: 1px solid var(--line); font-size: 13px; }

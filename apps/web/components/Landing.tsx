@@ -37,9 +37,14 @@ export function Landing({
       <div className="landing-card">
         <header className="entry-hero">
           <div className="entry-copy">
-            <span className="eyebrow">학교 시간표 변경을 한 흐름으로</span>
+            {/*
+              * 제목 위의 작은 광고 문구를 뺐다. 제목이 스스로 서지 못할 때 그런 것을 얹는다.
+              *
+              * `<br />` 로 줄을 갈라 두었더니 읽는 기계에게는 "오늘을바로"로 붙어 나갔다.
+              * 줄바꿈은 글자 사이의 뜻이 아니라 화면 폭의 일이라 CSS 에 맡긴다.
+              */}
             <h1 id="landing-title" tabIndex={-1}>
-              내 학교의 오늘을<br /><em>바로 여십시오</em>
+              내 학교의 오늘을 <em>바로 여십시오</em>
             </h1>
             <p>
               교사는 바꿀 수업을 고르고, 일과 담당자는 승인부터 게시까지 같은 시간표에서 마무리합니다.

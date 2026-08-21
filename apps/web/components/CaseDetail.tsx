@@ -138,7 +138,7 @@ export function CaseDetail({
       {onBack && <button className="btn ghost ops-mobile-back" onClick={onBack}>← 사건 목록으로</button>}
       <header>
         <span className="eyebrow">선택한 변경 사건</span>
-        <h2 id="ops-case-detail-title" tabIndex={-1}>{item.requesterLabel} · {item.fromDate} {item.fromDate === item.toDate ? '' : `~ ${item.toDate}`}</h2>
+        <h2 id="ops-case-detail-title" tabIndex={-1}>{item.requesterLabel} {item.fromDate} {item.fromDate === item.toDate ? '' : `~ ${item.toDate}`}</h2>
         <p>{item.priorityReason}</p>
       </header>
 
@@ -192,7 +192,7 @@ export function CaseDetail({
                       value={row?.id ?? ''}
                       onChange={(event) => setChosenRows((current) => ({ ...current, [lessonId]: event.target.value }))}
                     >
-                      {rows.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.method} · {candidate.collaborators.join(', ')}</option>)}
+                      {rows.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.method} | {candidate.collaborators.join(', ')}</option>)}
                     </select>
                   </label>
                   <button

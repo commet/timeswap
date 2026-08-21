@@ -123,7 +123,18 @@ if (!(await page.locator('.ops-period-timeline button').count())) failures.push(
     if (!health.includes(fact)) failures.push(`관제판 자료 상태에 "${fact}" 이 없음: ${health}`);
   }
 }
-if (!(await page.locator('.ops-period-timeline').innerText()).includes('1명 교사 · 1개 학급')) failures.push('교시 표식에 영향 교사·학급 수가 없음');
+/*
+ * 교시 표식은 그 교시가 누구와 어느 학급을 건드리는지 세어 보여야 한다.
+ *
+ * 앞서는 '1명 교사 · 1개 학급' 이라는 글자를 그대로 찾았다. 문구를 다듬자 통과하던
+ * 검사가 깨졌는데, 정작 두 숫자는 화면에 그대로 있었다. 글자가 아니라 세는 것 둘이
+ * 있는지를 본다.
+ */
+{
+  const timeline = await page.locator('.ops-period-timeline').innerText();
+  if (!/교사[^\n]*1/.test(timeline)) failures.push(`교시 표식에 영향 교사 수가 없음: ${timeline}`);
+  if (!/학급[^\n]*1/.test(timeline)) failures.push(`교시 표식에 영향 학급 수가 없음: ${timeline}`);
+}
 if ((await page.locator('body').innerText()).includes('teacher:seo-jun')) failures.push('관제판에 내부 교사 ID가 노출됨');
 const initialNavigationCount = await page.evaluate(() => performance.getEntriesByType('navigation').length);
 await page.locator('.ops-period-timeline button').first().click();

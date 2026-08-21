@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -449,6 +450,28 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate, existi
 }) {
   const session = useContext(NeisSessionContext);
   const [stage, setStage] = useState<SetupStage>('학교 검색');
+
+  /*
+   * 좁은 화면에서 지금 단계가 어디인지 보이게 한다.
+   *
+   * 단계가 일곱이라 폰에서는 레일이 옆으로 밀린다. 4단계로 넘어가도 레일은 1단계를
+   * 비추고 있어서, 화면은 다음 단계를 열었는데 눈은 아직 앞에 머문다. 어디까지 왔는지
+   * 세려면 손으로 밀어야 했다. 단계가 바뀌면 그 칸을 시야로 가져온다.
+   *
+   * 세로로는 움직이지 않는다. 레일만 옆으로 미는 것이라 block: 'nearest' 로 묶는다.
+   */
+  const railRef = useRef<HTMLElement | null>(null);
+  const currentStepRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const rail = railRef.current;
+    const step = currentStepRef.current;
+    if (!rail || !step) return;
+    // 밀 자리가 없으면 아무것도 하지 않는다. 넓은 화면에서는 일곱 칸이 모두 보인다.
+    if (rail.scrollWidth <= rail.clientWidth) return;
+    // JS 로 부르는 smooth 는 CSS 와 달리 기기의 "움직임 줄이기" 설정을 안 본다. 직접 본다.
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    step.scrollIntoView({ inline: 'center', block: 'nearest', behavior: still ? 'auto' : 'smooth' });
+  }, [stage]);
   const [school, setSchool] = useState<NeisSchool | null>(null);
   const [bundle, setBundle] = useState<NeisLoadBundle | null>(null);
   const [teacherMap, setTeacherMap] = useState<TeacherMap>({});
@@ -540,11 +563,12 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate, existi
         <button className="btn ghost" onClick={leave}>설정 나가기</button>
       </header>
 
-      <nav className="setup-rail" aria-label="최초 설정 단계">
+      <nav className="setup-rail" aria-label="최초 설정 단계" ref={railRef}>
         {SETUP_STAGES.map((item, index) => (
           <button
             key={item}
             data-setup-stage={item}
+            ref={stage === item ? currentStepRef : undefined}
             className={stage === item ? 'current' : ''}
             disabled={!stageEnabled(item)}
             aria-current={stage === item ? 'step' : undefined}

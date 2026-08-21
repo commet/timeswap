@@ -146,9 +146,9 @@ export function ResolutionMatrix({
           {detail.changes.map((change) => <div key={change.lessonId}>
             <dt>{change.original.date} {change.original.period}교시</dt>
             <dd>
-              <span>{change.original.subject} · {change.original.className} · {change.original.room}</span>
+              <span>{change.original.subject} | {change.original.className} | {change.original.room}</span>
               <b>→</b>
-              <span>{change.next.date} {change.next.period}교시 · {change.next.subject} · {change.next.className} · {change.next.room} · {change.next.teacher}</span>
+              <span>{change.next.date} {change.next.period}교시 | {change.next.subject} | {change.next.className} | {change.next.room} | {change.next.teacher}</span>
             </dd>
           </div>)}
         </dl>

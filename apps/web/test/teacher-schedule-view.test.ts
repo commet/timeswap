@@ -78,7 +78,7 @@ describe('teacher schedule view helpers', () => {
       lessons,
       onSelectLesson: () => undefined,
     }));
-    for (const detail of ['영어 변경', '영어 새교실', '원래 영어 · 2-1 · 3교시 · 영어실', '국어 게시', '국어 게시교실', '원래 국어 · 2-1 · 4교시 · 국어실']) {
+    for (const detail of ['영어 변경', '영어 새교실', '원래 영어 | 2-1 | 3교시 | 영어실', '국어 게시', '국어 게시교실', '원래 국어 | 2-1 | 4교시 | 국어실']) {
       expect(html).toContain(detail);
     }
     expect(html).toContain('수학');

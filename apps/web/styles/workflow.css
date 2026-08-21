@@ -165,8 +165,6 @@
 .neis-hits button:hover { border-color: var(--accent); }
 .hit-name { font-weight: 800; font-size: 14px; }
 .hit-meta { font-size: 13px; color: var(--muted); }
-.neis-progress .bar { flex: 1; height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
-.neis-progress .bar span { display: block; height: 100%; background: var(--accent); transition: width 0.2s ease; }
 .map-row .input { padding: 5px 10px; font-size: 13px; }
 /* 인쇄용 수업 교체 계획서 */
 .sheet  { display: none; }
@@ -264,9 +262,11 @@
 .setup-rail button { min-height: 74px; padding: 10px 8px; border: 0; border-left: 1px solid var(--line); background: transparent; color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 13px; font-weight: 750; }
 .setup-rail button:first-child { border-left: 0; }
 .setup-rail button span { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: var(--surface-2); font-size: 13px; font-variant-numeric: tabular-nums; }
-.setup-rail button.current { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
-.setup-rail button.current span { background: var(--accent); color: var(--on-accent); }
+.setup-rail button.current { background: var(--surface-2); color: var(--ink); box-shadow: inset 0 -2px 0 var(--ink); }
+.setup-rail button.current span { background: var(--ink); color: var(--on-accent); }
 .setup-rail button:disabled { cursor: not-allowed; opacity: .46; }
+/* 옆으로 미는 칸은 끝쪽 여백이 접힌다. 마지막에 빈 칸을 하나 세워 벽에 안 붙게 한다. */
+.setup-rail::after { content: ''; flex: 0 0 1px; }
 .setup-body { min-height: 420px; margin-top: 14px; padding: clamp(22px, 4vw, 42px); border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: 0 1px 2px rgb(23 32 51 / .04); }
 .setup-source { max-width: 760px; margin: 0 auto; padding: 0; }
 .setup-source h2, .mapping-head h2, .data-health h2, .unresolved-review h2, .invitation-panel h2 { margin: 0; font-size: clamp(22px, 3vw, 31px); letter-spacing: -.035em; }
@@ -375,10 +375,33 @@
 .ops-command-center  { width: min(1440px, calc(100% - 40px)); margin: 26px auto 60px; }
 .ops-command-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 14px; }
 .ops-command-heading h2, .ops-priority-region h3, .ops-timeline-region h3, .ops-case-detail h2, .ops-case-detail h3, .ops-administration-step h3 { margin: 0; letter-spacing: -.04em; }
-.ops-command-heading h2 { font-size: clamp(26px, 3vw, 34px); font-weight: 600; }
+.ops-command-heading h2 { font-size: clamp(var(--t-title), 3vw, 36px); font-weight: 600; }
 .ops-command-heading h2 .num { font-weight: 600; }
 .ops-command-heading p { max-width: 660px; margin: 8px 0 0; color: var(--muted); font-size: 14px; }
-.ops-command-regions { display: grid; grid-template-columns: minmax(210px, .85fr) minmax(360px, 1.32fr) minmax(300px, 1.08fr); gap: 12px; align-items: start; }
+/*
+ * 세 칸이 아니라 두 칸이다.
+ *
+ * 앞서는 사건 목록, 오늘 교시 흐름, 선택한 사건을 나란히 세 칸으로 세웠다. 실제 일은
+ * 셋째 칸에만 있어서 그 칸이 화면 높이의 두 배로 자라는 동안 앞의 두 칸은 5분의 1에서
+ * 끝났다. 화면의 절반이 빈 채로 남고, 정작 손이 가는 칸은 좁았다.
+ *
+ * 목록과 흐름은 둘 다 "밖에 무엇이 있는가"라 왼쪽에 쌓고, 오른쪽은 일하는 자리로 넓게 준다.
+ */
+.ops-command-regions {
+  display: grid;
+  grid-template-columns: minmax(240px, .8fr) minmax(420px, 1.7fr);
+  gap: 12px; align-items: start;
+}
+/*
+ * 왼쪽 칸은 붙여 둔다.
+ *
+ * 오른쪽 일하는 칸은 행정 마감처럼 목록이 길면 화면 높이를 넘는다. 그때 왼쪽이 위로
+ * 흘러가 버리면 지금 어느 사건을 보고 있었는지가 화면에서 사라진다.
+ */
+.ops-command-side { display: grid; gap: 12px; align-content: start; }
+@media (min-width: 921px) {
+  .ops-command-side { position: sticky; top: 16px; }
+}
 .ops-priority-region, .ops-timeline-region, .ops-case-panel { overflow: clip; border: 1px solid var(--line); border-radius: 17px; background: var(--surface); box-shadow: 0 1px 2px rgb(23 32 51 / .04); }
 .ops-priority-region > header, .ops-timeline-region > header { padding: 18px 18px 13px; border-bottom: 1px solid var(--line); }
 .ops-priority-region h3, .ops-timeline-region h3 { font-size: 20px; }
@@ -411,7 +434,7 @@
 .ops-source-health dt { color: var(--muted); }
 .ops-source-health dd { margin: 0; color: var(--ink); }
 .ops-source-health .mark dt, .ops-source-health .mark dd { color: var(--mark); }
-.ops-period-timeline { position: relative; margin: 18px 16px 20px; padding-left: 10px; border-left: 2px solid var(--line); }
+.ops-period-timeline { position: relative; margin: 18px 16px 20px; padding-left: 12px; border-left: 1px solid var(--line); }
 .ops-period-timeline li { position: relative; min-height: 58px; padding: 0 0 11px 14px; display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 8px; }
 .ops-period-timeline li::before { content: ''; position: absolute; left: -7px; top: 13px; width: 10px; height: 10px; border: 2px solid var(--surface); border-radius: 99px; background: var(--accent); }
 .ops-period-timeline li.unresolved::before { background: var(--warn); }
@@ -438,8 +461,17 @@
 .ops-resolution-list { margin-top: 19px; }
 .ops-resolution-list h3 { font-size: 17px; }
 .ops-resolution-list article { padding: 12px 0; border-top: 1px solid var(--line); }
-.ops-resolution-list article > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.ops-resolution-list article > div:first-child b { font-size: 13px; }
+/*
+ * 수업과 그 수업에 고른 방법은 한 쌍이다. 떼어 놓지 않는다.
+ *
+ * 앞서는 space-between 으로 양 끝에 붙였다. 이 칸이 넓어지자 "3교시 기계일반"과
+ * "맞교환" 사이가 665px 로 벌어졌다. 눈이 둘을 잇지 못하고, 줄이 여럿이면 어느
+ * 방법이 어느 수업의 것인지 세로로 훑어 맞춰야 한다. 나란히 둔다.
+ *
+ * 수업 이름은 이 줄에서 가장 먼저 읽을 것인데 13px 로 가장 작았다. 본문 크기로 올린다.
+ */
+.ops-resolution-list article > div:first-child { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.ops-resolution-list article > div:first-child b { font-size: var(--t-body); }
 .ops-resolution-list article > div:first-child span, .ops-resolution-list article small { color: var(--muted); font-size: 13px; }
 .ops-resolution-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; margin-top: 9px; }
 .ops-resolution-controls label { display: flex; flex-direction: column; gap: 3px; color: var(--muted); font-size: 13px; font-weight: 850; }
@@ -473,10 +505,14 @@
 .publication-center > header > h3 { margin: 0; font-size: 22px; letter-spacing: -.04em; }
 .publication-center > header > p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
 .publication-correction { margin: 6px 0 0; padding: 7px 9px; border-radius: 9px; background: var(--warn-soft); color: var(--warn); font-size: 13px; }
-.publication-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; margin: 0; }
-.publication-facts > div { padding: 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-2); }
-.publication-facts dt { margin: 0; color: var(--muted); font-size: 13px; }
-.publication-facts dd { margin: 4px 0 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+/*
+ * 값 넷을 담으려고 상자 넷을 만들었다. 사건 화면에서 없앤 것과 같은 모양이다.
+ * 이름과 값은 짝이라 짝으로 세운다. 상자는 안 필요하다.
+ */
+.publication-facts { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 0; font-size: var(--t-aux); }
+.publication-facts > div { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.publication-facts dt { margin: 0; color: var(--muted); }
+.publication-facts dd { margin: 0; color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 .publication-tasks { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
 .publication-tasks > li { padding: 14px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); }
 .publication-tasks > li.done { border-color: color-mix(in srgb, var(--success) 40%, var(--line)); background: var(--success-soft); }

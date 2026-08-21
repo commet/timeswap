@@ -52,8 +52,28 @@
   --t-aux: 14px;
   --t-label: 13px;
 
+  /*
+   * 화면 가장자리와 글 사이의 여백. 한 군데서 정한다.
+   *
+   * 여덟 군데에 따로 적혀 있었고 값이 10px, 12px, 14px 로 갈렸다. 어느 것이 옳은지
+   * 정한 적이 없어서 화면마다 글이 가장자리에 닿는 정도가 달랐다. 폰에서 본문이
+   * 가장자리에 14px 까지 붙는 것을 탐지기가 잡았다. 한 값으로 모은다.
+   */
+  --gutter: 16px;
+
   --sans: 'IBM Plex Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+}
+
+/*
+ * 좁은 화면의 계단.
+ *
+ * 앞서는 자리마다 크기를 따로 적었고, 그래서 좁은 화면에 여덟 가지가 섞였다. 가장 큰
+ * 글자가 가장 작은 글자의 1.9배뿐이라 계단이 아니라 흔들림이었다. 계단을 여기서 한 번
+ * 옮기고, 맨 위를 올려 층을 벌린다.
+ */
+@media (max-width: 720px) {
+  :root { --t-title: 30px; --t-section: 18px; --t-rail: 24px; }
 }
 
 /* 어둠. 수동 선택이 있으면 그 값이 이기고, 없으면 기기 설정을 따른다. */
