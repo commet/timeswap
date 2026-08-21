@@ -3,7 +3,17 @@ export type AppLocation =
   | { view: 'setup'; schoolQuery?: string }
   | { view: 'teacher'; school: string; teacher: string }
   | { view: 'ops'; school: string; caseId?: string; step?: 'case' | 'admin' }
-  | { view: 'class'; school: string; grade: string; className: string };
+  /**
+   * 학급 시간표 공개 화면.
+   *
+   * `course` 는 특수학교의 학교 과정이다. 특수학교는 초등부와 중학부, 고등부를 함께
+   * 운영하고 학년이 과정마다 1부터 다시 세서 한 학교에 1학년 1반이 셋 있다.
+   * 실측한 32곳 가운데 31곳이 그렇다. 이 값이 없으면 셋 가운데 하나만 열리고
+   * 나머지 둘은 주소로 갈 방법이 없다.
+   *
+   * 초중고에는 이 항목이 아예 없으므로 붙이지 않는다. 옛 주소도 그대로 열린다.
+   */
+  | { view: 'class'; school: string; grade: string; className: string; course?: string };
 
 type PushHistoryLike = Pick<History, 'pushState'>;
 type ReplaceHistoryLike = Pick<History, 'replaceState'>;
@@ -38,6 +48,7 @@ export function formatLocation(location: AppLocation): string {
   if (location.view === 'class') {
     params.set('grade', location.grade);
     params.set('class', location.className);
+    if (location.course) params.set('course', location.course);
   }
   return `/?${params}`;
 }
@@ -75,11 +86,14 @@ export function parseLocation(input: string | LocationLike): AppLocation {
     if (step && !caseId) return { view: 'landing' };
     return { view, school, ...(caseId ? { caseId } : {}), ...(step ? { step } : {}) };
   }
-  if (view === 'class' && hasOnly(params, ['view', 'school', 'grade', 'class'])) {
+  if (view === 'class' && hasOnly(params, ['view', 'school', 'grade', 'class', 'course'])) {
     const school = required(params, 'school');
     const grade = required(params, 'grade');
     const className = required(params, 'class');
-    return school && grade && className ? { view, school, grade, className } : { view: 'landing' };
+    const course = params.get('course') ?? '';
+    return school && grade && className
+      ? { view, school, grade, className, ...(course ? { course } : {}) }
+      : { view: 'landing' };
   }
   return { view: 'landing' };
 }

@@ -113,8 +113,28 @@ for (const [key, expected] of Object.entries(expectedOpsMetrics)) {
 }
 if (!(await page.locator('[data-case-detail]').count())) failures.push('데스크톱 관제판에 선택 사건 상세 레일이 없음');
 if (!(await page.locator('.ops-period-timeline button').count())) failures.push('오늘 교시별 변경 타임라인이 없음');
-if (!(await page.locator('.ops-source-health').innerText().catch(() => '')).includes('완전 · demo')) failures.push('관제판에 시간표 자료 상태가 없음');
-if (!(await page.locator('.ops-period-timeline').innerText()).includes('1명 교사 · 1개 학급')) failures.push('교시 표식에 영향 교사·학급 수가 없음');
+{
+  /*
+   * 무엇을 보고 있는지와 온전한지를 관제판이 밝혀야 한다. 예시 자료를 실제 학교 자료로
+   * 착각하고 결재하면 안 되고, 자료가 덜 왔는데 승인해도 안 된다.
+   */
+  const health = await page.locator('.ops-source-health').innerText().catch(() => '');
+  for (const fact of ['출처', '예시 자료', '자료', '완전', '수업']) {
+    if (!health.includes(fact)) failures.push(`관제판 자료 상태에 "${fact}" 이 없음: ${health}`);
+  }
+}
+/*
+ * 교시 표식은 그 교시가 누구와 어느 학급을 건드리는지 세어 보여야 한다.
+ *
+ * 앞서는 '1명 교사 · 1개 학급' 이라는 글자를 그대로 찾았다. 문구를 다듬자 통과하던
+ * 검사가 깨졌는데, 정작 두 숫자는 화면에 그대로 있었다. 글자가 아니라 세는 것 둘이
+ * 있는지를 본다.
+ */
+{
+  const timeline = await page.locator('.ops-period-timeline').innerText();
+  if (!/교사[^\n]*1/.test(timeline)) failures.push(`교시 표식에 영향 교사 수가 없음: ${timeline}`);
+  if (!/학급[^\n]*1/.test(timeline)) failures.push(`교시 표식에 영향 학급 수가 없음: ${timeline}`);
+}
 if ((await page.locator('body').innerText()).includes('teacher:seo-jun')) failures.push('관제판에 내부 교사 ID가 노출됨');
 const initialNavigationCount = await page.evaluate(() => performance.getEntriesByType('navigation').length);
 await page.locator('.ops-period-timeline button').first().click();
@@ -191,7 +211,7 @@ for (const role of ['교사', '일과 담당', '학급 공개']) {
 if (!(await page.locator('.role-navigation').innerText()).includes('로그인이나 권한 인증이 아닙니다')) {
   failures.push('체험 역할을 인증으로 오해하지 않게 하는 설명이 없음');
 }
-const provenance = '공개 시간표 관측 구조 기반 · 일정·교사·사건은 예시';
+const provenance = '공개 시간표 관측 구조 기반 | 일정과 교사, 사건은 예시';
 if (!(await page.locator('body').innerText()).includes(provenance)) failures.push('예시 자료 출처 문구가 정확하지 않음');
 if ((await activeText(page)).id !== 'role-page-title') failures.push('역할 화면 진입 뒤 학교 제목으로 초점이 이동하지 않음');
 const stored = await page.evaluate(() => [...Array(localStorage.length)].map((_, index) => localStorage.key(index))
@@ -205,15 +225,26 @@ if (stored.some((state) => JSON.stringify(state).includes('secret-key'))) failur
 await page.goto(`${BASE}/?view=teacher&school=simple-swap%3Aworkspace&teacher=teacher%3Aseo-jun`, { waitUntil: 'networkidle' });
 await shot(page, 'task-8-teacher-desktop');
 if (!(await page.locator('[data-teacher-home]').count())) failures.push('교사 링크가 canonical 교사 시간표를 열지 않음');
-if ((await page.getByRole('tab', { name: '오늘', exact: true }).getAttribute('aria-selected')) !== 'true') {
-  failures.push('교사 시간표가 오늘 탭으로 시작하지 않음');
+if ((await page.getByRole('tab', { name: '하루', exact: true }).getAttribute('aria-selected')) !== 'true') {
+  failures.push('교사 시간표가 하루 탭으로 시작하지 않음');
 }
 for (const selector of ['[data-now-next]', '[data-today-change-count]']) {
   if (!(await page.locator(selector).count())) failures.push(`교사 첫 화면에 ${selector} 정보가 없음`);
 }
-if (!(await page.locator('[data-now-next]').first().innerText()).includes('오늘 첫 수업')) {
-  failures.push('교사 첫 수업 카드가 근거 없는 현재 시각 표현을 사용함');
+/*
+ * 벽시계를 모르는 화면이다. 무엇이 바뀌었는지는 교시 번호로 말해야 하고, "지금"이나
+ * "다음"처럼 시각을 아는 척하는 말은 안 쓴다.
+ */
+{
+  const verdict = await page.locator('[data-now-next]').first().innerText();
+  if (!/교시가 바뀌었습니다|바뀐 수업이 없습니다/.test(verdict)) {
+    failures.push(`교사 첫 화면이 바뀐 교시를 짚지 않음: ${verdict}`);
+  }
+  if (/지금|다음 수업/.test(verdict)) {
+    failures.push('교사 첫 화면이 근거 없는 현재 시각 표현을 사용함');
+  }
 }
+if (!(await page.locator('.rail-period').count())) failures.push('교사 화면에 교시 레일이 없음');
 if (!(await page.getByRole('button', { name: '변경 요청', exact: true }).count())) failures.push('교사 첫 화면에 변경 요청 행동이 없음');
 if ((await page.locator('body').innerText()).includes('teacher:seo-jun')) failures.push('교사 화면에 내부 교사 ID가 이름처럼 노출됨');
 
@@ -485,7 +516,7 @@ const teacherFirstViewport = await mobile.evaluate(() => {
 for (const [selector, box] of Object.entries(teacherFirstViewport)) {
   if (!box || box.top < 0 || box.bottom > 844) failures.push(`390px 첫 화면에 ${selector}가 보이지 않음`);
 }
-if ((await mobile.getByRole('tab', { name: '오늘', exact: true }).getAttribute('aria-selected')) !== 'true') {
+if ((await mobile.getByRole('tab', { name: '하루', exact: true }).getAttribute('aria-selected')) !== 'true') {
   failures.push('390px 교사 시간표가 오늘 탭으로 시작하지 않음');
 }
 if (await mobile.locator('[data-teacher-week]').count()) failures.push('390px 첫 화면에서 주간 시간표가 오늘 흐름보다 먼저 노출됨');

@@ -82,6 +82,7 @@ export function AppShell({ state, location, saveState, navigate }: AppShellProps
       initialSchoolQuery={location.schoolQuery ?? ''}
       saveState={saveState}
       navigate={navigate}
+      existing={state}
     />
   );
 
@@ -100,14 +101,14 @@ export function AppShell({ state, location, saveState, navigate }: AppShellProps
         <button className="shell-wordmark" onClick={() => navigate({ view: 'landing' })} aria-label="학교 진입으로 돌아가기">
           <span aria-hidden>↙</span>{BRAND}
         </button>
+        {/* "현재 학교"라는 이름표를 뗐다. 학교 이름이 그 자리에 있는 것으로 이미 그 말이다. */}
         <div className="shell-school">
-          <span>현재 학교</span>
           <h1 id="role-page-title" tabIndex={-1}>{state.workspace.name}</h1>
         </div>
         <RoleNavigation state={state} location={location} navigate={navigate} />
       </header>
       {state.revisions[0]?.source === 'demo' && (
-        <p className="demo-provenance">예시 운영 자료 · {DEMO_PROVENANCE_LABEL}</p>
+        <p className="demo-provenance">예시 운영 자료 | {DEMO_PROVENANCE_LABEL}</p>
       )}
       <RoleView state={state} location={location} saveState={saveState} navigate={navigate} />
     </div>

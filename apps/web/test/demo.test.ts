@@ -70,7 +70,7 @@ describe('demo scenario inventory', () => {
     expect(first.demo.scenarioId).toBe('simple-swap');
     expect(first.teacherLabels?.['teacher:seo-jun']).toBe('김서준');
     expect(first.teacherLabels?.['teacher:han-sol']).toBe('한솔');
-    expect(first.demo.initialView).toBe('일과 담당 · 간단한 맞교환 상세');
+    expect(first.demo.initialView).toBe('일과 담당 | 간단한 맞교환 상세');
     expect(entityIds(first).every((id) => id.trim() !== '')).toBe(true);
     expect(new Set(entityIds(first)).size).toBe(entityIds(first).length);
     expect(timestampValues(first).every((value) =>
@@ -123,7 +123,7 @@ describe('demo source boundary', () => {
   });
 
   it('uses the visible structure-derived provenance wording', () => {
-    expect(DEMO_PROVENANCE_LABEL).toBe('공개 시간표 관측 구조 기반 · 일정·교사·사건은 예시');
+    expect(DEMO_PROVENANCE_LABEL).toBe('공개 시간표 관측 구조 기반 | 일정과 교사, 사건은 예시');
   });
 });
 

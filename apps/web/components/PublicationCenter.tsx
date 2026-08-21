@@ -182,7 +182,7 @@ export function PublicationCenter({
           <li key={task.id} className={task.completed ? 'done' : ''} data-publication-task={task.kind}>
             <div className="publication-task-head">
               <b>{task.label}</b>
-              <span>{task.required ? '필수' : '선택'} · {task.completed ? '완료' : '대기'}</span>
+              <span>{task.required ? '필수' : '선택'} | {task.completed ? '완료' : '대기'}</span>
             </div>
             <p>{task.instruction}</p>
 
@@ -288,7 +288,7 @@ export function PublicationCenter({
         )}
         {view.blockedReason && <p className="publication-blocked">{view.blockedReason}</p>}
         {view.stage === 'published' && view.publication && (
-          <p className="publication-done" ref={resultRef} tabIndex={-1}>게시 시각 {publishedTimeLabel(view.publication.publishedAt)} · 변경 {view.publication.changedLessonIds.length}건</p>
+          <p className="publication-done" ref={resultRef} tabIndex={-1}>게시 시각 {publishedTimeLabel(view.publication.publishedAt)}, 변경 {view.publication.changedLessonIds.length}건</p>
         )}
         {view.stage === 'published' && (
           <button className="btn" onClick={startCorrection} data-correction-action>이 게시를 정정하기</button>
