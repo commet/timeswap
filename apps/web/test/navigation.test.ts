@@ -100,3 +100,38 @@ describe('query navigation', () => {
     ]);
   });
 });
+
+/**
+ * 특수학교의 학교 과정.
+ *
+ * 특수학교는 초등부와 중학부, 고등부를 함께 운영하고 학년이 과정마다 1부터 다시
+ * 센다. 한 학교에 1학년 1반이 셋 있고 실측한 32곳 가운데 31곳이 그렇다.
+ * 주소에 과정이 없으면 셋 가운데 하나만 열리고 나머지 둘은 갈 방법이 없다.
+ */
+describe('학급 주소와 학교 과정', () => {
+  it('과정을 주소에 담고 다시 읽는다', () => {
+    const href = formatLocation({
+      view: 'class', school: '7010084', grade: '1', className: '1', course: '중학교',
+    });
+    expect(href).toContain('course=%EC%A4%91%ED%95%99%EA%B5%90');
+    expect(parseLocation(href)).toEqual({
+      view: 'class', school: '7010084', grade: '1', className: '1', course: '중학교',
+    });
+  });
+
+  it('과정이 다르면 다른 주소다', () => {
+    const a = formatLocation({ view: 'class', school: 'S', grade: '1', className: '1', course: '초등학교' });
+    const b = formatLocation({ view: 'class', school: 'S', grade: '1', className: '1', course: '중학교' });
+    expect(a).not.toBe(b);
+  });
+
+  it('과정이 없는 옛 주소도 그대로 열린다', () => {
+    expect(parseLocation('/?view=class&school=S&grade=1&class=1')).toEqual({
+      view: 'class', school: 'S', grade: '1', className: '1',
+    });
+  });
+
+  it('초중고는 과정을 안 붙인다', () => {
+    expect(formatLocation({ view: 'class', school: 'S', grade: '2', className: '7' })).not.toContain('course=');
+  });
+});

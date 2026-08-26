@@ -3,7 +3,13 @@ import {
   type DemoScenarioDefinition,
 } from './demo';
 import type { AbsenceCase, Lesson, WorkspaceState } from './domain';
-import { projectOpsDashboard, validateCasePlan, type OpsDashboardView, type PlanValidation } from './projections';
+import {
+  effectiveLessons,
+  projectOpsDashboard,
+  validateCasePlan,
+  type OpsDashboardView,
+  type PlanValidation,
+} from './projections';
 
 export type OpsCasePriority =
   | 'same-day-unresolved'
@@ -52,9 +58,13 @@ function safeTeacherLabel(state: WorkspaceState, teacherId: string): string {
   return label && !/^(?:member|teacher):/i.test(label) ? label : '요청 교사';
 }
 
-function activeLessons(state: WorkspaceState): Lesson[] {
-  return state.lessons.filter((lesson) => lesson.revisionId === state.workspace.activeRevisionId);
-}
+/*
+ * 게시된 변경을 얹은 표를 쓴다. 오늘 막대를 원래 날짜로 그리면 게시로 오늘 옮겨 온
+ * 수업이 안 보이고, 오늘에서 떠난 수업이 그대로 남는다. 일과 담당이 오늘 무슨 일이
+ * 있는지 보려고 여는 화면이 바로 이것이다. 이유는 `projections.ts` 의
+ * `effectiveLessons` 옆에 적었다.
+ */
+const activeLessons = effectiveLessons;
 
 function lessonIsSolved(absenceCase: AbsenceCase, lessonId: string): boolean {
   return absenceCase.resolutionItems.some((item) => item.kind !== 'unresolved'
@@ -105,7 +115,7 @@ function warningMessages(
   const affected = new Set(absenceCase.lessonIds);
   const warnings = [
     ...(revision?.complete ? [] : ['공식 시간표 완전성이 확인되지 않았습니다.']),
-    ...(state.lessons.some((lesson) => affected.has(lesson.id) && lesson.teacher.state === 'unassigned')
+    ...(activeLessons(state).some((lesson) => affected.has(lesson.id) && lesson.teacher.state === 'unassigned')
       ? ['담당 교사가 확정되지 않은 수업이 있습니다.'] : []),
     ...validation.conflicts.map((conflict) => conflict.message),
   ];

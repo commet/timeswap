@@ -136,21 +136,43 @@ export function applyAll(base: TimetableInput, entries: AppliedEntry[]): Timetab
   return cur;
 }
 
-/** 교사별 근무 불가 슬롯 저장, 불러오기. */
-export function loadUnavail(): Record<string, number[]> {
+/**
+ * 근무 불가와 수업 없는 요일은 학교마다 다르다.
+ *
+ * 열쇠 하나에 모아 두면 다른 학교를 열었을 때 지난 학교의 요일이 그대로 걸린다.
+ * 요일 번호는 학교가 달라도 뜻이 통해서 조용히 잘못 맞는다. 학교별로 나눠 담는다.
+ */
+const scopedKey = (base: string, workspaceId: string): string =>
+  workspaceId ? `${base}:${workspaceId}` : base;
+
+/**
+ * 교사별 근무 불가 슬롯 저장, 불러오기.
+ *
+ * 이것을 안 남기면 새로고침 한 번에 통째로 사라진다. 그러면 시간강사가 오지 않는
+ * 요일이 빈 자리로 되살아나고, 도구는 그 자리로 수업을 옮기라고 한다.
+ * 모르는 자리를 빈 자리로 세는 잘못이며, 이 저장소에서 여섯 번째로 같은 모양이다.
+ */
+export function loadUnavail(workspaceId: string): Record<string, number[]> {
   try {
-    const raw = localStorage.getItem(UNAVAIL_KEY);
+    const raw = localStorage.getItem(scopedKey(UNAVAIL_KEY, workspaceId));
     if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, number[]>;
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, number[]> = {};
+    for (const [teacher, slots] of Object.entries(parsed as Record<string, unknown>)) {
+      if (!Array.isArray(slots)) continue;
+      const kept = slots.filter((x): x is number => Number.isInteger(x) && x >= 0);
+      if (kept.length > 0) out[teacher] = [...new Set(kept)].sort((x, y) => x - y);
+    }
+    return out;
   } catch {
     return {};
   }
 }
 
-export function saveUnavail(u: Record<string, number[]>): void {
+export function saveUnavail(workspaceId: string, u: Record<string, number[]>): void {
   try {
-    localStorage.setItem(UNAVAIL_KEY, JSON.stringify(u));
+    localStorage.setItem(scopedKey(UNAVAIL_KEY, workspaceId), JSON.stringify(u));
   } catch {
     /* 무시 */
   }
@@ -738,19 +760,21 @@ export function missingTeachers(report: NeisReport, map: TeacherMap): Array<[str
  * 나이스 학사일정에 안 잡히는 날이 있다. 정기고사 기간, 학교 행사, 갑자기 정해진 재량휴업이다.
  * 도구가 알 길이 없으므로 선생님이 눌러 알려 주신다. 학사일정에서 온 것과 함께 걸린다.
  */
-export function loadOffDays(): number[] {
+export function loadOffDays(workspaceId: string): number[] {
   try {
-    const raw = localStorage.getItem(OFFDAY_KEY);
+    const raw = localStorage.getItem(scopedKey(OFFDAY_KEY, workspaceId));
     const v = raw ? (JSON.parse(raw) as unknown) : [];
-    return Array.isArray(v) ? v.filter((x): x is number => Number.isInteger(x)) : [];
+    if (!Array.isArray(v)) return [];
+    const kept = v.filter((x): x is number => Number.isInteger(x) && x >= 0 && x < 7);
+    return [...new Set(kept)].sort((x, y) => x - y);
   } catch {
     return [];
   }
 }
 
-export function saveOffDays(days: number[]): void {
+export function saveOffDays(workspaceId: string, days: number[]): void {
   try {
-    localStorage.setItem(OFFDAY_KEY, JSON.stringify(days));
+    localStorage.setItem(scopedKey(OFFDAY_KEY, workspaceId), JSON.stringify(days));
   } catch {
     /* 저장 못 해도 이 화면에서는 그대로 쓴다 */
   }
@@ -778,7 +802,12 @@ export function clearRaw(): void {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(TEACHER_KEY);
     localStorage.removeItem(CHANGES_KEY);
-    localStorage.removeItem(UNAVAIL_KEY);
+    // 근무 불가와 수업 없는 요일은 학교마다 열쇠가 갈린다. 앞자리로 찾아 지운다.
+    for (const key of [...Array(localStorage.length)].map((_, i) => localStorage.key(i))) {
+      if (key === null) continue;
+      if (key === UNAVAIL_KEY || key.startsWith(`${UNAVAIL_KEY}:`)) localStorage.removeItem(key);
+      if (key === OFFDAY_KEY || key.startsWith(`${OFFDAY_KEY}:`)) localStorage.removeItem(key);
+    }
   } catch {
     /* 무시 */
   }

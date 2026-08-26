@@ -71,7 +71,7 @@ export function Panel({
           <h2>
             {result
               ? result.target.klass + ' ' + result.target.subject
-              : '주간 시간표에서 수업을 고르세요'}
+              : '주간 시간표에서 수업을 고르십시오'}
           </h2>
           {result && <p>{slotName(result.target.slot, cfg)} 수업의 가능한 방법입니다.</p>}
         </div>
@@ -86,7 +86,7 @@ export function Panel({
       {!result && (
         <div className="panel-empty">
           <span className="empty-cursor" aria-hidden>↖</span>
-          <b>변경이 필요한 수업을 누르세요</b>
+          <b>변경이 필요한 수업을 누르십시오</b>
           <span>하루 전체라면 요일 이름을 누르면 됩니다.</span>
         </div>
       )}

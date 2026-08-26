@@ -344,6 +344,44 @@ describe('findDuplicateAbsenceCase', () => {
       lessonIds: ['lesson-1', 'lesson-2'],
     })).toBeUndefined();
   });
+
+  /*
+   * 반려된 요청은 없던 일이 된 것이다. 그것이 길을 막으면 반려된 교사가 같은 부재를
+   * 다시 낼 수 없다. 반려 사유가 "다시 조정해야 하는 이유"인데 다시 낼 길이 막히면
+   * 반려가 곧 끝이 된다. 날짜나 수업을 바꾸라는 안내가 뜨지만 출장 날짜는 이미
+   * 정해져 있어 바꿀 수 있는 사실이 아니다.
+   */
+  const submitted = (): WorkspaceState => {
+    let state = createAbsenceCase(initialState(), {
+      id: 'case-existing', auditEventId: 'audit-existing', workspaceId: 'workspace-1',
+      requesterTeacherId: 'teacher-1', fromDate: '2026-08-24', toDate: '2026-08-24',
+      reason: '업무상 부재', lessonIds: ['lesson-1'], at: '2026-08-18T01:00:00.000Z',
+    });
+    for (const to of ['submitted', 'in_review'] as const) {
+      state = transitionCase(state, {
+        caseId: 'case-existing', to, actorId: 'ops',
+        at: '2026-08-18T02:00:00.000Z', auditEventId: `audit-${to}`,
+      });
+    }
+    return state;
+  };
+  const same = {
+    requesterTeacherId: 'teacher-1', fromDate: '2026-08-24', toDate: '2026-08-24',
+    lessonIds: ['lesson-1'],
+  };
+
+  it('반려된 요청은 같은 부재를 다시 내는 길을 막지 않는다', () => {
+    const state = transitionCase(submitted(), {
+      caseId: 'case-existing', to: 'rejected', actorId: 'ops',
+      at: '2026-08-18T03:00:00.000Z', auditEventId: 'audit-rejected',
+      rejectionNote: '보강 배정을 다시 잡아야 합니다.',
+    });
+    expect(findDuplicateAbsenceCase(state, same)).toBeUndefined();
+  });
+
+  it('아직 살아 있는 요청은 여전히 막는다', () => {
+    expect(findDuplicateAbsenceCase(submitted(), same)?.id).toBe('case-existing');
+  });
 });
 
 describe('transitionCase', () => {

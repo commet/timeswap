@@ -35,7 +35,15 @@ describe('resolution rows', () => {
 
     const rows = resolutionRowsForLesson(state, absenceCase.id, targetLessonId);
 
-    expect(rows.map((row) => row.method)).toEqual(['맞교환', '보강', '보강', '보강']);
+    /*
+     * 보강이 넷이다. 셋이 아니다.
+     *
+     * 이 사건에는 다른 결강에 이미 고른 안이 들어 있다. 그것을 격자에 얹으면 그 시간에
+     * 수업이 있던 분 하나가 비어서 보강을 맡을 수 있게 된다. 예전에는 결강마다 후보를
+     * 따로 만들어 이 분이 안 보였다. 따로 만들면 반대로 두 결강이 같은 자리를 노리는
+     * 안이 나란히 추천되고, 둘 다 고른 뒤에야 승인이 막혔다.
+     */
+    expect(rows.map((row) => row.method)).toEqual(['맞교환', '보강', '보강', '보강', '보강']);
     expect(rows[0]).toMatchObject({
       collaborators: ['맞교환 협조 교사'],
       movedUnitCount: 2,

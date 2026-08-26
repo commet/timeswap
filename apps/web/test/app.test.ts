@@ -6,10 +6,15 @@ import {
   deriveBurden,
   calendarCoversThisWeek,
   blankDaysOf,
+  clearRaw,
   fromFile,
   gradeOf,
+  loadOffDays,
+  loadUnavail,
   normalizeName,
   sameGradeSubject,
+  saveOffDays,
+  saveUnavail,
   toFile,
   weekMondayOf,
   type AppliedEntry,
@@ -18,7 +23,11 @@ import {
 } from '../lib/app';
 import type { NeisEvent } from '../lib/neis';
 import { createNeisSession } from '../lib/neis-session';
-import { canOpenInvitations, createWorkspaceFromNeis } from '../components/SetupFlow';
+import { canOpenInvitations, createInvitationLinks, createWorkspaceFromNeis } from '../components/SetupFlow';
+import type { NeisLoadBundle } from '../components/SetupFlow';
+import { DataHealthPanel } from '../components/DataHealthPanel';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
 import { gradeShapes, normalizeNeisRows } from '@timeswap/engine';
 import type { ScheduleConfig, TimetableInput } from '@timeswap/engine';
 
@@ -520,6 +529,7 @@ describe('과정마다 다른 쉬는 날', () => {
     result: { total: 3, pageCount: 1, complete: true, truncated: false, fetchedAt: '2026-07-13T00:00:00.000Z' },
     rows: [], events,
     report: {
+      cells: [],
       normalization: {
         accepted: [
           { id: 'r1', row: {}, classIdentity: identity('유치원', '1', '1'), classKey: 'k1', factKey: 'f1',
@@ -564,5 +574,186 @@ describe('과정마다 다른 쉬는 날', () => {
     const closures = state.revisions[0]?.closures ?? [];
     expect(closures).toHaveLength(1);
     expect(closures[0]?.classIdentities).toBeUndefined();
+  });
+});
+
+/**
+ * 몇 학기 시간표인지, 몇 주 전 것인지 밝힌다.
+ *
+ * 앱은 최근 5주를 거슬러 보고 수업이 있는 첫 주를 쓴다. 그래서 방학을 건너뛰어
+ * 지난 학기 시간표를 가져오는 일이 생긴다. 2026년 8월 20일 기준으로 실제 학교
+ * 120곳을 재니 16곳이 한 달 전인 7월 20일 주를 찾았고 그 열여섯 곳이 모두 1학기였다.
+ * 학기가 바뀌면 과목도 교사도 교시 수도 달라진다.
+ *
+ * 날짜로 학기를 짐작하지는 않는다. 방학 길이가 학교마다 달라 같은 주에도 1학기인
+ * 학교와 2학기인 학교가 섞인다. 현재 주를 찾은 94곳 가운데 47곳이 1학기, 47곳이
+ * 2학기였다. 그래서 판정하지 않고 사실만 적는다.
+ */
+describe('불러온 주가 언제 것인지', () => {
+  const panel = (from: string, sems: string[], now: string) => {
+    const bundle = {
+      school: { office: 'B10', code: '7010084', name: '보기고', kind: '고등학교', officeName: '서울' },
+      range: { from, to: from },
+      rows: sems.map((SEM) => ({ SEM })),
+      events: [],
+      result: { total: sems.length, pageCount: 1, complete: true, truncated: false, fetchedAt: now },
+      report: { cells: [], normalization: { accepted: [], quarantined: [], courseOnly: [], duplicateCount: 0, parallelGroups: [] } },
+    } as unknown as NeisLoadBundle;
+    return renderToStaticMarkup(createElement(DataHealthPanel, { bundle, now: new Date(now) }));
+  };
+
+  it('학기를 그대로 적는다', () => {
+    const html = panel('20260817', ['2', '2'], '2026-08-20T00:00:00.000Z');
+    expect(html).toContain('2학기');
+    expect(html).not.toContain('주 전 주간입니다');
+  });
+
+  it('한 학기 이상 지난 주를 가져오면 몇 주 전인지 밝힌다', () => {
+    // 실측에서 나온 그대로다. 8월 20일에 7월 20일 주를 가져온 학교가 16곳 있었다.
+    const html = panel('20260720', ['1'], '2026-08-20T00:00:00.000Z');
+    expect(html).toContain('1학기');
+    expect(html).toContain('4주 전 주간입니다');
+    expect(html).toContain('지난 학기 시간표일 수 있습니다');
+  });
+
+  it('학기가 섞여 오면 둘 다 적는다', () => {
+    expect(panel('20260817', ['1', '2'], '2026-08-20T00:00:00.000Z')).toContain('1학기, 2학기');
+  });
+
+  it('학기를 못 읽으면 확인이 필요하다고 적는다', () => {
+    expect(panel('20260817', [], '2026-08-20T00:00:00.000Z')).toContain('확인 필요');
+  });
+});
+
+/**
+ * 특수학교 세 과정의 1학년 1반이 링크 하나로 합쳐지던 자리.
+ *
+ * 학급 열쇠와 화면 이름은 고쳤는데 초대 링크와 공개 시간표 주소가 (학년, 반)으로만
+ * 묶고 있었다. 그러면 셋 가운데 하나만 열리고 나머지 둘은 갈 방법이 없다.
+ * 실측한 특수학교 32곳 가운데 31곳이 여기 걸린다.
+ */
+describe('과정이 다른 같은 학년 같은 반의 링크', () => {
+  const lesson = (course: string, id: string) => ({
+    id, workspaceId: 'W', revisionId: 'R', date: '20260817', period: '1',
+    classIdentity: {
+      schoolCode: 'W', academicYear: '2026', schoolCourse: course,
+      dayCourse: '주간', affiliation: '', major: '', grade: '1', className: '1',
+    },
+    subject: '국어', room: '',
+    teacher: { state: 'assigned' as const, teacherId: 'member:t1' },
+  });
+  const state = {
+    schemaVersion: 2,
+    workspace: { id: 'W', name: '명현학교', activeRevisionId: 'R', createdAt: '', updatedAt: '' },
+    revisions: [{ id: 'R', workspaceId: 'W', source: 'neis', loadedAt: '', complete: true, checksum: '' }],
+    lessons: [lesson('초등학교', 'l1'), lesson('중학교', 'l2'), lesson('고등학교', 'l3')],
+    teacherLabels: { 'member:t1': '김선생' },
+  } as unknown as Parameters<typeof createInvitationLinks>[0];
+
+  it('과정마다 따로 링크를 만든다', () => {
+    const { classes } = createInvitationLinks(state, 'https://x.test');
+    expect(classes).toHaveLength(3);
+    expect(classes.map((c) => c.label).sort()).toEqual([
+      '고등학교 1학년 1반', '중학교 1학년 1반', '초등학교 1학년 1반',
+    ]);
+    expect(new Set(classes.map((c) => c.href)).size).toBe(3);
+  });
+
+  it('과정이 없는 학교는 예전 그대로다', () => {
+    const plain = JSON.parse(JSON.stringify(state)) as typeof state;
+    for (const item of plain.lessons) item.classIdentity.schoolCourse = '';
+    const { classes } = createInvitationLinks(plain, 'https://x.test');
+    expect(classes).toHaveLength(1);
+    expect(classes[0]?.label).toBe('1학년 1반');
+    expect(classes[0]?.href).not.toContain('course=');
+  });
+});
+
+/**
+ * 근무 불가와 수업 없는 요일이 새로고침을 견디는지.
+ *
+ * 저장 함수는 있었는데 아무도 부르지 않았다. 그래서 시간강사가 오지 않는 요일을
+ * 눌러 두어도 페이지를 다시 열면 사라졌고, 도구는 그 자리를 빈 자리로 보고
+ * 수업을 옮기라고 했다. 모르는 자리를 빈 자리로 세는 잘못이다.
+ */
+describe('근무 불가와 수업 없는 요일 저장', () => {
+  class MemStore implements Storage {
+    private readonly v = new Map<string, string>();
+    get length(): number { return this.v.size; }
+    clear(): void { this.v.clear(); }
+    getItem(k: string): string | null { return this.v.get(k) ?? null; }
+    key(i: number): string | null { return [...this.v.keys()][i] ?? null; }
+    removeItem(k: string): void { this.v.delete(k); }
+    setItem(k: string, val: string): void { this.v.set(k, val); }
+  }
+
+  const withStore = <T,>(run: (store: MemStore) => T): T => {
+    const store = new MemStore();
+    const had = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', { value: store, configurable: true });
+    try {
+      return run(store);
+    } finally {
+      if (had) Object.defineProperty(globalThis, 'localStorage', had);
+      else Reflect.deleteProperty(globalThis, 'localStorage');
+    }
+  };
+
+  it('저장한 근무 불가를 그대로 읽는다', () => {
+    withStore(() => {
+      saveUnavail('school-a', { 김영희: [3, 1, 2] });
+      expect(loadUnavail('school-a')).toEqual({ 김영희: [1, 2, 3] });
+    });
+  });
+
+  it('학교가 다르면 서로 섞이지 않는다', () => {
+    withStore(() => {
+      saveUnavail('school-a', { 김영희: [1] });
+      saveUnavail('school-b', { 박철수: [4] });
+      expect(loadUnavail('school-a')).toEqual({ 김영희: [1] });
+      expect(loadUnavail('school-b')).toEqual({ 박철수: [4] });
+    });
+  });
+
+  it('수업 없는 요일도 학교별로 남는다', () => {
+    withStore(() => {
+      saveOffDays('school-a', [2]);
+      saveOffDays('school-b', [0, 4]);
+      expect(loadOffDays('school-a')).toEqual([2]);
+      expect(loadOffDays('school-b')).toEqual([0, 4]);
+    });
+  });
+
+  it('저장한 적 없는 학교는 빈 값이다', () => {
+    withStore(() => {
+      expect(loadUnavail('없는학교')).toEqual({});
+      expect(loadOffDays('없는학교')).toEqual([]);
+    });
+  });
+
+  // 손으로 고칠 수 있는 자리다. 이상한 값이 들어오면 그 자리만 버리고 나머지를 살린다.
+  it('망가진 값은 버리고 읽는다', () => {
+    withStore((store) => {
+      store.setItem('timeswap:v0:unavail:s', JSON.stringify({ 김영희: [1, -2, 'x', 1], 박철수: '통째로틀림' }));
+      expect(loadUnavail('s')).toEqual({ 김영희: [1] });
+      store.setItem('timeswap:v0:offdays:s', JSON.stringify([1, 9, -1, 1, 'x']));
+      expect(loadOffDays('s')).toEqual([1]);
+      store.setItem('timeswap:v0:unavail:s', '{"깨진');
+      expect(loadUnavail('s')).toEqual({});
+      store.setItem('timeswap:v0:offdays:s', 'null');
+      expect(loadOffDays('s')).toEqual([]);
+    });
+  });
+
+  it('초기화하면 학교별로 나눠 담은 것까지 지운다', () => {
+    withStore((store) => {
+      saveUnavail('school-a', { 김영희: [1] });
+      saveOffDays('school-b', [2]);
+      store.setItem('남길것', '1');
+      clearRaw();
+      expect(loadUnavail('school-a')).toEqual({});
+      expect(loadOffDays('school-b')).toEqual([]);
+      expect(store.getItem('남길것')).toBe('1');
+    });
   });
 });

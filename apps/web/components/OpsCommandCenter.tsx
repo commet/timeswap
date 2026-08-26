@@ -24,6 +24,14 @@ export type OpsCommandCenterProps = {
   step?: 'case' | 'admin';
 };
 
+/** 자료가 어디서 왔는지. 영문 코드를 그대로 보여 주지 않는다. */
+const SOURCE_LABEL: Record<string, string> = {
+  neis: '나이스',
+  school_file: '학교 파일',
+  demo: '예시 자료',
+  none: '미확인',
+};
+
 const metrics: Array<{ key: keyof Pick<OpsDashboardView, 'todayChanges' | 'unresolvedLessons' | 'pendingCases' | 'neisTasks' | 'publicationTasks' | 'burdenAlerts'>; label: string }> = [
   { key: 'todayChanges', label: '오늘 게시된 변경' },
   { key: 'unresolvedLessons', label: '미해결 수업' },
@@ -48,26 +56,42 @@ export function OpsCommandCenter({
   step,
 }: OpsCommandCenterProps) {
   const mobileStep = step ?? 'list';
+  /** 일과 담당의 손이 필요한 건수. 승인, 나이스 입력, 게시 셋을 합친다. */
+  const waiting = dashboard.pendingCases + dashboard.neisTasks + dashboard.publicationTasks;
   return (
     <main id="main-content" tabIndex={-1} className="ops-command-center" data-ops-command-center data-ops-step={mobileStep}>
       <header className="ops-command-heading">
         <div>
-          <span className="eyebrow">일과 담당 · 변경 관제판</span>
-          <h2>지금 결정해야 할 변경</h2>
-          <p>우선순위, 전체 충돌, 행정 마감 상태를 한 사건 기준으로 확인합니다.</p>
+          {/* 역할은 길잡이가 이미 말한다. 제목 위에 또 적지 않는다. */}
+          {/*
+            * 제목이 물음에 답한다. 앞서는 "지금 결정해야 할 변경"이라는 표어였고 그 아래
+            * 화면을 설명하는 부제목이 있었다. 일과 담당이 이 화면을 여는 이유는 하나다.
+            * 내 손이 필요한 것이 몇 건인가.
+            */}
+          <h2>{waiting > 0 ? <>처리할 일 <span className="num">{waiting}</span>건</> : '처리할 일 없음'}</h2>
         </div>
         <DemoScenarioPicker state={scenarioState} onOpenScenario={onOpenScenario} />
       </header>
 
-      {/* 지표는 어느 한 구역의 성질이 아니라 판 전체의 상태다. 카드 안에 넣으면
-          그 카드의 부속으로 읽힌다. 머리말 바로 아래 한 줄로 세운다. */}
+      {/*
+        * 값이 0인 지표는 조용히 둔다.
+        *
+        * 앞서는 여섯을 똑같은 크기로 세웠고 대개 다섯이 0이었다. 0을 큰 숫자로 여섯 번
+        * 보여 주면 1인 하나가 묻힌다. 셀 것이 있는 것을 앞에 두고, 0은 뒤에서 흐리게 둔다.
+        */}
       <dl className="ops-metrics" aria-label="변경 관제 지표">
-        {metrics.map(({ key, label }) => (
-          <div key={key} data-ops-metric={key}><dt>{label}</dt><dd>{dashboard[key]}</dd></div>
+        {[...metrics].sort((left, right) =>
+          (dashboard[right.key] > 0 ? 1 : 0) - (dashboard[left.key] > 0 ? 1 : 0),
+        ).map(({ key, label }) => (
+          <div key={key} data-ops-metric={key} className={dashboard[key] > 0 ? 'on' : ''}>
+            <dt>{label}</dt><dd className="num">{dashboard[key]}</dd>
+          </div>
         ))}
       </dl>
 
       <div className="ops-command-regions">
+        {/* 목록과 흐름은 둘 다 "밖에 무엇이 있는가"라 한 칸에 쌓는다. */}
+        <div className="ops-command-side">
         <section className="ops-priority-region" aria-labelledby="ops-priority-title">
           <header><span className="eyebrow">사건 목록</span><h3 id="ops-priority-title">우선순위</h3></header>
           <ol>
@@ -79,7 +103,7 @@ export function OpsCommandCenter({
                   onClick={() => onSelectCase(item.caseId)}
                 >
                   <span className={'ops-priority-dot ' + item.priority} aria-hidden="true" />
-                  <span><b>{item.requesterLabel}</b><small>{item.fromDate} · {item.affectedLessonCount}개 수업 / {item.solvedLessonCount}개 해결</small></span>
+                  <span><b>{item.requesterLabel}</b><small>{item.fromDate} | 수업 {item.affectedLessonCount}건 중 {item.solvedLessonCount}건 해결</small></span>
                   <em>{item.priorityReason}</em>
                 </button>
               </li>
@@ -90,23 +114,38 @@ export function OpsCommandCenter({
 
         <section className="ops-timeline-region" aria-labelledby="ops-timeline-title">
           <header><span className="eyebrow">{dashboard.today}</span><h3 id="ops-timeline-title">오늘 교시 흐름</h3></header>
-          <section className="ops-source-health" aria-label="시간표 자료 상태">
-            <b>자료 상태</b>
-            <span>{dashboard.sourceHealth.complete ? '완전' : '불완전'} · {dashboard.sourceHealth.source ?? '미확인'} · 수업 {dashboard.sourceHealth.lessonCount}건 · 미배정 {dashboard.sourceHealth.unassignedLessons}건</span>
-          </section>
+          {/*
+            * 이름과 값이 짝인데 중간점으로 죽 이어 붙여 두었다. 짝을 짝으로 세운다.
+            *
+            * 무엇을 보고 있는지(출처)와 온전한지(완전성)는 지우면 안 된다. 예시 자료를
+            * 실제 학교 자료로 착각하고 결재하면 안 되고, 자료가 덜 왔는데 승인해도 안 된다.
+            */}
+          <dl className="ops-source-health" aria-label="시간표 자료 상태">
+            <div><dt>출처</dt><dd>{SOURCE_LABEL[dashboard.sourceHealth.source ?? 'none']}</dd></div>
+            <div className={dashboard.sourceHealth.complete ? '' : 'mark'}>
+              <dt>자료</dt><dd>{dashboard.sourceHealth.complete ? '완전' : '불완전'}</dd>
+            </div>
+            <div><dt>수업</dt><dd className="num">{dashboard.sourceHealth.lessonCount}</dd></div>
+            {dashboard.sourceHealth.unassignedLessons > 0 && (
+              <div className="mark">
+                <dt>담당 미확정</dt><dd className="num">{dashboard.sourceHealth.unassignedLessons}</dd>
+              </div>
+            )}
+          </dl>
           <ol className="ops-period-timeline" aria-label="오늘 변경 교시">
             {timeline.map((marker) => (
               <li key={marker.id} className={marker.state}>
                 <span>{marker.period}교시</span>
                 <button onClick={() => onSelectCase(marker.caseId)}>
                   <b>{marker.stateLabel}</b>
-                  <small>{marker.affectedTeacherCount}명 교사 · {marker.affectedClassCount}개 학급</small>
+                  <small>교사 {marker.affectedTeacherCount}명, 학급 {marker.affectedClassCount}개</small>
                 </button>
               </li>
             ))}
             {timeline.length === 0 && <li className="ops-empty">오늘 표시할 변경 교시가 없습니다.</li>}
           </ol>
         </section>
+        </div>
 
         <aside className="ops-case-region" aria-label="선택 사건과 행정 마감">
           <div className="ops-case-panel">{detail}</div>

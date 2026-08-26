@@ -9,6 +9,8 @@ import type {
   WorkspaceState,
 } from './domain';
 import {
+  caseRevisionId,
+  effectiveLessons,
   projectPublicClassSchedule,
   validateCasePlan,
   type PublicClassView,
@@ -79,8 +81,8 @@ const TASK_COPY: Record<AdminTaskKind, { label: string; instruction: string }> =
 
 const STAGE_LABEL: Record<PublicationStage, string> = {
   awaiting_approval: '승인 전',
-  administration: '승인 완료 · 행정 마감 진행 중',
-  ready: '행정 마감 완료 · 게시 대기',
+  administration: '승인 완료, 행정 마감 진행 중',
+  ready: '행정 마감 완료, 게시 대기',
   published: '게시 완료',
   closed: '종료된 사건',
 };
@@ -155,8 +157,8 @@ export function projectPublicationCenter(
   const stage = stageOf(absenceCase);
   const tasks = taskViews(state, caseId);
   const validation = validateCasePlan(state, caseId);
-  const lessons = new Map(state.lessons
-    .filter((lesson) => lesson.revisionId === state.workspace.activeRevisionId)
+  // 그 사건의 주를 게시된 채로 본다. 이유는 `publication.ts` 의 `caseLessons` 옆에 적었다.
+  const lessons = new Map(effectiveLessons(state, caseRevisionId(state, absenceCase))
     .map((lesson) => [lesson.id, lesson] as const));
   const changedLessonIds = changedLessonIdsOf(absenceCase);
   const changedLessons = changedLessonIds

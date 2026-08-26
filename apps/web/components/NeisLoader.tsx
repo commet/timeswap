@@ -121,7 +121,7 @@ export function NeisLoader({
             <li key={`${hit.office}-${hit.code}`}>
               <button onClick={() => onSchoolChange(hit)}>
                 <span className="hit-name">{hit.name}</span>
-                <span className="hit-meta">{hit.officeName} · {hit.kind}{hit.preview ? ' · 검색 미리보기' : ''}</span>
+                <span className="hit-meta">{hit.officeName} | {hit.kind}{hit.preview ? ' | 검색 미리보기' : ''}</span>
               </button>
             </li>
           ))}
@@ -132,7 +132,7 @@ export function NeisLoader({
 
   if (mode === 'key') return (
     <section className="neis setup-source" aria-labelledby="session-key-title">
-      <span className="eyebrow">2단계 · {school?.name}</span>
+      <span className="eyebrow">2단계 {school?.name}</span>
       <h2 id="session-key-title">이번 설정에만 쓸 인증키</h2>
       <p className="neis-lede">키는 이 탭의 메모리에만 두고, 설정을 마치거나 나가면 바로 지웁니다.</p>
       <label className="neis-field">

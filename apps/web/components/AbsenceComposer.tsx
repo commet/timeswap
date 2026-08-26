@@ -3,10 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  CASE_STATUS_LABEL,
   findDuplicateAbsenceCase,
+  findOverlappingAbsenceCases,
   lessonsAffectedByAbsence,
 } from '../lib/case-service';
 import type { AbsenceCase, Lesson, WorkspaceState } from '../lib/domain';
+import { effectiveLessons } from '../lib/projections';
 
 export interface ComposerReadiness {
   readyForCandidates: boolean;
@@ -41,9 +44,11 @@ export interface TeacherDiagnosticProjection {
   issues: string[];
 }
 
-function activeLessons(state: WorkspaceState): Lesson[] {
-  return state.lessons.filter((lesson) => lesson.revisionId === state.workspace.activeRevisionId);
-}
+/*
+ * 게시된 변경을 얹은 표를 쓴다. 이유는 `projections.ts` 의 `effectiveLessons` 옆에
+ * 적었다. 같은 셈을 여기에 또 적지 않는다.
+ */
+const activeLessons = effectiveLessons;
 
 function countFromQuery(query: Record<string, string> | undefined, key: string): number | null {
   const value = Number(query?.[key]);
@@ -161,7 +166,7 @@ export function messageForUnavailableSource(readiness: ComposerReadiness): strin
   }
   if (!readiness.mapping.complete) {
     const unassigned = readiness.mapping.unassignedLessons
-      ? ` · 담당 미확정 수업 ${readiness.mapping.unassignedLessons}건`
+      ? `, 담당 미확정 수업 ${readiness.mapping.unassignedLessons}건`
       : '';
     parts.push(`교사 연결 ${readiness.mapping.known}/${readiness.mapping.expected}명${unassigned}`);
   }
@@ -234,7 +239,17 @@ export function AbsenceComposer({
       requesterTeacherId: teacherId, fromDate, toDate, lessonIds: selected.map((lesson) => lesson.id),
     });
     if (duplicate) {
-      setMessage(`같은 기간과 수업으로 ${duplicate.status} 상태의 요청이 이미 있습니다. 기존 요청을 확인하거나 날짜 또는 수업 선택을 바꾸십시오.`);
+      setMessage(`같은 기간과 수업으로 ${CASE_STATUS_LABEL[duplicate.status]} 상태의 요청이 이미 있습니다. 기존 요청을 확인하거나 날짜 또는 수업 선택을 바꾸십시오.`);
+      return;
+    }
+    const overlapping = findOverlappingAbsenceCases(state, {
+      requesterTeacherId: teacherId, lessonIds: selected.map((lesson) => lesson.id),
+    });
+    if (overlapping.length > 0) {
+      const dates = [...new Set(overlapping.flatMap((item) => item.lessonIds)
+        .map((lessonId) => effectiveLessons(state).find((lesson) => lesson.id === lessonId)?.date)
+        .filter((date): date is string => Boolean(date)))].sort();
+      setMessage(`${dates.join(', ')} 수업은 이미 낸 요청에 들어 있습니다. 그 요청을 취소하거나 겹치지 않는 날짜를 고르십시오.`);
       return;
     }
     const result = onSubmit({
@@ -266,8 +281,8 @@ export function AbsenceComposer({
       <header>
         <div>
           <span className="eyebrow">변경 요청</span>
-          <h2 id="absence-composer-title">부재와 영향 수업을 알려주세요</h2>
-          <p>필요한 운영 정보만 요청합니다. 진단·병력·전화번호 등 민감한 개인정보는 적지 마십시오.</p>
+          <h2 id="absence-composer-title">부재와 영향 수업</h2>
+          <p>필요한 운영 정보만 요청합니다. 진단, 병력, 전화번호 등 민감한 개인정보는 적지 마십시오.</p>
         </div>
         <button className="btn ghost" onClick={onDismiss}>닫기</button>
       </header>
@@ -292,7 +307,7 @@ export function AbsenceComposer({
           <label key={lesson.id}>
             <input type="checkbox" checked={selectedLessonIds.includes(lesson.id)}
               onChange={() => toggleLesson(lesson.id)} />
-            <span>{lesson.date} {lesson.period}교시 · {lesson.classIdentity.grade}-{lesson.classIdentity.className} {lesson.subject}</span>
+            <span>{lesson.date} {lesson.period}교시 | {lesson.classIdentity.grade}-{lesson.classIdentity.className} {lesson.subject}</span>
           </label>
         )) : <p>선택한 기간에 담당 수업이 없습니다.</p>}
       </fieldset>
@@ -311,7 +326,7 @@ export function AbsenceComposer({
         ))}
         <label className="coordination-note">협조 메모 (선택)<textarea className="input" maxLength={240}
           value={note} onChange={(event) => setNote(event.target.value)}
-          placeholder="수업 운영에 필요한 짧은 전달 사항만 적어주세요." /></label>
+          placeholder="수업 운영에 필요한 짧은 전달 사항만 적으십시오." /></label>
       </fieldset>
 
       {!readiness.readyForCandidates && (

@@ -52,7 +52,7 @@ export function DemoScenarioPicker({
       )}
       {pending && (
         <div className="demo-reset-confirm" role="alert">
-          <b>{pending.title} 사례로 예시 작업공간을 다시 시작할까요?</b>
+          <b>{pending.title} 사례로 예시 작업공간을 다시 시작하시겠습니까?</b>
           <p>현재 예시에서 만든 변경과 감사 기록은 이 브라우저의 기존 예시 작업공간에 남습니다.</p>
           <div>
             <button className="btn" onClick={() => setPendingId(null)}>취소</button>

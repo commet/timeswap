@@ -4,12 +4,13 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from 'react';
-import type { NeisReport, NeisRow } from '@timeswap/engine';
+import { classIdentityKey, stripMarks, type ClassIdentity, type NeisReport, type NeisRow } from '@timeswap/engine';
 
 import { DataHealthPanel } from './DataHealthPanel';
 import { NeisLoader } from './NeisLoader';
@@ -66,6 +67,28 @@ export function canEnterSetupStage(stage: SetupStage, state: {
   return state.invitationsReady;
 }
 
+/**
+ * 실제로 수업이 되는 행 수. 휴업 칸을 뺀 나머지다.
+ *
+ * 방학이나 수능 휴업 주를 고르면 닷새 모든 칸이 휴업으로 와서 이 값이 0이 된다.
+ * 받은 행 수는 온전하므로 "완전하게 불러왔다"고 표시되고, 사람은 텅 빈 시간표를
+ * 정상으로 본다. 주를 잘못 골랐다는 사실이 어디에도 안 뜬다.
+ */
+export function teachableRowCount(report: NeisLoadBundle['report']): number {
+  const holidays = new Set(report.cells
+    .filter((cell) => cell.kind === '휴업')
+    .map((cell) => `${cell.klass}|${cell.date}`));
+  return report.normalization.accepted
+    .filter((row) => !holidays.has(`${row.classKey}|${row.date}`)).length;
+}
+
+/** 이 자료로 시간표를 세울 수 있는지. 완전성 확인과 개정판 표시가 같은 것을 본다. */
+export function isUsableBundle(bundle: Pick<NeisLoadBundle, 'result' | 'report'>): boolean {
+  return Boolean(bundle.result.complete)
+    && bundle.report.normalization.quarantined.length === 0
+    && teachableRowCount(bundle.report) > 0;
+}
+
 const isoDate = (value: string): string =>
   value.length === 8 ? `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}` : value;
 const classLabel = (grade: string, className: string): string => `${grade}-${className}`;
@@ -85,6 +108,18 @@ export function createWorkspaceFromNeis(
   bundle: NeisLoadBundle,
   teacherMap: TeacherMap,
   now = new Date().toISOString(),
+  /**
+   * 이미 쓰던 작업 공간. 주마다 다시 불러올 때 넘긴다.
+   *
+   * 학교는 주마다 나이스를 다시 받는다. 그때 작업 공간을 통째로 새로 만들면서 사건과
+   * 게시 기록, 감사 기록을 빈 배열로 두고 있었다. 한 주를 쓰고 다음 주 시간표를 받는
+   * 순간 지난주에 누가 무엇을 결재했는지가 사라졌다. 결재가 있는 도구에서 감사 기록이
+   * 사라지는 것은 기능 하나가 없는 것과 다르다.
+   *
+   * 지난 기록은 남기되 이번 주 계산에는 끼어들지 않는다. 수업과 사건, 게시는 개정판
+   * 번호를 달고 있고 이번 주 계산은 활성 개정판만 본다.
+   */
+  previous?: WorkspaceState,
 ): WorkspaceState {
   const workspaceId = bundle.school.code;
   const revisionId = `${workspaceId}:revision:${bundle.range.from}-${bundle.range.to}`;
@@ -92,7 +127,28 @@ export function createWorkspaceFromNeis(
   const groupByRow = new Map(normalization.parallelGroups.flatMap((group, index) =>
     group.rowIds.map((rowId) => [rowId, `${revisionId}:parallel:${index + 1}`] as const)));
   const teacherLabels: Record<string, string> = {};
-  const lessons = normalization.accepted.map((row) => {
+
+  /*
+   * 시간표에 온 휴업일을 수업으로 만들지 않는다.
+   *
+   * 학교가 쉬는 날에도 나이스는 그 교시 자리에 "재량휴업일", "기타활동" 같은 문구를
+   * 넣어 돌려준다. 그대로 수업으로 만들면 설정 화면이 "재량휴업일"의 담당 교사를
+   * 채우라고 하고, 학급 공개 시간표에도 과목처럼 뜬다. 실측한 154곳 가운데 한 곳은
+   * 고른 주 닷새 가운데 나흘이 그런 날이었다.
+   *
+   * 엔진이 이미 가려 놓았다. 그 학급 그날의 칸이 모두 같은 값이고 같은 학년의 다른
+   * 학급도 모두 그러면 휴업으로 본다. 실측 51건이 모두 그 학급의 하루 전체였고
+   * 일부만 걸린 경우는 하나도 없었다. 그래서 수업에서 빼고 쉬는 날로 옮긴다.
+   */
+  const holidayReason = new Map<string, string>(
+    bundle.report.cells
+      .filter((cell) => cell.kind === '휴업')
+      .map((cell) => [`${cell.klass}|${cell.date}`, cell.subject]),
+  );
+  const isHolidayRow = (row: { classKey: string; date: string }): boolean =>
+    holidayReason.has(`${row.classKey}|${row.date}`);
+
+  const lessons = normalization.accepted.filter((row) => !isHolidayRow(row)).map((row) => {
     const label = classLabel(row.classIdentity.grade, row.classIdentity.className);
     const teacherReference = teacherMap[mapKey(row.classKey, row.subject)]
       ?? teacherMap[mapKey(label, row.subject)];
@@ -113,6 +169,9 @@ export function createWorkspaceFromNeis(
         ? { state: 'assigned' as const, teacherId }
         : { state: 'unassigned' as const },
       ...(groupByRow.has(row.id) ? { parallelGroupId: groupByRow.get(row.id)! } : {}),
+      // 과목명 앞의 별표가 전문교과 실습 표시다. 정규화가 과목명에서 떼어 내므로
+      // 원문에서 다시 읽는다. 이 표시가 있어야 엔진이 전공 교사를 가려 보강을 고른다.
+      ...(stripMarks(row.rawSubject).pro ? { pro: true } : {}),
     };
   });
   const knownClasses = [...new Map(lessons.map((lesson) => [
@@ -148,8 +207,48 @@ export function createWorkspaceFromNeis(
       ...(whole ? {} : { classIdentities: scoped }),
     }];
   });
+  /* 뺀 자리는 그냥 사라지면 안 된다. 그날 그 학급이 쉰다는 사실로 남긴다. */
+  const timetableHolidays = new Map<string, { date: string; reason: string; classIdentities: ClassIdentity[] }>();
+  for (const row of normalization.accepted) {
+    const cellKey = `${row.classKey}|${row.date}`;
+    const reason = holidayReason.get(cellKey);
+    if (reason === undefined) continue;
+    const date = isoDate(row.date);
+    const key = `${date}|${reason}`;
+    const found = timetableHolidays.get(key)
+      ?? timetableHolidays.set(key, { date, reason, classIdentities: [] }).get(key)!;
+    if (!found.classIdentities.some((identity) => classIdentityKey(identity) === classIdentityKey(row.classIdentity))) {
+      found.classIdentities.push({ ...row.classIdentity });
+    }
+  }
+
+  /*
+   * 학사일정에서 온 것과 시간표에서 온 것을 합친다. 같은 날 같은 사유가 양쪽에서
+   * 오면 하나만 남긴다. 학사일정이 이미 알려 준 재량휴업일이 여기 겹친다.
+   */
+  const allClosures = [...closures];
+  for (const holiday of timetableHolidays.values()) {
+    const already = allClosures.some((closure) =>
+      closure.date === holiday.date
+      && (closure.classIdentities === undefined
+        || holiday.classIdentities.every((identity) =>
+          closure.classIdentities!.some((scoped) => classIdentityKey(scoped) === classIdentityKey(identity)))));
+    if (!already) allClosures.push(holiday);
+  }
+
+  /** 수업을 남겨 둘 개정판. 이번 주와 바로 앞 주다. 이유는 lessons 옆에 적었다. */
+  const KEPT_WEEKS = 1;
+  const keptRevisionIds = new Set(
+    [...(previous?.revisions ?? [])]
+      .filter((item) => item.id !== revisionId)
+      // 시각이 없는 옛 자료가 있어도 무너지지 않게 한다. 다시 불러오는 길이다.
+      .sort((left, right) => (right.loadedAt ?? '').localeCompare(left.loadedAt ?? ''))
+      .slice(0, KEPT_WEEKS)
+      .map((item) => item.id),
+  );
+
   const academicYear = normalization.accepted[0]?.classIdentity.academicYear ?? '';
-  const complete = bundle.result.complete && normalization.quarantined.length === 0;
+  const complete = isUsableBundle(bundle);
 
   return {
     schemaVersion: 2,
@@ -174,11 +273,44 @@ export function createWorkspaceFromNeis(
       loadedAt: bundle.result.fetchedAt,
       complete,
       checksum: `neis:${workspaceId}:${bundle.range.from}-${bundle.range.to}:${bundle.result.total}`,
-      ...(closures.length ? { closures } : {}),
-    }],
-    lessons,
-    teacherLabels,
-    cases: [], adminTasks: [], publications: [], audit: [],
+      ...(allClosures.length ? { closures: allClosures } : {}),
+    },
+    /*
+     * 지난 개정판도 남긴다. 게시된 변경과 감사 기록이 그 번호를 가리키고 있어서,
+     * 개정판을 지우면 "무엇을 근거로 그렇게 바꿨는가"를 되짚을 수 없다.
+     * 같은 기간을 다시 받으면 번호가 같으므로 새 것으로 덮는다.
+     */
+    ...(previous?.revisions ?? []).filter((item) => item.id !== revisionId),
+    ],
+    /*
+     * 지난주 수업은 **한 주치만** 남긴다.
+     *
+     * 사건과 게시, 감사 기록은 작아서 다 남겨도 된다. 수업은 다르다. 가장 큰 학교
+     * (안양예술고, 한 주 2,088행)를 주마다 이어 붙이면 이렇게 는다.
+     *
+     * | 주차 | 저장 크기 |
+     * |---|---|
+     * | 1 | 0.52MB |
+     * | 8 | 4.16MB |
+     * | 10 | **5MB 넘음** |
+     * | 20 | 10.40MB |
+     *
+     * `localStorage` 한도가 5MB 라 학기 중반에 저장이 막힌다. 지난주 것을 한 주만
+     * 남기면 1MB 안쪽이다. 지난주까지 두는 이유는 게시한 변경을 그 주 안에 정정하는
+     * 일이 흔해서다. 그보다 오래된 주의 수업은 지금 화면 어디에도 안 쓴다.
+     * 이번 주 계산은 활성 개정판만 본다.
+     */
+    lessons: [
+      ...lessons,
+      ...(previous?.lessons ?? []).filter((item) =>
+        item.revisionId !== revisionId && keptRevisionIds.has(item.revisionId)),
+    ],
+    teacherLabels: { ...(previous?.teacherLabels ?? {}), ...teacherLabels },
+    // 지난 기록을 이어 간다. 처음 설정할 때는 previous 가 없어 예전처럼 빈 상태다.
+    cases: previous?.cases ?? [],
+    adminTasks: previous?.adminTasks ?? [],
+    publications: previous?.publications ?? [],
+    audit: previous?.audit ?? [],
   };
 }
 
@@ -187,8 +319,15 @@ export async function completeSetupReview(
   teacherMap: TeacherMap,
   credential: Pick<NeisSessionValue, 'clear'>,
   save: (state: WorkspaceState) => SaveResult | Promise<SaveResult>,
+  /** 이미 쓰던 작업 공간. 주마다 다시 불러올 때 넘겨 지난 기록을 이어 간다. */
+  previous?: WorkspaceState,
 ): Promise<{ ok: true; state: WorkspaceState } | { ok: false; reason: 'quota' | 'unavailable' }> {
-  const next = createWorkspaceFromNeis(bundle, teacherMap);
+  /*
+   * 지난 기록은 **같은 학교일 때만** 이어 간다. 작업 공간 번호가 학교 코드다.
+   * 다른 학교를 설정하는데 앞 학교의 사건을 끌고 오면 남의 학교 기록이 섞인다.
+   */
+  const carry = previous && previous.workspace.id === bundle.school.code ? previous : undefined;
+  const next = createWorkspaceFromNeis(bundle, teacherMap, undefined, carry);
   const result = await save(next);
   if (!result.ok) return result;
   credential.clear();
@@ -228,18 +367,29 @@ export function createInvitationLinks(
         view: 'teacher', school: state.workspace.id, teacher: teacherId,
       }), origin).toString(),
     }));
+  /*
+   * 학급 링크는 과정까지 넣어 묶는다.
+   *
+   * 특수학교는 초등부와 중학부, 고등부를 함께 운영하고 학년이 과정마다 1부터 다시
+   * 센다. 한 학교에 1학년 1반이 셋 있고 실측한 32곳 가운데 31곳이 그렇다.
+   * (학년, 반)으로만 묶으면 셋이 링크 하나로 합쳐져 두 학급은 갈 방법이 없어진다.
+   */
   const classes = [...new Map(state.lessons.map((lesson) => {
     const identity = lesson.classIdentity;
-    const id = JSON.stringify([identity.grade, identity.className]);
-    return [id, { grade: identity.grade, className: identity.className }] as const;
+    const course = identity.schoolCourse ?? '';
+    const id = JSON.stringify([course, identity.grade, identity.className]);
+    return [id, { grade: identity.grade, className: identity.className, course }] as const;
   })).entries()]
     .sort((left, right) => left[0].localeCompare(right[0], 'ko', { numeric: true }))
     .map(([id, identity]) => ({
       id,
-      label: `${identity.grade}학년 ${identity.className}반`,
+      label: identity.course
+        ? `${identity.course} ${identity.grade}학년 ${identity.className}반`
+        : `${identity.grade}학년 ${identity.className}반`,
       href: new URL(formatLocation({
         view: 'class', school: state.workspace.id,
         grade: identity.grade, className: identity.className,
+        ...(identity.course ? { course: identity.course } : {}),
       }), origin).toString(),
     }));
   return { teachers, classes };
@@ -291,13 +441,37 @@ function firstAssignedTeacher(state: WorkspaceState): string | null {
   return null;
 }
 
-export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
+export function SetupFlow({ initialSchoolQuery = '', saveState, navigate, existing }: {
   initialSchoolQuery?: string;
   saveState(next: WorkspaceState): SaveResult;
   navigate(next: AppLocation): void;
+  /** 이미 쓰던 작업 공간. 같은 학교를 다시 불러오면 지난 기록을 이어 간다. */
+  existing?: WorkspaceState | null;
 }) {
   const session = useContext(NeisSessionContext);
   const [stage, setStage] = useState<SetupStage>('학교 검색');
+
+  /*
+   * 좁은 화면에서 지금 단계가 어디인지 보이게 한다.
+   *
+   * 단계가 일곱이라 폰에서는 레일이 옆으로 밀린다. 4단계로 넘어가도 레일은 1단계를
+   * 비추고 있어서, 화면은 다음 단계를 열었는데 눈은 아직 앞에 머문다. 어디까지 왔는지
+   * 세려면 손으로 밀어야 했다. 단계가 바뀌면 그 칸을 시야로 가져온다.
+   *
+   * 세로로는 움직이지 않는다. 레일만 옆으로 미는 것이라 block: 'nearest' 로 묶는다.
+   */
+  const railRef = useRef<HTMLElement | null>(null);
+  const currentStepRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const rail = railRef.current;
+    const step = currentStepRef.current;
+    if (!rail || !step) return;
+    // 밀 자리가 없으면 아무것도 하지 않는다. 넓은 화면에서는 일곱 칸이 모두 보인다.
+    if (rail.scrollWidth <= rail.clientWidth) return;
+    // JS 로 부르는 smooth 는 CSS 와 달리 기기의 "움직임 줄이기" 설정을 안 본다. 직접 본다.
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    step.scrollIntoView({ inline: 'center', block: 'nearest', behavior: still ? 'auto' : 'smooth' });
+  }, [stage]);
   const [school, setSchool] = useState<NeisSchool | null>(null);
   const [bundle, setBundle] = useState<NeisLoadBundle | null>(null);
   const [teacherMap, setTeacherMap] = useState<TeacherMap>({});
@@ -310,8 +484,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
       ?? teacherMap[mapKey(pair.classLabel, pair.subject)]
   ));
   const duplicateNames = useMemo(() => duplicateNameConflicts(bundle, teacherMap), [bundle, teacherMap]);
-  const sourceComplete = Boolean(bundle?.result.complete)
-    && (bundle?.report.normalization.quarantined.length ?? 1) === 0;
+  const sourceComplete = bundle ? isUsableBundle(bundle) : false;
   const invitationsReady = canOpenInvitations({
     sourceComplete,
     unresolvedTeacherCount: unresolved.length,
@@ -360,7 +533,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
 
   const completeReview = useCallback(async () => {
     if (!bundle || !invitationsReady) return;
-    const result = await completeSetupReview(bundle, teacherMap, session, saveState);
+    const result = await completeSetupReview(bundle, teacherMap, session, saveState, existing ?? undefined);
     if (!result.ok) {
       setMessage(messageForSetupPersistenceFailure(result.reason));
       return;
@@ -390,11 +563,12 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
         <button className="btn ghost" onClick={leave}>설정 나가기</button>
       </header>
 
-      <nav className="setup-rail" aria-label="최초 설정 단계">
+      <nav className="setup-rail" aria-label="최초 설정 단계" ref={railRef}>
         {SETUP_STAGES.map((item, index) => (
           <button
             key={item}
             data-setup-stage={item}
+            ref={stage === item ? currentStepRef : undefined}
             className={stage === item ? 'current' : ''}
             disabled={!stageEnabled(item)}
             aria-current={stage === item ? 'step' : undefined}
@@ -436,7 +610,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
               <div>
                 <span className="eyebrow">학교 소유 자료</span>
                 <h2 id="teacher-map-title">교사와 수업 연결</h2>
-                <p>{pairs.length}개 학급·과목 묶음 중 {pairs.length - unresolved.length}개를 연결했습니다.</p>
+                <p>{pairs.length}개 학급과 과목 묶음 중 {pairs.length - unresolved.length}개를 연결했습니다.</p>
               </div>
               <button className="btn ghost" onClick={() => fileRef.current?.click()}>교사 연결 JSON 가져오기</button>
               <input ref={fileRef} hidden type="file" accept="application/json,.json"
@@ -473,7 +647,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
                         ...current,
                         ...Object.fromEntries(spread.map((candidate) => [mapKey(candidate.classKey, candidate.subject), value])),
                       }))}>
-                      같은 학년·과목 {spread.length}곳에도
+                      같은 학년의 같은 과목 {spread.length}곳에도
                     </button>
                   </div>
                 );
@@ -490,7 +664,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
             <div className="review-counts">
               <div><b>{unresolved.length}</b><span>담당 교사 미연결</span></div>
               <div><b>{duplicateNames.length}</b><span>동명이인 의심</span></div>
-              <div><b>{bundle.report.normalization.parallelGroups.length}</b><span>분반·묶음 의심</span></div>
+              <div><b>{bundle.report.normalization.parallelGroups.length}</b><span>분반 묶음 의심</span></div>
             </div>
             {unresolved.length > 0 && <p className="setup-alert" role="alert">
               {unresolved.slice(0, 4).map((item) => `${item.classLabel} ${item.subject}`).join(', ')}
@@ -498,7 +672,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
             </p>}
             {duplicateNames.length > 0 && <ul className="review-list">{duplicateNames.map((item) => <li key={item}>{item}</li>)}</ul>}
             {bundle.report.normalization.parallelGroups.length > 0 && <p className="setup-note">
-              같은 학급·교시에 과목이 둘 이상인 {bundle.report.normalization.parallelGroups.length}개 묶음은 분반으로 보존됩니다.
+              같은 학급의 같은 교시에 과목이 둘 이상인 {bundle.report.normalization.parallelGroups.length}개 묶음은 분반으로 보존됩니다.
             </p>}
             <div className="setup-actions">
               <button className="btn ghost" onClick={() => setStage('교사 연결')}>교사 연결 수정</button>
@@ -510,7 +684,7 @@ export function SetupFlow({ initialSchoolQuery = '', saveState, navigate }: {
           <section className="invitation-panel" aria-labelledby="invitation-title">
             <span className="eyebrow">민감 정보 제외 완료</span>
             <h2 id="invitation-title">초대 링크</h2>
-            <p>링크에는 학교와 합성 교사 ID 또는 학년·반만 들어갑니다. 인증키와 내부 메모는 포함하지 않습니다.</p>
+            <p>링크에는 학교와 합성 교사 ID 또는 학년과 반만 들어갑니다. 인증키와 내부 메모는 포함하지 않습니다.</p>
             <div className="invitation-columns">
               <div><h3>교사 링크</h3>{invitationLinks.teachers.map((link) => <a key={link.id} href={link.href}>{link.label}</a>)}</div>
               <div><h3>학급 공개 링크</h3>{invitationLinks.classes.map((link) => <a key={link.id} href={link.href}>{link.label}</a>)}</div>

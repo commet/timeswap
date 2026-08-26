@@ -18,7 +18,7 @@
     "smoke": "node scripts/smoke.mjs",
     "visual-review": "node scripts/visual-review.mjs",
     "css-usage": "node scripts/css-usage.mjs",
-    "check": "node scripts/check-config.mjs"
+    "check": "node scripts/check-config.mjs && node scripts/check-copy.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

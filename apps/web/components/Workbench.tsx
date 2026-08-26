@@ -35,7 +35,14 @@ import {
 import { RequestStatusList } from './RequestStatusList';
 import { BRAND } from '../lib/brand';
 import type { WorkspaceState } from '../lib/domain';
-import { findDuplicateAbsenceCase, persistSubmittedAbsenceCase } from '../lib/case-service';
+import { effectiveLessons } from '../lib/projections';
+import {
+  CASE_STATUS_LABEL,
+  findDuplicateAbsenceCase,
+  findOverlappingAbsenceCases,
+  persistSubmittedAbsenceCase,
+  transitionCase,
+} from '../lib/case-service';
 import {
   resolutionPreviewForHandoff,
   resolutionProgressForCase,
@@ -82,6 +89,9 @@ import {
   buildPhrase,
   deriveBurden,
   loadOffDays,
+  loadUnavail,
+  saveOffDays,
+  saveUnavail,
   loadTheme,
   weekMondayOf,
   REASON_KEY,
@@ -93,6 +103,7 @@ import {
   type Loaded,
   type ThemeMode,
 } from '../lib/app';
+import { localDate } from '../lib/today';
 import { createNeisSession } from '../lib/neis-session';
 import { loadDemoScenario, type DemoScenarioId } from '../lib/demo';
 
@@ -186,8 +197,24 @@ function defaultTeacher(input: TimetableInput): string | null {
   return best;
 }
 
+/**
+ * 지금은 화면에 뜨지 않는다.
+ *
+ * `RoleWorkbench` 는 teacher, ops, class 세 갈래를 모두 제 컴포넌트로 보내고,
+ * `AppShell` 은 landing 과 setup 을 제가 직접 처리해 `RoleView` 를 아예 부르지 않는다.
+ * `RoleViewAdapterProps['location']` 이 그 둘을 빼 놓은 타입이라, 세 갈래를 처리한
+ * 다음 자리에서 타입이 never 로 좁혀진다. 아래 마지막 return 은 그래서 못 닿는다.
+ *
+ * 그런데 이 안에는 화면에서 쓰는 길에 아직 없는 것이 들어 있다. 근무 불가 지정,
+ * 수업 없는 요일 지정, 자료가 빠진 요일 경고가 그것이다. 지워 버리면 그 참고가
+ * 사라지므로 남겨 둔다.
+ *
+ * 고칠 것이 생기면 여기 말고 `lib/resolution.ts` 와 canonical 컴포넌트를 고쳐야 한다.
+ * 여기를 고치면 화면은 그대로다. 실제로 한 번 그렇게 헛고쳤다.
+ */
 function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleViewAdapterProps) {
   const seed = useMemo(() => workspaceToLoaded(workspaceState), [workspaceState]);
+  const workspaceKey = workspaceState.workspace.id;
   const [loaded, setLoaded] = useState<Loaded | null>(seed);
   /** 로고를 누르면 시작 화면으로 돌아온다. 불러온 시간표는 지우지 않는다. */
   const [atHome, setAtHome] = useState(false);
@@ -234,9 +261,9 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
     setAtHome(false);
     setNeedsPick(false);
     setEntries([]);
-    setUnavail({});
+    setUnavail(loadUnavail(workspaceState.workspace.id));
     setReason(localStorage.getItem(REASON_KEY) ?? '출장');
-    setOffDays(loadOffDays());
+    setOffDays(loadOffDays(workspaceState.workspace.id));
     setTheme(loadTheme());
     const wd = new Date().getDay(); // 일 0, 월 1
     setTodayIdx(wd >= 1 && wd <= 5 ? wd - 1 : null);
@@ -592,26 +619,29 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
     (s: number) => {
       if (currentTeacher === null) return;
       setHovered(null);
-      setUnavail((u) => {
-        const cur = new Set(u[currentTeacher] ?? []);
-        if (cur.has(s)) cur.delete(s);
-        else cur.add(s);
-        const next: Record<string, number[]> = { ...u };
-        if (cur.size === 0) delete next[currentTeacher];
-        else next[currentTeacher] = [...cur].sort((x, y) => x - y);
-        return next;
-      });
+      const cur = new Set(unavail[currentTeacher] ?? []);
+      if (cur.has(s)) cur.delete(s);
+      else cur.add(s);
+      const next: Record<string, number[]> = { ...unavail };
+      if (cur.size === 0) delete next[currentTeacher];
+      else next[currentTeacher] = [...cur].sort((x, y) => x - y);
+      setUnavail(next);
+      saveUnavail(workspaceKey, next);
     },
-    [currentTeacher],
+    [currentTeacher, unavail, workspaceKey],
   );
 
-  const onToggleOffDay = useCallback((d: number) => {
-    setHovered(null);
-    setOffDays((cur) => {
-      const next = cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d].sort((a, b) => a - b);
-      return next;
-    });
-  }, []);
+  const onToggleOffDay = useCallback(
+    (d: number) => {
+      setHovered(null);
+      const next = offDays.includes(d)
+        ? offDays.filter((x) => x !== d)
+        : [...offDays, d].sort((a, b) => a - b);
+      setOffDays(next);
+      saveOffDays(workspaceKey, next);
+    },
+    [offDays, workspaceKey],
+  );
 
   /**
    * 그 교사가 학교에 오지 않는 요일을 통째로 잠근다.
@@ -634,20 +664,19 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
         (sl) => !busy.has(sl),
       );
       if (daySlots.length === 0) return;
-      setUnavail((u) => {
-        const cur = new Set(u[currentTeacher] ?? []);
-        const allLocked = daySlots.every((s) => cur.has(s));
-        for (const s of daySlots) {
-          if (allLocked) cur.delete(s);
-          else cur.add(s);
-        }
-        const next: Record<string, number[]> = { ...u };
-        if (cur.size === 0) delete next[currentTeacher];
-        else next[currentTeacher] = [...cur].sort((x, y) => x - y);
-        return next;
-      });
+      const cur = new Set(unavail[currentTeacher] ?? []);
+      const allLocked = daySlots.every((s) => cur.has(s));
+      for (const s of daySlots) {
+        if (allLocked) cur.delete(s);
+        else cur.add(s);
+      }
+      const next: Record<string, number[]> = { ...unavail };
+      if (cur.size === 0) delete next[currentTeacher];
+      else next[currentTeacher] = [...cur].sort((x, y) => x - y);
+      setUnavail(next);
+      saveUnavail(workspaceKey, next);
     },
-    [input, currentTeacher],
+    [input, currentTeacher, unavail, workspaceKey],
   );
 
   /** 그 교사가 빈 시간을 통째로 잠가 둔 요일 */
@@ -788,11 +817,11 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
       const picked = new Date(date + 'T12:00:00');
       const expectedDay = dayOf(result.target.slot, input.config) + 1;
       if (Number.isNaN(picked.getTime()) || picked.getDay() !== expectedDay) {
-        show((input.config.dayNames[expectedDay - 1] ?? '해당') + '요일 날짜를 골라 주세요');
+        show((input.config.dayNames[expectedDay - 1] ?? '해당') + '요일 날짜를 고르십시오');
         return;
       }
       if (localYmd(picked) < localYmd(new Date())) {
-        show('오늘 이후 날짜를 골라 주세요');
+        show('오늘 이후 날짜를 고르십시오');
         return;
       }
       const duplicate = requests.some(
@@ -835,11 +864,11 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
       const picked = new Date(date + 'T12:00:00');
       const expectedDay = dayOf(result.target.slot, input.config) + 1;
       if (Number.isNaN(picked.getTime()) || picked.getDay() !== expectedDay) {
-        show((input.config.dayNames[expectedDay - 1] ?? '해당') + '요일 날짜를 골라 주세요');
+        show((input.config.dayNames[expectedDay - 1] ?? '해당') + '요일 날짜를 고르십시오');
         return;
       }
       if (localYmd(picked) < localYmd(new Date())) {
-        show('오늘 이후 날짜를 골라 주세요');
+        show('오늘 이후 날짜를 고르십시오');
         return;
       }
       const duplicate = requests.some(
@@ -921,7 +950,7 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
         );
         setEntries(nextEntries);
         setRequests(nextRequests);
-        show('승인했습니다. 이제 행정 마무리 세 단계를 확인해 주세요');
+        show('승인했습니다. 행정 마무리 세 단계를 확인하십시오');
         window.setTimeout(() => document.getElementById('admin-checklist-title')?.focus(), 80);
       } catch (error) {
         show(error instanceof Error ? error.message : '승인하지 못했습니다');
@@ -1262,7 +1291,7 @@ function LegacyWorkbench({ state: workspaceState, location, navigate }: RoleView
           cfg={input.config}
           entries={printRequest ? [requestEntry(printRequest, 1, input.config)] : entries}
           teacher={printRequest?.teacher ?? currentTeacher ?? ''}
-          reason={printRequest ? printRequest.reason + (printRequest.note ? ' · ' + printRequest.note : '') : reason}
+          reason={printRequest ? printRequest.reason + (printRequest.note ? ', ' + printRequest.note : '') : reason}
         />
       )}
 
@@ -1407,7 +1436,18 @@ function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleVi
       lessonIds: input.lessonIds,
     });
     if (duplicate) {
-      return { error: `같은 기간과 수업으로 ${duplicate.status} 상태의 요청이 이미 있습니다. 기존 요청을 확인하거나 날짜 또는 수업 선택을 바꾸십시오.` };
+      return { error: `같은 기간과 수업으로 ${CASE_STATUS_LABEL[duplicate.status]} 상태의 요청이 이미 있습니다. 기존 요청을 확인하거나 날짜 또는 수업 선택을 바꾸십시오.` };
+    }
+    const overlapping = findOverlappingAbsenceCases(state, {
+      requesterTeacherId: teacherId, lessonIds: input.lessonIds,
+    });
+    if (overlapping.length > 0) {
+      const dates = [...new Set(overlapping.flatMap((item) => item.lessonIds)
+        .map((lessonId) => effectiveLessons(state).find((lesson) => lesson.id === lessonId)?.date)
+        .filter((date): date is string => Boolean(date)))].sort();
+      return {
+        error: `${dates.join(', ')} 수업은 이미 낸 요청에 들어 있습니다. 그 요청을 취소하거나 겹치지 않는 날짜를 고르십시오.`,
+      };
     }
     const part = caseIdPart();
     const at = new Date().toISOString();
@@ -1424,6 +1464,26 @@ function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleVi
       }, saveState);
     } catch (error) {
       return { error: error instanceof Error ? error.message : '요청을 저장하지 못했습니다.' };
+    }
+  }
+
+  /** 낸 사람이 자기 요청을 거둔다. 승인 전까지만 열려 있다. */
+  function withdraw(caseId: string): { error?: string } {
+    const part = caseIdPart();
+    try {
+      const next = transitionCase(state, {
+        caseId, to: 'cancelled', actorId: teacherId,
+        at: new Date().toISOString(), auditEventId: `audit:${part}:cancelled`,
+      });
+      const result = saveState(next);
+      if (result.ok) return {};
+      return {
+        error: result.reason === 'quota'
+          ? '저장 공간이 부족해 취소하지 않았습니다. 공간을 확보한 뒤 다시 시도하십시오.'
+          : '이 브라우저에 저장할 수 없어 취소하지 않았습니다. 저장 설정을 확인한 뒤 다시 시도하십시오.',
+      };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : '요청을 취소하지 못했습니다.' };
     }
   }
 
@@ -1482,6 +1542,7 @@ function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleVi
         onSubmit={submit}
         onExportDiagnostic={() => downloadDiagnostic(state)}
         onCandidateHandoff={setHandoff}
+        onWithdraw={withdraw}
         resolutionPreview={timetablePreview}
       />
       {handoff && preview && (
@@ -1501,11 +1562,17 @@ function CanonicalTeacherWorkbench({ state, location, saveState }: TeacherRoleVi
 }
 
 /** The demo corpus is fixed in time so its screens stay reproducible. */
-function todayOf(state: WorkspaceState): string {
+/**
+ * 일과 담당 화면과 학급 공개 화면이 오늘로 삼는 날.
+ *
+ * `toISOString()` 을 쓰고 있었다. 그것은 UTC 날짜라 한국에서는 자정부터 아침 9시까지
+ * 어제가 나온다. 그 시간에 열면 관제판의 오늘 건수가 어제 것이 되고, 학급 공개
+ * 시간표도 어제 것이 떴다. 교사 화면은 지역 날짜를 쓰고 있어서 두 화면이 아침마다
+ * 서로 다른 날을 오늘이라고 불렀다.
+ */
+export function todayOf(state: WorkspaceState, now = new Date()): string {
   const activeRevision = state.revisions.find((item) => item.id === state.workspace.activeRevisionId);
-  return activeRevision?.source === 'demo'
-    ? '2026-08-18'
-    : new Date().toISOString().slice(0, 10);
+  return activeRevision?.source === 'demo' ? '2026-08-18' : localDate(now);
 }
 
 function CanonicalOpsWorkbench({ state, location, saveState, navigate }: OpsRoleViewAdapterProps) {
@@ -1604,9 +1671,17 @@ function RoleWorkbench(props: RoleViewAdapterProps) {
       state={props.state}
       grade={props.location.grade}
       className={props.location.className}
+      course={props.location.course}
       today={todayOf(props.state)}
     />
   );
+  /*
+   * 못 닿는다는 것을 타입으로 잠근다. 위 세 갈래가 location 을 다 써 버려 여기서는
+   * never 다. 갈래를 하나라도 빼거나 AppLocation 에 새 역할을 더하면서 여기를 안
+   * 고치면 이 줄이 타입 검사에서 깨진다. 주석만 두면 조용히 거짓말이 된다.
+   */
+  const noRoleLeft: never = props.location;
+  void noRoleLeft;
   return <LegacyWorkbench {...props} />;
 }
 

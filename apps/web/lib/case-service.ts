@@ -7,8 +7,9 @@ import type {
   ResolutionItem,
   WorkspaceState,
 } from './domain';
+import { CASE_STATUS_LABEL, canWithdrawCase } from './domain';
 import type { SaveResult } from './repository';
-import { validateCasePlan } from './projections';
+import { effectiveLessons, validateCasePlan } from './projections';
 
 export interface CreateAbsenceCaseInput {
   id: string;
@@ -97,16 +98,57 @@ export function lessonsAffectedByAbsence(
       || left.id.localeCompare(right.id));
 }
 
+/**
+ * 없던 일이 된 요청. 자리도 안 잡고 중복도 안 막는다.
+ */
+const VOID_STATUSES = new Set<CaseStatus>(['rejected', 'cancelled', 'superseded']);
+
+/**
+ * 같은 부재가 이미 올라와 있는지.
+ *
+ * 살아 있는 요청만 본다. 반려나 취소된 요청까지 세면 반려된 교사가 같은 부재를 다시
+ * 낼 수 없다. 반려 사유가 "다시 조정해야 하는 이유"인데 다시 낼 길이 막히면 반려가
+ * 곧 끝이 된다. 화면은 날짜나 수업 선택을 바꾸라고 안내하지만 그것은 바꿀 수 있는
+ * 사실이 아니다. 출장 날짜는 이미 정해져 있다.
+ */
+export { CASE_STATUS_LABEL, canWithdrawCase };
+
 export function findDuplicateAbsenceCase(
   state: WorkspaceState,
   input: Pick<CreateAbsenceCaseInput, 'requesterTeacherId' | 'fromDate' | 'toDate' | 'lessonIds'>,
 ): AbsenceCase | undefined {
   const selected = [...input.lessonIds].sort();
-  return state.cases.find((item) => item.requesterTeacherId === input.requesterTeacherId
+  return state.cases.find((item) => !VOID_STATUSES.has(item.status)
+    && item.requesterTeacherId === input.requesterTeacherId
     && item.fromDate === input.fromDate
     && item.toDate === input.toDate
     && item.lessonIds.length === selected.length
     && [...item.lessonIds].sort().every((lessonId, index) => lessonId === selected[index]));
+}
+
+/**
+ * 같은 수업을 물고 있는, 살아 있는 다른 요청.
+ *
+ * 중복 검사는 기간과 수업이 **똑같을 때만** 잡는다. 출장이 하루 늘어 월~수를 화~목으로
+ * 다시 내면 그냥 통과하고, 화요일과 수요일 수업이 살아 있는 요청 둘에 동시에 들어간다.
+ *
+ * 한 수업이 두 요청에 동시에 들어가는 것은 언제나 틀렸다. 그런데 지금은 일과 담당이
+ * 둘 다 풀어 본 뒤 승인 관문에서야 막힌다. 낸 사람은 아무 말도 못 듣고, 일과 담당은
+ * 같은 수업을 두 번 푼다. 낼 때 알려 주는 편이 양쪽 모두에게 낫다.
+ */
+export function findOverlappingAbsenceCases(
+  state: WorkspaceState,
+  input: Pick<CreateAbsenceCaseInput, 'requesterTeacherId' | 'lessonIds'>,
+): Array<{ absenceCase: AbsenceCase; lessonIds: string[] }> {
+  const wanted = new Set(input.lessonIds);
+  return state.cases
+    .filter((item) => !VOID_STATUSES.has(item.status)
+      && item.requesterTeacherId === input.requesterTeacherId)
+    .map((absenceCase) => ({
+      absenceCase,
+      lessonIds: absenceCase.lessonIds.filter((lessonId) => wanted.has(lessonId)),
+    }))
+    .filter((item) => item.lessonIds.length > 0);
 }
 
 function isISODate(value: string): boolean {
@@ -154,8 +196,14 @@ function validateCreation(state: WorkspaceState, input: CreateAbsenceCaseInput):
     throw new Error('Audit event id already exists.');
   }
 
+  /*
+   * 게시된 변경을 얹은 표로 본다. 보강을 맡은 사람이 그날 결강을 낼 때, 원래 표만
+   * 보면 그 수업의 담당이 여전히 남이라 "신청자가 담당이 아니다"로 막힌다.
+   */
+  const lessonsNow = new Map(effectiveLessons(state).map((lesson) => [lesson.id, lesson]));
   for (const lessonId of input.lessonIds) {
-    const lesson = state.lessons.find((item) => item.id === lessonId);
+    const lesson = lessonsNow.get(lessonId)
+      ?? state.lessons.find((item) => item.id === lessonId);
     if (!lesson) throw new Error(`Affected lesson does not exist: ${lessonId}`);
     if (lesson.workspaceId !== input.workspaceId) {
       throw new Error('All affected lessons must belong to one workspace.');
@@ -213,8 +261,8 @@ export function createAbsenceCase(
 
 const NEXT_STATUS: Partial<Record<CaseStatus, readonly CaseStatus[]>> = {
   draft: ['submitted'],
-  submitted: ['in_review'],
-  in_review: ['resolution_approved', 'rejected'],
+  submitted: ['in_review', 'cancelled'],
+  in_review: ['resolution_approved', 'rejected', 'cancelled'],
   resolution_approved: ['admin_in_progress'],
   admin_in_progress: ['ready_to_publish'],
   ready_to_publish: ['published'],
